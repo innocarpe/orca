@@ -11111,7 +11111,12 @@ describe('OrcaRuntimeService', () => {
         title: 'claude agents'
       })
     )
-    expect(result.tabs[0]).not.toHaveProperty('agentStatus')
+    // The stale "working" status is suppressed (no spinner), but agent identity
+    // is retained so native chat can still address the idle agent's transcript.
+    const suppressed = result.tabs[0]
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.state).toBe('done')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.agentType).toBe('claude')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.terminalTitle).toBeUndefined()
   })
 
   it('suppresses saved mobile agent status when the current terminal title is neutral', async () => {
@@ -11178,7 +11183,11 @@ describe('OrcaRuntimeService', () => {
         title: 'bash'
       })
     )
-    expect(result.tabs[0]).not.toHaveProperty('agentStatus')
+    // Stale "working" suppressed; agent identity retained for native chat.
+    const suppressed = result.tabs[0]
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.state).toBe('done')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.agentType).toBe('claude')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.terminalTitle).toBeUndefined()
   })
 
   it('suppresses saved mobile agent status when fresh live OSC title is Claude agents', async () => {
@@ -11251,7 +11260,11 @@ describe('OrcaRuntimeService', () => {
         title: 'claude agents'
       })
     )
-    expect(result.tabs[0]).not.toHaveProperty('agentStatus')
+    // Stale "working" suppressed; agent identity retained for native chat.
+    const suppressed = result.tabs[0]
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.state).toBe('done')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.agentType).toBe('claude')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.terminalTitle).toBeUndefined()
   })
 
   it('keeps saved PTY bindings pending until the runtime knows the PTY is connected', async () => {
@@ -12793,7 +12806,11 @@ describe('OrcaRuntimeService', () => {
         title: 'claude agents'
       })
     )
-    expect(result.tabs[0]).not.toHaveProperty('agentStatus')
+    // Stale "working" suppressed; agent identity retained for native chat.
+    const suppressed = result.tabs[0]
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.state).toBe('done')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.agentType).toBe('claude')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.terminalTitle).toBeUndefined()
   })
 
   it('uses fresh neutral PTY titles over stale mobile snapshot and OSC titles', async () => {
@@ -12864,7 +12881,11 @@ describe('OrcaRuntimeService', () => {
         title: 'zsh'
       })
     )
-    expect(result.tabs[0]).not.toHaveProperty('agentStatus')
+    // Stale "working" suppressed; agent identity retained for native chat.
+    const suppressed = result.tabs[0]
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.state).toBe('done')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.agentType).toBe('claude')
+    expect(suppressed?.type === 'terminal' && suppressed.agentStatus?.terminalTitle).toBeUndefined()
   })
 
   it('pushes PTY-backed mobile session readiness changes when a server PTY exits', async () => {
@@ -13389,6 +13410,36 @@ describe('OrcaRuntimeService', () => {
     )
     expect(clearedSurface?.type === 'browser' && clearedSurface.color).toBeNull()
     expect(clearedSurface?.type === 'browser' && clearedSurface.isPinned).toBe(false)
+  })
+
+  it('persists headless tab viewMode and surfaces it through a cold rehydrate', async () => {
+    const session = makeWorkspaceSessionWithHeadlessTerminal()
+    const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+
+    await runtime.setMobileSessionTabProps(`id:${TEST_WORKTREE_ID}`, {
+      tabId: 'host-tab',
+      viewMode: 'chat'
+    })
+
+    const persisted = getSession().tabsByWorktree[TEST_WORKTREE_ID]!.find(
+      (tab) => tab.id === 'host-tab'
+    )!
+    expect(persisted.viewMode).toBe('chat')
+
+    const live = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    const liveSurface = live.tabs.find(
+      (tab) => tab.type === 'terminal' && tab.parentTabId === 'host-tab'
+    )
+    expect(liveSurface?.type === 'terminal' && liveSurface.viewMode).toBe('chat')
+
+    runtime['mobileSessionTabsByWorktree'].delete(TEST_WORKTREE_ID)
+    runtime['hydrateHeadlessMobileSessionTabsFromWorkspaceSession'](TEST_WORKTREE_ID)
+    const rehydrated = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    const surface = rehydrated.tabs.find(
+      (tab) => tab.type === 'terminal' && tab.parentTabId === 'host-tab'
+    )
+    expect(surface?.type === 'terminal' && surface.viewMode).toBe('chat')
   })
 
   it('still persists tab props in serve mode after syncWindowGraph(0) (gate does not fire)', async () => {

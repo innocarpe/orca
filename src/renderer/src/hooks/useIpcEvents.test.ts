@@ -1342,7 +1342,11 @@ describe('useIpcEvents updater integration', () => {
         ]
       },
       sshTargetLabels: new Map<string, string>([['conn-1', 'Remote']]),
-      settings: { terminalFontSize: 13 }
+      settings: {
+        terminalFontSize: 13,
+        experimentalNativeChat: false,
+        openAgentTabsInChatByDefault: false
+      }
     }
 
     vi.doMock('react', async () => {
@@ -1691,7 +1695,11 @@ describe('useIpcEvents updater integration', () => {
       enqueueSshCredentialRequest: vi.fn(),
       removeSshCredentialRequest: vi.fn(),
       clearTabPtyId: vi.fn(),
-      settings: { terminalFontSize: 13 }
+      settings: {
+        terminalFontSize: 13,
+        experimentalNativeChat: false,
+        openAgentTabsInChatByDefault: false
+      }
     }
     const createTerminalListenerRef: {
       current:
@@ -2075,6 +2083,11 @@ describe('useIpcEvents updater integration', () => {
     queueTabStartupCommand.mockClear()
     focusRuntimeTerminalSurface.mockClear()
     focusTerminalTabSurface.mockClear()
+    storeState.settings = {
+      ...storeState.settings,
+      experimentalNativeChat: true,
+      openAgentTabsInChatByDefault: true
+    }
     requestTerminalCreateListenerRef.current({
       requestId: 'req-renderer-backed',
       worktreeId: 'wt-2',
@@ -2091,7 +2104,9 @@ describe('useIpcEvents updater integration', () => {
 
     expect(createTab).toHaveBeenCalledWith('wt-2', 'group-left', undefined, {
       activate: false,
-      recordInteraction: false
+      recordInteraction: false,
+      launchAgent: 'codex',
+      viewMode: 'chat'
     })
     expect(setActiveView).not.toHaveBeenCalled()
     expect(setActiveWorktree).not.toHaveBeenCalled()
@@ -2187,7 +2202,9 @@ describe('useIpcEvents updater integration', () => {
 
     expect(createTab).toHaveBeenCalledWith('wt-2', undefined, undefined, {
       initialPtyId: 'pty-bg',
-      activate: true
+      activate: true,
+      launchAgent: 'codex',
+      viewMode: 'chat'
     })
     expect(registerAgentLaunchConfig).toHaveBeenCalledWith(
       makePaneKey('tab-new', '55555555-5555-4555-8555-555555555555'),

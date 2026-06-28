@@ -3293,6 +3293,7 @@ export class OrcaRuntimeService {
             ...(layout ? { parentLayout: this.cloneTerminalLayoutSnapshot(layout) } : {}),
             ...(tab.color != null ? { color: tab.color } : {}),
             ...(tab.isPinned ? { isPinned: true } : {}),
+            ...(tab.viewMode ? { viewMode: tab.viewMode } : {}),
             isActive: this.isPersistedTerminalLeafActive(worktreeId, tab.id, leafId, layout)
           }
         })
@@ -4208,7 +4209,12 @@ export class OrcaRuntimeService {
   // was never persisted. Persist to the workspace session + live snapshot.
   async setMobileSessionTabProps(
     worktreeSelector: string,
-    args: { tabId: string; color?: string | null; isPinned?: boolean }
+    args: {
+      tabId: string
+      color?: string | null
+      isPinned?: boolean
+      viewMode?: 'terminal' | 'chat'
+    }
   ): Promise<{ updated: true }> {
     const explicitWorktreeId = getExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
@@ -4230,7 +4236,7 @@ export class OrcaRuntimeService {
   private persistHeadlessSessionTabProps(
     worktreeId: string,
     tabId: string,
-    props: { color?: string | null; isPinned?: boolean }
+    props: { color?: string | null; isPinned?: boolean; viewMode?: 'terminal' | 'chat' }
   ): void {
     const session = this.store?.getWorkspaceSession?.()
     if (!session || !this.store?.setWorkspaceSession) {
@@ -4248,7 +4254,8 @@ export class OrcaRuntimeService {
             ? {
                 ...tab,
                 ...(props.color !== undefined ? { color: props.color } : {}),
-                ...(props.isPinned !== undefined ? { isPinned: props.isPinned } : {})
+                ...(props.isPinned !== undefined ? { isPinned: props.isPinned } : {}),
+                ...(props.viewMode !== undefined ? { viewMode: props.viewMode } : {})
               }
             : tab
         )
@@ -4281,7 +4288,7 @@ export class OrcaRuntimeService {
   private applyHeadlessSessionTabPropsToSnapshot(
     worktreeId: string,
     tabId: string,
-    props: { color?: string | null; isPinned?: boolean }
+    props: { color?: string | null; isPinned?: boolean; viewMode?: 'terminal' | 'chat' }
   ): void {
     const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
     if (!snapshot) {
@@ -4296,7 +4303,8 @@ export class OrcaRuntimeService {
       return {
         ...tab,
         ...(props.color !== undefined ? { color: props.color } : {}),
-        ...(props.isPinned !== undefined ? { isPinned: props.isPinned } : {})
+        ...(props.isPinned !== undefined ? { isPinned: props.isPinned } : {}),
+        ...(props.viewMode !== undefined ? { viewMode: props.viewMode } : {})
       }
     })
     if (!changed) {
@@ -17818,10 +17826,41 @@ export class OrcaRuntimeService {
       const title = leafTitle ?? ptyTitle ?? syncedTab?.title ?? tab.title
       const liveTitleEvidence = leafTitle ?? ptyTitle
       const liveTitleEvidenceClassification = classifyAgentTitle(liveTitleEvidence)
-      const agentStatus =
+      // Why: keep the rich hook-driven status when the agent has a live
+      // interactive prompt or an active tool — those are authoritative agent
+      // activity even if the terminal's title isn't agent-classified (e.g. it
+      // shows a task/branch name). Otherwise the mobile/web client falls back to
+      // the OSC-title-only status and never sees interactivePrompt (the question
+      // card never renders).
+      const hasLiveAgentSignal =
+        tab.agentStatus?.interactivePrompt != null || tab.agentStatus?.toolName != null
+      const keepFullAgentStatus =
         tab.agentStatus &&
-        (liveTitleEvidence === null || liveTitleEvidenceClassification === 'agent')
-          ? { agentStatus: tab.agentStatus }
+        (liveTitleEvidence === null ||
+          liveTitleEvidenceClassification === 'agent' ||
+          hasLiveAgentSignal)
+      const agentStatus = keepFullAgentStatus
+        ? { agentStatus: tab.agentStatus }
+        : // Why: when live title evidence says the pane is idle (e.g. the Claude
+          // agents picker or a neutral shell title), suppress the stale "working"
+          // state so the client shows no spinner — but retain agent identity
+          // (agentType + providerSession) so native chat can still address an
+          // idle agent's transcript. Reset the transient state to 'done'.
+          tab.agentStatus?.agentType != null
+          ? {
+              agentStatus: {
+                state: 'done' as const,
+                prompt: '',
+                updatedAt: tab.agentStatus.updatedAt,
+                stateStartedAt: tab.agentStatus.stateStartedAt,
+                paneKey: tab.agentStatus.paneKey,
+                stateHistory: [],
+                agentType: tab.agentStatus.agentType,
+                ...(tab.agentStatus.providerSession
+                  ? { providerSession: tab.agentStatus.providerSession }
+                  : {})
+              }
+            }
           : null
       // Why: web/mobile clients hold these handles across renderer graph syncs;
       // leaf handles are graph-epoch-bound, but PTY handles remain streamable.
@@ -17849,6 +17888,7 @@ export class OrcaRuntimeService {
         ...(tab.parentLayout ? { parentLayout: tab.parentLayout } : {}),
         ...(tab.color != null ? { color: tab.color } : {}),
         ...(tab.isPinned ? { isPinned: true } : {}),
+        ...(tab.viewMode ? { viewMode: tab.viewMode } : {}),
         isActive: tab.isActive,
         ...(terminalHandle
           ? { status: 'ready' as const, terminal: terminalHandle }

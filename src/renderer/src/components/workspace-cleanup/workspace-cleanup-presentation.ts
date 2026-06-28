@@ -112,19 +112,21 @@ function getLinkedReviewFallback(worktree: Worktree | null): {
   }
   if (worktree.linkedGitLabMR != null) {
     return {
-      label: `${translate(
-        'auto.components.workspace.cleanup.presentation.0bb8d1aa02',
-        'MR #'
-      )}${worktree.linkedGitLabMR}`,
+      label: translate(
+        'components.workspace.cleanup.presentation.gitlabMergeRequestNumber',
+        'MR #{{value0}}',
+        { value0: worktree.linkedGitLabMR }
+      ),
       provider: 'gitlab'
     }
   }
   if (worktree.linkedPR != null) {
     return {
-      label: `${translate(
-        'auto.components.workspace.cleanup.presentation.b1f1a02943',
-        'PR #'
-      )}${worktree.linkedPR}`,
+      label: translate(
+        'components.workspace.cleanup.presentation.githubPullRequestNumber',
+        'PR #{{value0}}',
+        { value0: worktree.linkedPR }
+      ),
       provider: 'github'
     }
   }

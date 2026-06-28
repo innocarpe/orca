@@ -899,7 +899,7 @@ function WorkspaceCleanupFilterToolbar({
           value={filters.query}
           onChange={(event) => updateFilter('query', event.target.value)}
           placeholder={translate(
-            'auto.components.workspace.cleanup.WorkspaceCleanupDialog.4361f1534c',
+            'auto.components.workspace.cleanup.WorkspaceCleanupDialog.searchPlaceholder',
             'Search workspaces'
           )}
           className="h-8 pl-8 text-xs"
@@ -945,7 +945,7 @@ function WorkspaceCleanupFilterToolbar({
           </DropdownMenuLabel>
           <WorkspaceCleanupMenuSub<WorkspaceCleanupTimeFilter>
             label={translate(
-              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.6cd8439929',
+              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.ageFilter',
               'Age'
             )}
             value={filters.time}
@@ -959,7 +959,7 @@ function WorkspaceCleanupFilterToolbar({
           />
           <WorkspaceCleanupMenuSub<WorkspaceCleanupReviewFilter>
             label={translate(
-              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.38422e7b8d',
+              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.reviewFilter',
               'Review'
             )}
             value={filters.review}
@@ -974,7 +974,7 @@ function WorkspaceCleanupFilterToolbar({
           />
           <WorkspaceCleanupMenuSub<WorkspaceCleanupGitFilter>
             label={translate(
-              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.6359dc079a',
+              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.gitFilter',
               'Git'
             )}
             value={filters.git}
@@ -989,7 +989,7 @@ function WorkspaceCleanupFilterToolbar({
           />
           <WorkspaceCleanupMenuSub<WorkspaceCleanupContextFilter>
             label={translate(
-              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.7644af86b2',
+              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.contextFilter',
               'Context'
             )}
             value={filters.context}
@@ -1009,7 +1009,7 @@ function WorkspaceCleanupFilterToolbar({
           </DropdownMenuLabel>
           <WorkspaceCleanupMenuSub<WorkspaceCleanupSortKey>
             label={translate(
-              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.e343b9e9ce',
+              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.sortBy',
               'Sort by'
             )}
             value={sortKey}
@@ -1024,7 +1024,7 @@ function WorkspaceCleanupFilterToolbar({
           />
           <WorkspaceCleanupMenuSub<WorkspaceCleanupSortDirection>
             label={translate(
-              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.27acbc2efe',
+              'auto.components.workspace.cleanup.WorkspaceCleanupDialog.sortDirection',
               'Direction'
             )}
             value={sortDirection}

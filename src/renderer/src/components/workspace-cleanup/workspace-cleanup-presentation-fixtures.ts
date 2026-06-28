@@ -1,8 +1,8 @@
 import type { AppState } from '@/store/types'
+import { translate } from '@/i18n/i18n'
 import type { HostedReviewInfo } from '../../../../shared/hosted-review'
 import type { Repo, Worktree } from '../../../../shared/types'
 import type { WorkspaceCleanupCandidate } from '../../../../shared/workspace-cleanup'
-import { translate } from '@/i18n/i18n'
 import type { WorkspaceCleanupFilters } from './workspace-cleanup-presentation'
 
 export const NOW = 1_700_000_000_000
@@ -86,7 +86,7 @@ export function makeReview(overrides: Partial<HostedReviewInfo> = {}): HostedRev
     provider: 'github',
     number: 42,
     title: translate(
-      'auto.components.workspace.cleanup.presentationFixtures.5ed71d83ef',
+      'components.workspace.cleanup.presentationFixtures.reviewAlphaCleanup',
       'Review alpha cleanup'
     ),
     state: 'open',

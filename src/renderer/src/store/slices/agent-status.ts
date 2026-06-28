@@ -1138,6 +1138,10 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
           stateHistory: history,
           toolName: payload.toolName,
           toolInput: payload.toolInput,
+          // Why: full untruncated AskUserQuestion JSON; carried so mobile/web
+          // clients can render the live prompt card. parseAgentStatusPayload
+          // already clears it when the agent moves to a different tool/state.
+          interactivePrompt: payload.interactivePrompt,
           lastAssistantMessage: payload.lastAssistantMessage,
           // Why: reused panes may start non-orchestrated work after runtime
           // metadata expires. Only final done rows keep the previous lineage

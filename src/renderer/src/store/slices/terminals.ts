@@ -415,6 +415,11 @@ export type TerminalSlice = {
        *  bar can show the provider icon before the agent's first hook event. */
       launchAgent?: TuiAgent
       quickCommandLabel?: string | null
+      /** Initial native-chat view mode for the unified tab. When the
+       *  `openAgentTabsInChatByDefault` setting is on, agent launches pass
+       *  `'chat'` so the tab opens in the native chat view; omitted otherwise
+       *  so the tab keeps the implicit `'terminal'` default. */
+      viewMode?: Tab['viewMode']
     }
   ) => TerminalTab
   openNewTerminalTabInActiveWorkspace: (groupId: string) => Promise<void>
@@ -833,7 +838,10 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         customLabel: tab.customTitle,
         color: tab.color,
         sortOrder: cleanedGroupOrder.length,
-        createdAt: tab.createdAt
+        createdAt: tab.createdAt,
+        // Why: agent launches open in chat when the opt-in default is on;
+        // omitted for all other tabs so they keep the implicit 'terminal' mode.
+        ...(options?.viewMode ? { viewMode: options.viewMode } : {})
       }
       const nextGroupOrder = dedupeTabOrder([...cleanedGroupOrder, unifiedTab.id])
       const nextRecent = shouldActivate
