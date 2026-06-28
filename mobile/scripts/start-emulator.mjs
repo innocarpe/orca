@@ -11,16 +11,22 @@
  *   --device <name>    Device name (default: 'iPhone 17 Pro')
  *   --port <port>      Metro port (default: Expo default)
  *   --no-open          Don't open the app URL automatically
+ *   --no-pair          Don't create a temporary paired desktop runtime
  *   --wait-for-ready   Wait for Metro to be ready before opening URL
  *   --screenshot       Take a screenshot after opening
  */
 
 import { spawn, execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import os from 'node:os'
 import { promisify } from 'node:util'
 import path from 'node:path'
 import process from 'node:process'
 import readline from 'node:readline'
+import {
+  registerWorktreeForPairingRuntime,
+  startHeadlessPairingRuntime
+} from './start-emulator-pairing-runtime.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -31,6 +37,7 @@ const options = {
   device: 'iPhone 17 Pro',
   port: null,
   open: true,
+  pair: true,
   waitForReady: false,
   screenshot: false
 }
@@ -45,6 +52,8 @@ for (let i = 0; i < args.length; i++) {
     options.port = args[++i]
   } else if (arg === '--no-open') {
     options.open = false
+  } else if (arg === '--no-pair') {
+    options.pair = false
   } else if (arg === '--wait-for-ready') {
     options.waitForReady = true
   } else if (arg === '--screenshot') {
@@ -57,6 +66,7 @@ Options:
   --device <name>    Device name (default: 'iPhone 17 Pro')
   --port <port>      Metro port (default: Expo default)
   --no-open          Don't open the app URL automatically
+  --no-pair          Don't create a temporary paired desktop runtime
   --wait-for-ready   Wait for Metro to be ready before opening URL
   --screenshot       Take a screenshot after opening
   --help, -h         Show this help message
@@ -110,6 +120,7 @@ function assertIosSimulatorPlatform() {
 async function orca(args, options = {}) {
   const { stdout, stderr } = await execFileAsync(ORCA_CLI, args, {
     cwd: options.cwd || process.cwd(),
+    env: options.env || process.env,
     encoding: 'utf8',
     timeout: options.timeout || 30000
   })
@@ -146,13 +157,41 @@ function getMobileDir(worktree) {
   return path.join(worktree, 'mobile')
 }
 
+async function ensureMobileDependencies(worktree) {
+  const mobileDir = getMobileDir(worktree)
+  const expoPath = path.join(mobileDir, 'node_modules', '.bin', 'expo')
+  if (existsSync(expoPath)) {
+    return
+  }
+
+  logStep('deps', 'Installing mobile dependencies...')
+  await new Promise((resolve, reject) => {
+    const install = spawn('pnpm', ['install'], {
+      cwd: mobileDir,
+      env: process.env,
+      stdio: 'inherit'
+    })
+    install.on('error', reject)
+    install.on('exit', (code) => {
+      if (code === 0) {
+        resolve()
+      } else {
+        reject(new Error(`pnpm install exited with code ${code}`))
+      }
+    })
+  })
+  logSuccess('Mobile dependencies installed')
+}
+
 // Attach to emulator
-async function attachEmulator(worktree, device) {
+async function attachEmulator(worktree, device, runtime) {
   logStep('1', `Attaching to emulator: ${device.name}`)
 
   try {
     await orca(['emulator', 'attach', device.udid, '--worktree', worktree, '--focus', '--json'], {
-      cwd: worktree
+      cwd: worktree,
+      env: runtime?.env || process.env,
+      timeout: 60000
     })
     logSuccess(`Attached to ${device.name}`)
   } catch (error) {
@@ -431,6 +470,25 @@ async function openInSimulator(url, deviceUdid) {
   }
 }
 
+async function openPairingUrlInSimulator(pairingUrl, deviceUdid, runtime, worktree) {
+  if (!pairingUrl || !options.open) {
+    return
+  }
+
+  logStep('4', 'Pairing mobile app to temporary desktop runtime...')
+  await execFileAsync('xcrun', ['simctl', 'openurl', deviceUdid, pairingUrl])
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  // Why: the mobile app intentionally asks for a trust confirmation before
+  // saving a host. This lands on the Pair button on current iPhone simulators.
+  await orca(['emulator', 'tap', '0.5', '0.56', '--worktree', worktree, '--json'], {
+    cwd: worktree,
+    env: runtime?.env || process.env,
+    timeout: 30000
+  })
+  logSuccess('Opened pairing link and confirmed Pair')
+}
+
 // Take a screenshot
 async function takeScreenshot(
   deviceUdid,
@@ -477,6 +535,7 @@ async function findReachableMetroUrl(initialUrl) {
 // Main function
 async function main() {
   log(colors.bright + 'Starting Orca Mobile in Emulator\n' + colors.reset)
+  let pairingRuntime = null
 
   try {
     assertIosSimulatorPlatform()
@@ -484,6 +543,21 @@ async function main() {
     // Get worktree
     const worktree = await getWorktree()
     logInfo(`Using worktree: ${worktree}`)
+    await ensureMobileDependencies(worktree)
+
+    pairingRuntime = await startHeadlessPairingRuntime({
+      enabled: options.pair,
+      orcaCli: ORCA_CLI,
+      cwd: process.cwd(),
+      lanIpCandidates,
+      logStep,
+      logSuccess
+    })
+    await registerWorktreeForPairingRuntime(pairingRuntime, worktree, {
+      orca,
+      logStep,
+      logSuccess
+    })
 
     // Find best device
     const device = await findBestDevice(options.device)
@@ -491,7 +565,7 @@ async function main() {
 
     // Why: emulator helpers are worktree-scoped in Orca; attach is idempotent
     // for the active worktree, while a global helper list cannot prove that.
-    await attachEmulator(worktree, device)
+    await attachEmulator(worktree, device, pairingRuntime)
 
     // Start Metro
     const metro = await startMetro(worktree)
@@ -514,6 +588,12 @@ async function main() {
     // Open in simulator
     if (options.open) {
       await openInSimulator(metro.url, device.udid)
+      await openPairingUrlInSimulator(
+        pairingRuntime?.pairingUrl,
+        device.udid,
+        pairingRuntime,
+        worktree
+      )
 
       // Take screenshot if requested
       if (options.screenshot) {
@@ -528,7 +608,7 @@ async function main() {
     }
 
     log(colors.bright + '\nSetup complete!' + colors.reset)
-    logInfo('Press Ctrl+C to stop Metro')
+    logInfo('Press Ctrl+C to stop Metro and the temporary desktop runtime')
 
     // Keep running until Metro exits
     await new Promise((resolve) => {
@@ -542,6 +622,7 @@ async function main() {
         process.off('SIGINT', stopMetro)
         process.off('SIGTERM', stopMetro)
         metro.closeOutput?.()
+        pairingRuntime?.stop()
         resolve()
       }
       const stopMetro = () => {
@@ -564,6 +645,7 @@ async function main() {
     })
     process.exit(0)
   } catch (error) {
+    pairingRuntime?.stop()
     logError(error.message)
     process.exit(1)
   }
