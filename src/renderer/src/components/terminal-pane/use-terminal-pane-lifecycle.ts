@@ -27,6 +27,7 @@ import {
   installHttpLinkClickFallback,
   type TerminalLinkRoutingPreferenceRequester
 } from './terminal-url-link-hit-testing'
+import { resolveLocalhostHttpLinkDisplayUrl } from '@/lib/http-link-routing'
 import type {
   GlobalSettings,
   SetupSplitDirection,
@@ -145,6 +146,19 @@ function reportActiveRendererPtyForPane(
       continue
     }
     window.api.pty.setActiveRendererPty?.(ptyId, activePaneId === paneId)
+  }
+}
+
+async function formatTerminalUrlTooltip(url: string, openLinkHint: string): Promise<string | null> {
+  const labeledUrl = await resolveLocalhostHttpLinkDisplayUrl(url)
+  if (!labeledUrl) {
+    return null
+  }
+  try {
+    const originalHost = new URL(url).host
+    return `${labeledUrl} (${originalHost}; ${openLinkHint})`
+  } catch {
+    return `${labeledUrl} (${openLinkHint})`
   }
 }
 
@@ -968,6 +982,9 @@ export function useTerminalPaneLifecycle({
           const mouseHideDisposable = installMouseHideWhileTyping(pane.terminal, pane.container)
           mouseHideDisposablesRef.current.set(pane.id, mouseHideDisposable)
         }
+        // Why: async tooltip formatting can resolve after hover changes, so a
+        // stale result must not overwrite the tooltip for a newer hover/leave.
+        let oscTooltipHoverToken = 0
         pane.terminal.options.linkHandler = {
           allowNonHttpProtocols: true,
           activate: (event, text) => {
@@ -991,10 +1008,18 @@ export function useTerminalPaneLifecycle({
           // GitHub owner/repo#issue references emitted by CLI tools) — same
           // behaviour as the WebLinksAddon provides for plain-text URLs.
           hover: (_event, text) => {
+            oscTooltipHoverToken += 1
+            const hoverToken = oscTooltipHoverToken
             pane.linkTooltip.textContent = `${text} (${urlOpenLinkHint})`
             pane.linkTooltip.style.display = ''
+            void formatTerminalUrlTooltip(text, urlOpenLinkHint).then((nextText) => {
+              if (hoverToken === oscTooltipHoverToken && nextText) {
+                pane.linkTooltip.textContent = nextText
+              }
+            })
           },
           leave: () => {
+            oscTooltipHoverToken += 1
             pane.linkTooltip.style.display = 'none'
           }
         }
@@ -1307,6 +1332,7 @@ export function useTerminalPaneLifecycle({
         // SelectionService._removeMouseDownListeners).
         managerRef.current?.getActivePane()?.terminal.clearSelection()
       },
+      formatLinkTooltip: (url, openLinkHint) => formatTerminalUrlTooltip(url, openLinkHint),
       // Why: TerminalPane instances stay mounted for hidden visited worktrees
       // so PTYs survive navigation. Creating WebGL for those offscreen panes
       // still consumes Chromium's context budget and can blank visible panes.
