@@ -104,6 +104,10 @@ import {
   observeTerminalBracketedPasteModeOutput
 } from './terminal-bracketed-paste'
 import { executeTerminalStartupCommandPaste } from './terminal-startup-command-paste'
+import {
+  waitForStableStartupGrid,
+  type TerminalStartupGridSettleHandle
+} from './terminal-startup-grid-settle'
 import { getTerminalPasteSshRemotePlatform } from './terminal-paste-ssh-platform'
 import { resolveTerminalPasteRuntime } from './terminal-paste-runtime'
 import { isKnownTuiAgentTerminalStartupCommand } from './terminal-startup-command-classifier'
@@ -142,7 +146,7 @@ import {
   normalizeCompatibleAgentTitleForOwner,
   resolveCompatibleAgentTypeForOwner
 } from '../../../../shared/agent-title-owner'
-import type { TuiAgent } from '../../../../shared/types'
+import type { SetupSplitDirection, TuiAgent } from '../../../../shared/types'
 import { isWslUncPath } from '../../../../shared/wsl-paths'
 
 const pendingSpawnByPaneKey = new Map<string, Promise<string | null>>()
@@ -814,6 +818,79 @@ function containsCursorRestore(data: string): boolean {
   return hideIndex !== -1 && showIndex > hideIndex && containsCursorPositionSequence(data)
 }
 
+const SPLIT_GEOMETRY_EPSILON_PX = 1
+
+function readElementRect(element: HTMLElement | null | undefined): DOMRect | null {
+  try {
+    return element?.getBoundingClientRect?.() ?? null
+  } catch {
+    return null
+  }
+}
+
+function hasVisibleRect(rect: DOMRect | null): rect is DOMRect {
+  return Boolean(
+    rect && rect.width > SPLIT_GEOMETRY_EPSILON_PX && rect.height > SPLIT_GEOMETRY_EPSILON_PX
+  )
+}
+
+function readProposedPaneGrid(pane: ManagedPane): { cols: number; rows: number } | null {
+  try {
+    const dimensions = pane.fitAddon.proposeDimensions()
+    if (!dimensions || dimensions.cols <= 0 || dimensions.rows <= 0) {
+      return null
+    }
+    return dimensions
+  } catch {
+    return null
+  }
+}
+
+function isPaneGridAlignedWithFit(pane: ManagedPane): boolean {
+  const proposed = readProposedPaneGrid(pane)
+  return Boolean(
+    proposed && pane.terminal.cols === proposed.cols && pane.terminal.rows === proposed.rows
+  )
+}
+
+function isSetupSplitGeometryReady(
+  pane: ManagedPane,
+  manager: PaneManager,
+  direction: SetupSplitDirection
+): boolean {
+  const splitElement = pane.container.parentElement
+  const directionClass = direction === 'vertical' ? 'is-vertical' : 'is-horizontal'
+  if (
+    !splitElement?.classList?.contains('pane-split') ||
+    !splitElement.classList.contains(directionClass)
+  ) {
+    return false
+  }
+
+  const sibling = manager
+    .getPanes()
+    .find(
+      (candidate) => candidate.id !== pane.id && candidate.container.parentElement === splitElement
+    )
+  const splitRect = readElementRect(splitElement)
+  const paneRect = readElementRect(pane.container)
+  const siblingRect = readElementRect(sibling?.container)
+  if (!hasVisibleRect(splitRect) || !hasVisibleRect(paneRect) || !hasVisibleRect(siblingRect)) {
+    return false
+  }
+
+  const splitAxis = direction === 'vertical' ? splitRect.width : splitRect.height
+  const paneAxis = direction === 'vertical' ? paneRect.width : paneRect.height
+  const siblingAxis = direction === 'vertical' ? siblingRect.width : siblingRect.height
+  return (
+    paneAxis > SPLIT_GEOMETRY_EPSILON_PX &&
+    siblingAxis > SPLIT_GEOMETRY_EPSILON_PX &&
+    splitAxis - paneAxis > SPLIT_GEOMETRY_EPSILON_PX &&
+    splitAxis - siblingAxis > SPLIT_GEOMETRY_EPSILON_PX &&
+    isPaneGridAlignedWithFit(pane)
+  )
+}
+
 /**
  * Establishes a binding between a terminal pane and its corresponding PTY stream,
  * managing input, output, title synchronization, and agent status tracking.
@@ -827,6 +904,8 @@ export function connectPanePty(
   let disposed = false
   let connectFrame: number | null = null
   let connectFallbackTimer: ReturnType<typeof setTimeout> | null = null
+  let startupGridSettleHandle: TerminalStartupGridSettleHandle | null = null
+  let startupGridSettledForConnect = false
   let connectStarted = false
   let unregisterBacklogRecovery: (() => void) | null = null
   let unregisterDocumentVisibilityRecovery: (() => void) | null = null
@@ -2364,8 +2443,67 @@ export function connectPanePty(
       connectFrame = null
     }
   }
+  const measureStartupGrid = (): { cols: number; rows: number } | null => {
+    safeFit(pane)
+    const cols = pane.terminal.cols
+    const rows = pane.terminal.rows
+    return cols > 0 && rows > 0 ? { cols, rows } : null
+  }
+  const shouldSettleStartupGridBeforeConnect = (): boolean =>
+    Boolean(paneStartup?.command) &&
+    deps.isVisibleRef.current &&
+    !connectionId &&
+    runtimeEnvironmentId === null
+  const isStartupGridReadyForConnect = (): boolean => {
+    const setupSplitDirection = paneStartup?.waitForSetupSplitDirection
+    if (!setupSplitDirection) {
+      return true
+    }
+    // Why: the setup split reparents the main pane before its xterm grid
+    // necessarily reflects the new flex geometry; wait for both to agree.
+    return isSetupSplitGeometryReady(pane, manager, setupSplitDirection)
+  }
+  const settleStartupGridBeforeConnect = (connect: () => void): void => {
+    startupGridSettleHandle?.cancel()
+    let settledSynchronously = false
+    // Why: local startup commands can launch a TUI before the split-pane grid
+    // has settled; spawn from a briefly stable grid so the TUI paints cleanly.
+    const handle = waitForStableStartupGrid({
+      isAlive: () => !disposed,
+      isReadyToSettle: paneStartup?.waitForSetupSplitDirection
+        ? isStartupGridReadyForConnect
+        : undefined,
+      measure: measureStartupGrid,
+      onSettled: () => {
+        settledSynchronously = true
+        startupGridSettleHandle = null
+        connect()
+      },
+      requestFrame: (callback) => requestAnimationFrame(callback),
+      cancelFrame: (handle) => {
+        if (typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(handle)
+        }
+      }
+    })
+    if (!settledSynchronously) {
+      startupGridSettleHandle = handle
+    }
+  }
   const runDeferredConnect = (): void => {
     if (connectStarted) {
+      return
+    }
+    if (!startupGridSettledForConnect && shouldSettleStartupGridBeforeConnect()) {
+      cancelScheduledConnectFrame()
+      if (connectFallbackTimer !== null) {
+        clearTimeout(connectFallbackTimer)
+        connectFallbackTimer = null
+      }
+      settleStartupGridBeforeConnect(() => {
+        startupGridSettledForConnect = true
+        runDeferredConnect()
+      })
       return
     }
     connectStarted = true
@@ -4027,7 +4165,12 @@ export function connectPanePty(
       // to the PTY — the PTY is already at phone dimensions and must stay there.
       const reattachPtyId = transport.getPtyId()
       if (!reattachPtyId || !getFitOverrideForPty(reattachPtyId)) {
-        transport.resize(cols, rows)
+        safeFit(pane)
+        const reattachCols = pane.terminal.cols
+        const reattachRows = pane.terminal.rows
+        if (reattachCols > 0 && reattachRows > 0) {
+          transport.resize(reattachCols, reattachRows)
+        }
       }
       // Why: POSIX only delivers SIGWINCH when terminal dimensions actually
       // change. Sending it explicitly guarantees restored TUIs repaint at
@@ -4666,6 +4809,8 @@ export function connectPanePty(
       // rAF so a torn-down pane cannot keep fitting/resizing after disposal.
       ptySizeReconcileHandle?.cancel()
       ptySizeReconcileHandle = null
+      startupGridSettleHandle?.cancel()
+      startupGridSettleHandle = null
       ptySizeReassertion.dispose()
       if (terminalKeyTargetSupportsEvents) {
         terminalKeyTarget.removeEventListener('keydown', onTerminalKeyDown, { capture: true })
