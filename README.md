@@ -256,6 +256,10 @@ Want to contribute or run locally? See our [CONTRIBUTING.md](.github/CONTRIBUTIN
   <img src="https://contrib.rocks/image?repo=stablyai/orca" alt="Orca contributors" />
 </a>
 
+<p align="center">
+  <img src="docs/assets/star-history.png" alt="GitHub star history chart for stablyai/orca" width="880" />
+</p>
+
 ## License
 
 Orca is free and open source under the [MIT License](LICENSE).
