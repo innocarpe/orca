@@ -3110,7 +3110,7 @@ function CommentCodeContext({
                   )
                 }
                 aria-label={translate(
-                  'auto.components.PullRequestPage.e295a78c11',
+                  'auto.components.PullRequestPage.5ea92b8f34',
                   'Show {{value0}} more lines below',
                   { value0: CODE_CONTEXT_EXPAND_STEP }
                 )}

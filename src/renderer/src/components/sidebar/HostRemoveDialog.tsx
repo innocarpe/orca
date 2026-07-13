@@ -117,8 +117,8 @@ export function HostRemoveDialog({
           toast.error(
             translate(
               'auto.components.sidebar.HostRemoveDialog.workspacesFailed',
-              'Could not remove {{count}} of this host’s workspaces. The host was kept so you can retry.',
-              { count: failedIds.length }
+              'Could not remove {{value0}} of this host’s workspaces. The host was kept so you can retry.',
+              { value0: failedIds.length }
             )
           )
           return
@@ -154,10 +154,8 @@ export function HostRemoveDialog({
       ? translate('auto.components.sidebar.HostRemoveDialog.oneWorkspace', '1 workspace')
       : translate(
           'auto.components.sidebar.HostRemoveDialog.manyWorkspaces',
-          '{{count}} workspaces',
-          {
-            count: workspaceCount
-          }
+          '{{value0}} workspaces',
+          { value0: workspaceCount }
         )
 
   const description =

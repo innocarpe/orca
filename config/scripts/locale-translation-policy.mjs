@@ -338,6 +338,23 @@ export const NATIVE_PICKER_LABELS = {
 }
 
 const CJK_LATIN_SPACED_TERM_PATTERN = CJK_LATIN_SPACED_TERMS.join('|')
+const TRANSLATABLE_VALUE_CONTEXTS = new Map([
+  ['auto.components.mobile.MobileHero.a8fb43cf1c', 'Continue']
+])
+
+function translatableContextKeyForValue(enValue) {
+  // Why: the cache is value-only; any registered key for the value grants the same translatable policy.
+  for (const [key, value] of TRANSLATABLE_VALUE_CONTEXTS) {
+    if (value === enValue) {
+      return key
+    }
+  }
+  return ''
+}
+
+function isTranslatableValueContext(enValue, key) {
+  return TRANSLATABLE_VALUE_CONTEXTS.get(key) === enValue
+}
 
 export function isEnglishOnlyKey(key) {
   return ENGLISH_ONLY_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
@@ -352,6 +369,10 @@ export function shouldPreserveEnglishValue(enValue, key = '') {
   }
   if (isEnglishOnlyKey(key)) {
     return true
+  }
+  // Why: this CTA is an action, not a reference to the Continue AI product.
+  if (isTranslatableValueContext(enValue, key)) {
+    return false
   }
   return NEVER_TRANSLATE_VALUES.has(enValue)
 }
@@ -368,6 +389,9 @@ function includesPreservedLatinTerm(value, term) {
 }
 
 function applyBrandMistranslationFixes(enValue, localeValue, locale, key = '') {
+  if (isTranslatableValueContext(enValue, key)) {
+    return localeValue
+  }
   let result = localeValue
   const mistranslations = BRAND_MISTRANSLATIONS[locale] ?? {}
 
@@ -594,14 +618,13 @@ export function repairCatalog(enCatalog, localeCatalog, locale) {
 export function repairCacheMap(cache, locale) {
   let repaired = 0
   for (const [enValue, translated] of cache.entries()) {
-    const next = shouldPreserveEnglishValue(enValue)
-      ? enValue
-      : repairTranslatedValue({
-          key: '',
-          enValue,
-          localeValue: translated,
-          locale
-        })
+    // Why: the value-only cache must retain translations used by an explicitly translatable context.
+    const next = repairTranslatedValue({
+      key: translatableContextKeyForValue(enValue),
+      enValue,
+      localeValue: translated,
+      locale
+    })
     if (next !== translated) {
       cache.set(enValue, next)
       repaired += 1

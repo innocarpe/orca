@@ -287,13 +287,13 @@ export function useFileDeletion({
               title: hasLocalDelete
                 ? translate(
                     'auto.components.right.sidebar.useFileDeletion.77fdc36183',
-                    'Delete {{count}} items?',
-                    { count: nodes.length }
+                    'Delete {{value0}} items?',
+                    { value0: nodes.length }
                   )
                 : translate(
                     'auto.components.right.sidebar.useFileDeletion.af1270b90d',
-                    'Permanently delete {{count}} items?',
-                    { count: nodes.length }
+                    'Permanently delete {{value0}} items?',
+                    { value0: nodes.length }
                   ),
               description: hasLocalDelete
                 ? translate(

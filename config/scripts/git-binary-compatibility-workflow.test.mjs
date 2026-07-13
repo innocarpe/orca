@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest'
 describe('Git binary compatibility PR gate', () => {
   it('runs the real-binary contract at each compatibility boundary', () => {
     const workflow = parse(readFileSync('.github/workflows/pr.yml', 'utf8'))
-    const step = workflow.jobs.verify.steps.find(
+    // Why: `verify` is the required aggregate; executable Linux contract steps live in `verify-core`.
+    const step = workflow.jobs['verify-core'].steps.find(
       (candidate) => candidate.name === 'Verify Git binary compatibility matrix'
     )
 
