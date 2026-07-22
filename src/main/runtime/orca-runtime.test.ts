@@ -12311,6 +12311,67 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
+  // Why (#9905): Grok Build keeps an idle OSC title + ready composer while
+  // background tasks still run. tui-idle must not treat that as task-complete.
+  it('does not resolve tui-idle while Grok background tasks are still active', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => null
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+      runtime.onPtyData(
+        'pty-bg',
+        [
+          '\x1b]0;grok\x07',
+          'Tasks 1\n',
+          'Task Background sleep 60 for Orca repro  33s\n',
+          'watching · 1 command\n',
+          '> '
+        ].join(''),
+        Date.now()
+      )
+
+      const waitPromise = runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: 5_000
+      })
+      const timeoutAssertion = expect(waitPromise).rejects.toThrow('timeout')
+      await vi.advanceTimersByTimeAsync(5_000)
+      await timeoutAssertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('resolves tui-idle for Grok once background tasks clear', async () => {
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+    runtime.onPtyData(
+      'pty-bg',
+      ['\x1b]0;grok\x07', 'Tasks 0\n', 'No background tasks\n', '> '].join(''),
+      Date.now()
+    )
+
+    await expect(
+      runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 1_000 })
+    ).resolves.toMatchObject({
+      handle,
+      condition: 'tui-idle',
+      status: 'running'
+    })
+  })
+
   it('resolves tui-idle from an Antigravity ready prompt preview', async () => {
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
