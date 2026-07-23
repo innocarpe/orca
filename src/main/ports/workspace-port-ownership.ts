@@ -75,9 +75,53 @@ export function filterWorkspacePortProbes(
   })
 }
 
+/** Brief settle between Windows liveness probes after taskkill (#10150 review). */
+export const WINDOWS_PORT_KILL_LIVENESS_RETRY_DELAY_MS = 50
+const WINDOWS_PORT_KILL_LIVENESS_ATTEMPTS = 3
+
+export type KillWorkspacePortDeps = {
+  /** Injectable delay between post-taskkill liveness probes. */
+  delayMs?: (ms: number) => Promise<void>
+}
+
+function defaultDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    timer.unref?.()
+  })
+}
+
+function probeWindowsPidGone(
+  pid: number
+): { gone: true } | { gone: false; reason: string; retriable: boolean } {
+  try {
+    process.kill(pid, 0)
+    // Still in the process table — may clear after handles drain.
+    return { gone: false, reason: 'Failed to stop the process.', retriable: true }
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : ''
+    if (code === 'ESRCH') {
+      return { gone: true }
+    }
+    return {
+      gone: false,
+      // EPERM etc. mean the PID is still alive; waiting will not help.
+      retriable: false,
+      reason:
+        error instanceof Error
+          ? error.message || 'Failed to stop the process.'
+          : 'Failed to stop the process.'
+    }
+  }
+}
+
 export async function killWorkspacePort(
   worktrees: readonly WorkspacePortProbe[],
-  args: WorkspacePortKillRequest
+  args: WorkspacePortKillRequest,
+  deps: KillWorkspacePortDeps = {}
 ): Promise<WorkspacePortKillResult> {
   if (!Number.isSafeInteger(args.pid) || args.pid <= 0 || !Number.isSafeInteger(args.port)) {
     return { ok: false, reason: 'Invalid process or port.' }
@@ -105,12 +149,29 @@ export async function killWorkspacePort(
   }
 
   try {
-    // Why: caller-supplied pids are not trusted; the re-scan above proves
-    // this pid still owns the requested workspace listener before SIGTERM.
+    // Why: re-scan above proves this pid still owns the requested workspace listener.
     // On Windows, kill the full tree so npm wrappers cannot leave a child holding the port (#10150).
     if (process.platform === 'win32') {
       await terminateWindowsProcessTree(pid)
-      return { ok: true }
+      // Why: TerminateProcess/taskkill can leave the PID queryable until handles
+      // drain; a single immediate probe may false-fail. Retry briefly; only ESRCH
+      // means "gone". EPERM (still alive, no signal rights) is failure.
+      const delay = deps.delayMs ?? defaultDelay
+      let lastReason = 'Failed to stop the process.'
+      for (let attempt = 0; attempt < WINDOWS_PORT_KILL_LIVENESS_ATTEMPTS; attempt++) {
+        const probe = probeWindowsPidGone(pid)
+        if (probe.gone) {
+          return { ok: true }
+        }
+        lastReason = probe.reason
+        if (!probe.retriable) {
+          return { ok: false, reason: lastReason }
+        }
+        if (attempt + 1 < WINDOWS_PORT_KILL_LIVENESS_ATTEMPTS) {
+          await delay(WINDOWS_PORT_KILL_LIVENESS_RETRY_DELAY_MS)
+        }
+      }
+      return { ok: false, reason: lastReason }
     }
     process.kill(pid, 'SIGTERM')
     return { ok: true }
