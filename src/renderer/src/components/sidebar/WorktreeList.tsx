@@ -39,7 +39,9 @@ import WorktreeCard, { type ActiveSurfaceVariant } from './WorktreeCard'
 import { WorktreeSidebarDropIndicator } from './WorktreeSidebarDropIndicator'
 import {
   getProjectGroupHeaderSectionEndByGroupId,
-  getRepoHeaderSectionEndByRepoId
+  getRepoHeaderSectionEndByRepoId,
+  getRepoSectionPreviewOffsetY,
+  getRepoSectionRepoIdByRowIndex
 } from './worktree-header-section-boundaries'
 import { folderWorkspaceToWorktree } from '../../../../shared/folder-workspace-worktree'
 import { PendingWorktreeRow } from './PendingWorktreeRow'
@@ -101,9 +103,15 @@ import {
   getStickyHeaderIndexes,
   getVirtualRowTransform,
   pruneStaleVirtualRowElementCache,
+  SECONDARY_GROUP_HEADER_TOP_MARGIN,
   shouldUseHeaderTopSpacing,
   type RenderRow
 } from './worktree-list-virtual-rows'
+import {
+  getHeaderRowRenderedTop,
+  getHeaderRowTransformStart,
+  getPinnedHeaderTopOffsetPx
+} from './worktree-list-header-row-position'
 import {
   revealElementInScrollContainer,
   WORKTREE_SIDEBAR_REVEAL_TOP_INSET
@@ -328,6 +336,8 @@ function useReusedArrayIdentity<T>(next: T[]): T[] {
 
 // Debounce re-sort after a sortEpoch bump so background score changes don't jar row positions.
 const SORT_SETTLE_MS = 3_000
+const PROJECT_HEADER_DRAG_TRANSITION_CLASS =
+  'transition-transform duration-150 ease-out will-change-transform motion-reduce:transition-none'
 const USER_SCROLL_MEASUREMENT_ADJUSTMENT_SUPPRESS_MS = 500
 const EMPTY_PROJECT_GROUPS: readonly ProjectGroup[] = []
 const EMPTY_AGENT_STATUS_BY_PANE_KEY: AppState['agentStatusByPaneKey'] = {}
@@ -1655,6 +1665,10 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     [computeWorktreeDropForGroup]
   )
   const renderRows = useMemo(() => buildRenderableRows(rows), [rows])
+  const repoSectionRepoIdByRowIndex = useMemo(
+    () => getRepoSectionRepoIdByRowIndex(renderRows),
+    [renderRows]
+  )
   const sidebarRepoHeaderIdsByBucket = useMemo(
     () =>
       getSidebarOrderedRepoHeaderIdsByBucket(
@@ -1708,7 +1722,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   }, [sidebarProjectGroupHeaderIdsByBucket])
   const commitProjectGroupOrder = useCallback(
     (repoId: string, projectGroupId: string | null, order: number) => {
-      void moveProjectToGroup(repoId, projectGroupId, order)
+      return moveProjectToGroup(repoId, projectGroupId, order).then(() => undefined)
     },
     [moveProjectToGroup]
   )
@@ -1735,6 +1749,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     onCommitProjectGroupOrder: commitProjectGroupOrder,
     getScrollContainer: () => scrollRef.current
   })
+  const isProjectHeaderDragActive = repoDrag.state.draggingRepoId !== null
+  const getRepoSectionDragOffsetY = (rowIndex: number): number =>
+    getRepoSectionPreviewOffsetY({
+      repoSectionRepoIdByRowIndex,
+      rowIndex,
+      previewOffsetsByRepoId: repoDrag.state.previewOffsetsByRepoId,
+      draggingRepoId: repoDrag.state.draggingRepoId,
+      draggedSectionOffsetY: repoDrag.state.pointerOffsetY
+    })
   const projectGroupDrag = useProjectGroupHeaderDrag({
     sidebarProjectGroupHeaderIdsByBucket,
     projectGroupById: projectGroupByIdForHeaderDrag,
@@ -1820,6 +1843,9 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   const stickyHeaderIndexes = useMemo(() => getStickyHeaderIndexes(renderRows), [renderRows])
   const stickyHeaderIndexesRef = useRef(stickyHeaderIndexes)
   stickyHeaderIndexesRef.current = stickyHeaderIndexes
+  // Why: pinned header is not at its virtual start, so the follow transform anchors
+  // to this instead. Captured on pointerdown, before any state change.
+  const draggedHeaderAnchorTopRef = useRef<number | null>(null)
   const activeStickyHeaderIndexRef = useRef<number | null>(null)
   const activeStickyHostIndexRef = useRef<number | null>(null)
   const stickyRangeStartIndexRef = useRef(0)
@@ -4045,10 +4071,16 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
           className="relative w-full"
           style={{ height: `${virtualizer.getTotalSize()}px` }}
         >
-          {canReorderRepoHeaders &&
-          repoDrag.state.draggingRepoId !== null &&
-          repoDrag.state.dropIndicatorY !== null ? (
-            <WorktreeSidebarDropIndicator y={repoDrag.state.dropIndicatorY} />
+          {repoDrag.state.dropPlaceholderY !== null && repoDrag.state.dropPlaceholderHeight > 0 ? (
+            <div
+              role="presentation"
+              data-repo-drop-placeholder
+              className="pointer-events-none absolute left-2 right-2 z-10 rounded-md border border-dashed border-worktree-sidebar-ring/70 bg-worktree-sidebar-accent/35 transition-[top,height] duration-150 ease-out motion-reduce:transition-none"
+              style={{
+                top: `${repoDrag.state.dropPlaceholderY}px`,
+                height: `${repoDrag.state.dropPlaceholderHeight}px`
+              }}
+            />
           ) : null}
           {canReorderProjectGroupHeaders &&
           projectGroupDrag.state.draggingGroupId !== null &&
@@ -4168,6 +4200,22 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 canReorderProjectGroupHeaders &&
                 projectGroupDrag.state.draggingGroupId !== null &&
                 projectGroupDrag.state.draggingGroupId === projectGroupIdForHeader
+              // Why: the dragged header follows the pointer directly, while every
+              // other header shifts by the preview offset that opens the gap.
+              const headerDragOffsetY = isDraggingThis
+                ? (repoDrag.state.pointerOffsetY ?? 0)
+                : getRepoSectionDragOffsetY(vItem.index)
+              const headerRowPosition = {
+                virtualStart: vItem.start,
+                isPinned: isActiveStickyHeader,
+                scrollOffset: virtualizer.scrollOffset ?? scrollOffsetRef.current,
+                pinnedTopOffsetPx: getPinnedHeaderTopOffsetPx(
+                  activeStickyHostIndexRef.current !== null
+                ),
+                headerTopSpacingPx: hasHeaderTopSpacing ? SECONDARY_GROUP_HEADER_TOP_MARGIN : 0,
+                dragAnchorTop: isDraggingThis ? draggedHeaderAnchorTopRef.current : null,
+                offsetY: headerDragOffsetY
+              }
               const headerWorkspaceStatus =
                 groupBy === 'workspace-status'
                   ? getWorkspaceStatusFromGroupKey(row.key, workspaceStatuses)
@@ -4229,12 +4277,22 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     hasHeaderTopSpacing && !isActiveStickyHeader && 'pt-1',
                     isActiveStickyHeader
                       ? cn('sticky z-20 bg-worktree-sidebar', stickyTopClass)
-                      : 'absolute top-0'
+                      : 'absolute top-0',
+                    // Why: a transition on the dragged row would make it lag the
+                    // cursor, so only the parting neighbours animate.
+                    repoDrag.state.draggingRepoId !== null &&
+                      (!isDraggingThis || repoDrag.state.settling) &&
+                      PROJECT_HEADER_DRAG_TRANSITION_CLASS,
+                    isDraggingThis && 'z-30 will-change-transform'
                   )}
                   style={
                     isActiveStickyHeader
                       ? undefined
-                      : { transform: getVirtualRowTransform(vItem.start) }
+                      : {
+                          transform: getVirtualRowTransform(
+                            getHeaderRowTransformStart(headerRowPosition)
+                          )
+                        }
                   }
                 >
                   <div
@@ -4304,7 +4362,18 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     }
                     onPointerDown={
                       isDraggableRepoHeader && projectIdForHeader
-                        ? (event) => repoDrag.onHandlePointerDown(event, projectIdForHeader)
+                        ? (event) => {
+                            // Capture where the header actually rendered so the follow
+                            // transform does not jump from virtualStart to sticky slot.
+                            draggedHeaderAnchorTopRef.current = getHeaderRowRenderedTop({
+                              ...headerRowPosition,
+                              scrollOffset:
+                                scrollRef.current?.scrollTop ?? headerRowPosition.scrollOffset,
+                              dragAnchorTop: null,
+                              offsetY: 0
+                            })
+                            repoDrag.onHandlePointerDown(event, projectIdForHeader)
+                          }
                         : isDraggableProjectGroupHeader && projectGroupIdForHeader
                           ? (event) =>
                               projectGroupDrag.onHandlePointerDown(event, projectGroupIdForHeader)
@@ -4933,11 +5002,14 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   ref={measureVirtualRowElement}
                   className={cn(
                     'absolute left-0 right-0 top-0',
-                    worktreeDragState.draggingWorktreeId !== null &&
-                      'transition-transform duration-150 ease-out will-change-transform'
+                    (worktreeDragState.draggingWorktreeId !== null || isProjectHeaderDragActive) &&
+                      PROJECT_HEADER_DRAG_TRANSITION_CLASS
                   )}
                   style={{
-                    transform: getWorktreeVirtualRowTransform(vItem.start, parentPreviewOffset)
+                    transform: getWorktreeVirtualRowTransform(
+                      vItem.start,
+                      parentPreviewOffset + getRepoSectionDragOffsetY(vItem.index)
+                    )
                   }}
                 >
                   <div className="overflow-visible">
@@ -4965,8 +5037,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0"
-                  style={{ transform: getVirtualRowTransform(vItem.start) }}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                  )}
+                  style={{
+                    transform: getVirtualRowTransform(
+                      vItem.start + getRepoSectionDragOffsetY(vItem.index)
+                    )
+                  }}
                 >
                   <ImportedWorktreesVisibilityLine
                     repoDisplayName={row.repo.displayName}
@@ -4996,8 +5075,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0"
-                  style={{ transform: getVirtualRowTransform(vItem.start) }}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                  )}
+                  style={{
+                    transform: getVirtualRowTransform(
+                      vItem.start + getRepoSectionDragOffsetY(vItem.index)
+                    )
+                  }}
                 >
                   <NewExternalWorktreesInboxLine
                     repoDisplayName={row.repo.displayName}
@@ -5025,8 +5111,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0 px-2 pb-1.5"
-                  style={{ transform: getVirtualRowTransform(vItem.start) }}
+                  className={cn(
+                    'absolute left-0 right-0 top-0 px-2 pb-1.5',
+                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                  )}
+                  style={{
+                    transform: getVirtualRowTransform(
+                      vItem.start + getRepoSectionDragOffsetY(vItem.index)
+                    )
+                  }}
                 >
                   <PendingWorktreeRow creationId={row.creationId} />
                 </div>
@@ -5077,8 +5170,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   data-worktree-virtual-row-start={vItem.start}
                   data-index={vItem.index}
                   ref={measureVirtualRowElement}
-                  className="absolute left-0 right-0 top-0"
-                  style={{ transform: getVirtualRowTransform(vItem.start) }}
+                  className={cn(
+                    'absolute left-0 right-0 top-0',
+                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                  )}
+                  style={{
+                    transform: getVirtualRowTransform(
+                      vItem.start + getRepoSectionDragOffsetY(vItem.index)
+                    )
+                  }}
                   onClickCapture={handleWorktreeRowClickCapture}
                   onPointerDown={(event) =>
                     handleWorktreeRowPointerDown(event, folderWorktree.id, folderWorktree.id)
@@ -5134,11 +5234,14 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 data-workspace-status={itemWorkspaceStatus ?? undefined}
                 className={cn(
                   'absolute left-0 right-0 top-0',
-                  worktreeDragState.draggingWorktreeId !== null &&
-                    'transition-transform duration-150 ease-out will-change-transform'
+                  (worktreeDragState.draggingWorktreeId !== null || isProjectHeaderDragActive) &&
+                    PROJECT_HEADER_DRAG_TRANSITION_CLASS
                 )}
                 style={{
-                  transform: getWorktreeVirtualRowTransform(vItem.start, itemPreviewOffset)
+                  transform: getWorktreeVirtualRowTransform(
+                    vItem.start,
+                    itemPreviewOffset + getRepoSectionDragOffsetY(vItem.index)
+                  )
                 }}
                 onDragOver={
                   itemWorkspaceStatus
