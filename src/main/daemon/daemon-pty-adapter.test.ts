@@ -905,6 +905,32 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         }
       }
     })
+
+    it('respawns a dead terminal host and retries listProcesses (#10087)', async () => {
+      // Why: worktree remove inventories via listProcesses; spawn already retried
+      // daemon-gone errors but list did not, so Windows named-pipe ENOENT blocked delete.
+      let respawnServer: DaemonServer | undefined
+      const respawnFn = vi.fn(async () => {
+        respawnServer = new DaemonServer({
+          socketPath,
+          tokenPath,
+          spawnSubprocess: () => createMockSubprocess()
+        })
+        await respawnServer.start()
+      })
+      const retryAdapter = new DaemonPtyAdapter({ socketPath, tokenPath, respawn: respawnFn })
+
+      try {
+        await retryAdapter.spawn({ cols: 80, rows: 24 })
+        await server.shutdown()
+        // Fresh host has no sessions, but the inventory must not throw connect ENOENT.
+        await expect(retryAdapter.listProcesses()).resolves.toEqual([])
+        expect(respawnFn).toHaveBeenCalledOnce()
+      } finally {
+        retryAdapter.dispose()
+        await respawnServer?.shutdown()
+      }
+    })
   })
 
   describe('hasChildProcesses / getForegroundProcess', () => {

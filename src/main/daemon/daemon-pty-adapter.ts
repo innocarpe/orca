@@ -646,7 +646,8 @@ export class DaemonPtyAdapter implements IPtyProvider {
     // before killing so a healthy daemon session is not orphaned (#7742). Connect
     // and kill share the caller's one absolute deadline, so a wedged handshake
     // cannot burn the whole teardown budget before the kill even starts.
-    await this.ensureConnected(opts.deadlineMs)
+    // Why withDaemonRetry: same dead-pipe path as listProcesses during remove (#10087).
+    await this.withDaemonRetry(() => this.ensureConnected(opts.deadlineMs))
     // Why: sleep/exact-stop kills the live PTY before the periodic checkpoint may run.
     // Force a final snapshot so wake can restore the pane users left.
     if (opts.keepHistory) {
@@ -915,36 +916,41 @@ export class DaemonPtyAdapter implements IPtyProvider {
   }
 
   async listProcesses(opts?: { deadlineMs?: number }): Promise<PtyProcessInfo[]> {
-    // Why: connect + listSessions share the caller's one absolute deadline so a
-    // wedged handshake cannot burn the whole teardown budget before the list issues.
-    await this.ensureConnected(opts?.deadlineMs)
-    const result = await this.client.request<ListSessionsResult>(
-      'listSessions',
-      undefined,
-      remainingRequestTimeoutMs(opts?.deadlineMs)
-    )
-    const admission = new PtyProcessListAdmission()
-    const processes: PtyProcessInfo[] = []
-    for (const session of result.sessions) {
-      if (!session.isAlive) {
-        continue
-      }
-      const { worktreeId } = parsePtySessionId(session.sessionId)
-      processes.push(
-        admission.admit({
-          id: session.sessionId,
-          ...(session.incarnationId ? { incarnationId: session.incarnationId } : {}),
-          // Why: OSC 7 may not arrive before cleanup; spawn cwd is authoritative until the daemon reports a live cwd.
-          cwd: session.cwd ?? this.initialCwds.get(session.sessionId) ?? '',
-          title: 'shell',
-          ...(worktreeId ? { worktreeId } : {}),
-          ...(session.terminalHandle ? { terminalHandle: session.terminalHandle } : {}),
-          ...(session.wslDistro !== undefined ? { wslDistro: session.wslDistro } : {}),
-          ...this.validatedAgentSessionOwners(session.agentSessionOwners)
-        })
+    // Why: worktree remove / Resource Manager inventory hit listProcesses first.
+    // Spawn already respawns a dead host; without the same retry a dead named
+    // pipe (connect ENOENT) fails destructive teardown until full app restart (#10087).
+    return this.withDaemonRetry(async () => {
+      // Why: connect + listSessions share the caller's one absolute deadline so a
+      // wedged handshake cannot burn the whole teardown budget before the list issues.
+      await this.ensureConnected(opts?.deadlineMs)
+      const result = await this.client.request<ListSessionsResult>(
+        'listSessions',
+        undefined,
+        remainingRequestTimeoutMs(opts?.deadlineMs)
       )
-    }
-    return processes
+      const admission = new PtyProcessListAdmission()
+      const processes: PtyProcessInfo[] = []
+      for (const session of result.sessions) {
+        if (!session.isAlive) {
+          continue
+        }
+        const { worktreeId } = parsePtySessionId(session.sessionId)
+        processes.push(
+          admission.admit({
+            id: session.sessionId,
+            ...(session.incarnationId ? { incarnationId: session.incarnationId } : {}),
+            // Why: OSC 7 may not arrive before cleanup; spawn cwd is authoritative until the daemon reports a live cwd.
+            cwd: session.cwd ?? this.initialCwds.get(session.sessionId) ?? '',
+            title: 'shell',
+            ...(worktreeId ? { worktreeId } : {}),
+            ...(session.terminalHandle ? { terminalHandle: session.terminalHandle } : {}),
+            ...(session.wslDistro !== undefined ? { wslDistro: session.wslDistro } : {}),
+            ...this.validatedAgentSessionOwners(session.agentSessionOwners)
+          })
+        )
+      }
+      return processes
+    })
   }
 
   private validatedAgentSessionOwners(
