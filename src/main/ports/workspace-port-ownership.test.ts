@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { killWorkspacePort } from './workspace-port-ownership'
 
-const scanWorkspacePortsMock = vi.hoisted(() => vi.fn())
+const { scanWorkspacePortsMock, terminateWindowsProcessTreeMock } = vi.hoisted(() => ({
+  scanWorkspacePortsMock: vi.fn(),
+  terminateWindowsProcessTreeMock: vi.fn()
+}))
 
 vi.mock('./local-workspace-port-scanner', () => ({
   scanWorkspacePorts: scanWorkspacePortsMock
+}))
+
+vi.mock('../windows-process-tree-kill', () => ({
+  terminateWindowsProcessTree: terminateWindowsProcessTreeMock
 }))
 
 const worktrees = [{ id: 'repo::/repo', repoId: 'repo', displayName: 'main', path: '/repo' }]
@@ -12,6 +19,7 @@ const worktrees = [{ id: 'repo::/repo', repoId: 'repo', displayName: 'main', pat
 describe('killWorkspacePort', () => {
   afterEach(() => {
     scanWorkspacePortsMock.mockReset()
+    terminateWindowsProcessTreeMock.mockReset()
     vi.restoreAllMocks()
   })
 
@@ -54,4 +62,39 @@ describe('killWorkspacePort', () => {
     })
     expect(killSpy).not.toHaveBeenCalled()
   })
+
+  it('on Windows tree-kills the owning process so npm children free the port', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    scanWorkspacePortsMock.mockResolvedValue({
+      platform: 'win32',
+      scannedAt: 0,
+      ports: [
+        {
+          id: '127.0.0.1:5173:123',
+          host: '127.0.0.1',
+          port: 5173,
+          pid: 123,
+          kind: 'workspace',
+          worktreeId: 'repo::/repo',
+          repoId: 'repo',
+          displayName: 'main',
+          path: '/repo'
+        }
+      ]
+    })
+
+    await expect(killWorkspacePort(worktrees, { pid: 123, port: 5173 })).resolves.toEqual({
+      ok: true
+    })
+    expect(terminateWindowsProcessTreeMock).toHaveBeenCalledWith(123)
+    expect(killSpy).not.toHaveBeenCalled()
+
+    if (platformDescriptor) {
+      Object.defineProperty(process, 'platform', platformDescriptor)
+    }
+  })
+
 })
