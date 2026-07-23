@@ -64,6 +64,8 @@ vi.mock('@/store', () => ({
       openAgentSendPopoverTargetMode: storeMocks.openAgentSendPopoverTargetMode,
       closeAgentSendPopoverTargetMode: storeMocks.closeAgentSendPopoverTargetMode,
       agentSendPopoverTargetMode: storeMocks.state.agentSendPopoverTargetMode,
+      activeWorktreeId: 'wt-1',
+      activeGroupIdByWorktree: { 'wt-1': 'group-1' },
       agentStatusByPaneKey: {},
       agentStatusEpoch: 0,
       tabsByWorktree: {},
@@ -71,6 +73,10 @@ vi.mock('@/store', () => ({
       ptyIdsByTabId: {},
       runtimePaneTitlesByTabId: {}
     })
+}))
+
+vi.mock('@/hooks/useShortcutLabel', () => ({
+  useOptionalShortcutLabel: () => '⌘⇧Enter'
 }))
 
 vi.mock('zustand/react/shallow', () => ({

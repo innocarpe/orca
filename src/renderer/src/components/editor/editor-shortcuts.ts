@@ -106,6 +106,33 @@ export function installEditorAddReviewNoteShortcut(
 }
 
 /**
+ * Opens the "Send notes to an agent" picker when unsent notes exist.
+ * Returns whether a menu accepted the request (for preventDefault decisions).
+ */
+export function installEditorSendNotesToAgentShortcut(
+  target: HTMLElement,
+  onSendNotesToAgent: () => boolean
+): () => void {
+  const handleKeyDown = (event: KeyboardEvent): void => {
+    if (!editorShortcutMatches('editor.sendNotesToAgent', event)) {
+      return
+    }
+    if (event.repeat) {
+      return
+    }
+    // Why: only consume when a picker opens; empty/unsent-less surfaces leave
+    // the chord free for other editor bindings.
+    if (onSendNotesToAgent()) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+
+  target.addEventListener('keydown', handleKeyDown, true)
+  return () => target.removeEventListener('keydown', handleKeyDown, true)
+}
+
+/**
  * While a review-note/diff-comment draft composer is mounted, consume the
  * bindable add-review-note chord (including OS key-repeat) so a second press
  * cannot remount the composer or leak into other handlers (product B).

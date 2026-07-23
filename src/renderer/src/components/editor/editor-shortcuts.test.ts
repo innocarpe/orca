@@ -20,6 +20,7 @@ vi.mock('@/store', () => ({
 import {
   installEditorAddReviewNoteShortcut,
   installEditorFindShortcut,
+  installEditorSendNotesToAgentShortcut,
   installMonacoDiffChangeNavigationShortcut,
   installMonacoEditorFindShortcut,
   installOpenDraftAddReviewNoteGuard
@@ -267,6 +268,57 @@ describe('installEditorAddReviewNoteShortcut', () => {
     expect(onAddReviewNote).toHaveBeenCalledTimes(1)
     expect(event.defaultPrevented).toBe(false)
     expect(onDownstreamKeyDown).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+})
+
+describe('installEditorSendNotesToAgentShortcut', () => {
+  it('opens the notes send picker on Mod+Shift+Enter when the handler acts', () => {
+    const container = document.createElement('div')
+    const input = document.createElement('textarea')
+    const onSend = vi.fn(() => true)
+    container.appendChild(input)
+    document.body.appendChild(container)
+    const dispose = installEditorSendNotesToAgentShortcut(container, onSend)
+
+    const event = dispatchKeyDown(input, {
+      key: 'Enter',
+      code: 'Enter',
+      metaKey: true,
+      shiftKey: true
+    })
+    expect(event.defaultPrevented).toBe(true)
+    expect(onSend).toHaveBeenCalledTimes(1)
+
+    const skipped = dispatchKeyDown(input, {
+      key: 'Enter',
+      code: 'Enter',
+      metaKey: true,
+      shiftKey: true
+    })
+    // handler returns true still — second press still acts unless we return false
+    expect(skipped.defaultPrevented).toBe(true)
+    expect(onSend).toHaveBeenCalledTimes(2)
+
+    dispose()
+  })
+
+  it('does not preventDefault when no notes picker opens', () => {
+    const container = document.createElement('div')
+    const input = document.createElement('textarea')
+    const onSend = vi.fn(() => false)
+    container.appendChild(input)
+    document.body.appendChild(container)
+    const dispose = installEditorSendNotesToAgentShortcut(container, onSend)
+
+    const event = dispatchKeyDown(input, {
+      key: 'Enter',
+      code: 'Enter',
+      metaKey: true,
+      shiftKey: true
+    })
+    expect(event.defaultPrevented).toBe(false)
+    expect(onSend).toHaveBeenCalledTimes(1)
     dispose()
   })
 })

@@ -89,6 +89,7 @@ import { RecoverableRenderErrorBoundary } from './components/error-boundaries/Re
 import { ConfirmationDialogProvider } from './components/confirmation-dialog'
 import { LinkRoutingPreferenceDialogProvider } from './components/link-routing-preference-dialog'
 import RecentTabSwitcher from './components/tab-bar/RecentTabSwitcher'
+import { requestOpenNotesSendMenu } from './components/editor/notes-send-menu-open-request'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import { useEditorExternalWatch } from './hooks/useEditorExternalWatch'
 import { useAutoAckViewedAgent } from './hooks/useAutoAckViewedAgent'
@@ -248,6 +249,8 @@ type ShortcutDispatchInput = {
   ctrlKey?: boolean
   shiftKey?: boolean
   doubleTapModifier?: PhysicalModifierToken
+  /** Why: OS key-repeat must not fire one-shot layout actions (split / notes menu). */
+  isAutoRepeat?: boolean
   target: EventTarget | null
   defaultPrevented: boolean
   preventDefault: () => void
@@ -1730,7 +1733,8 @@ function App(): React.JSX.Element {
         pluginCommands,
         terminalShortcutPolicy,
         setFloatingTerminalOpenWithFocus,
-        creationLayoutActive
+        creationLayoutActive,
+        workspaceChromeActive
       } = globalShortcutStateRef.current
 
       // Child handlers (e.g. terminal search) share this window capture phase and fire first; bail if they already preventDefault'd so both don't act.
@@ -1862,14 +1866,30 @@ function App(): React.JSX.Element {
               translate('auto.App.pluginCommandFailed', 'Could not run the plugin command.')
             )
           })
+           const handlers = createRegisteredCommandHandlers(input, context)
+      for (const actionId of PLUGIN_COMMAND_ALIAS_ACTION_IDS) {
+        if (matchShortcut(actionId) && handlers.get(actionId)?.()) {
           return
         }
       }
 
-      const handlers = createRegisteredCommandHandlers(input, context)
-      for (const actionId of PLUGIN_COMMAND_ALIAS_ACTION_IDS) {
-        if (matchShortcut(actionId) && handlers.get(actionId)?.()) {
+      // Mod+Shift+Enter — open "Send notes to an agent" when unsent review notes exist.
+      // Why: skip terminal context so Mod+Shift+Enter still expands the terminal pane there.
+      if (
+        workspaceChromeActive &&
+        !floatingWorkspaceFocused &&
+        !input.isAutoRepeat &&
+        context !== 'terminal' &&
+        matchShortcut('editor.sendNotesToAgent')
+      ) {
+        // Why: do not consume the chord when no unsent notes exist / no menu mounts.
+        if (requestOpenNotesSendMenu({ worktreeId: activeWorktreeId })) {
+          input.preventDefault()
           return
+        }
+      }
+
+     return
         }
       }
 
@@ -1916,6 +1936,7 @@ function App(): React.JSX.Element {
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
         shiftKey: e.shiftKey,
+        isAutoRepeat: e.repeat,
         target: e.target,
         defaultPrevented: e.defaultPrevented,
         preventDefault: () => e.preventDefault()
