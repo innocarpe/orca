@@ -5400,6 +5400,76 @@ describe('registerWorktreeHandlers', () => {
     })
   })
 
+  it('prepares a setup runner for an existing worktree when setup is configured', async () => {
+    getEffectiveHooksMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard'
+    })
+
+    expect(getEffectiveHooksMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'repo-1' }),
+      '/workspace/improve-dashboard'
+    )
+    expect(createSetupRunnerScriptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'repo-1' }),
+      '/workspace/improve-dashboard',
+      'pnpm install',
+      {}
+    )
+    expect(result).toEqual({
+      status: 'ok',
+      setup: {
+        runnerScriptPath: '/workspace/repo/.git/orca/setup-runner.sh',
+        envVars: {
+          ORCA_ROOT_PATH: '/workspace/repo',
+          ORCA_WORKTREE_PATH: '/workspace/improve-dashboard'
+        }
+      }
+    })
+  })
+
+  it('returns no-setup-configured without creating a runner when setup is missing', async () => {
+    getEffectiveHooksMock.mockReturnValue(null)
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard'
+    })
+
+    expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      status: 'ok',
+      setup: null,
+      reason: 'no-setup-configured'
+    })
+  })
+
+  it('returns folder-repo without creating a setup runner for folder workspaces', async () => {
+    store.getRepo.mockReturnValue({
+      id: 'repo-1',
+      path: '/workspace/folder',
+      displayName: 'folder',
+      badgeColor: '#000',
+      addedAt: 0,
+      kind: 'folder'
+    })
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/folder'
+    })
+
+    expect(getEffectiveHooksMock).not.toHaveBeenCalled()
+    expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      status: 'ok',
+      setup: null,
+      reason: 'folder-repo'
+    })
+  })
+
   it('lists a synthetic worktree for folder-mode repos', async () => {
     const rootWorktreeId = 'repo-1::/workspace/folder'
     const priorWorktreeIds = ['repo-1::/workspace/old-folder']

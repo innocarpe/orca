@@ -57,6 +57,7 @@ import { getSshGitProvider, requireSshGitProvider } from '../providers/ssh-git-d
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import {
   createIssueCommandRunnerScript,
+  createSetupRunnerScript,
   getEffectiveHooks,
   getEffectiveHooksFromConfig,
   getSetupRunnerEnvVars,
@@ -1001,6 +1002,7 @@ export function registerWorktreeHandlers(
   ipcMain.removeHandler('hooks:check')
   ipcMain.removeHandler('hooks:inspectSetupScriptImports')
   ipcMain.removeHandler('hooks:createIssueCommandRunner')
+  ipcMain.removeHandler('hooks:prepareSetupRunner')
   ipcMain.removeHandler('hooks:readIssueCommand')
   ipcMain.removeHandler('hooks:writeIssueCommand')
 
@@ -2151,6 +2153,64 @@ export function registerWorktreeHandlers(
         args.command,
         getLocalProjectWorktreeGitOptions(store, repo)
       )
+    }
+  )
+
+  // Why: worktree create already materializes a setup runner; existing worktrees need
+  // the same launcher for manual re-run (#10015) without re-creating the worktree.
+  ipcMain.handle(
+    'hooks:prepareSetupRunner',
+    (
+      _event,
+      args: { repoId: string; worktreePath: string }
+    ): {
+      status: 'ok' | 'error'
+      setup: ReturnType<typeof createSetupRunnerScript> | null
+      reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
+      message?: string
+    } => {
+      const repo = store.getRepo(args.repoId)
+      if (!repo) {
+        throw new Error(`Repo not found: ${args.repoId}`)
+      }
+      if (isFolderRepo(repo)) {
+        return { status: 'ok', setup: null, reason: 'folder-repo' }
+      }
+
+      let setupScript: string | undefined
+      try {
+        // Prefer the worktree's orca.yaml so branch-specific setup matches create.
+        const hooks = getEffectiveHooks(repo, args.worktreePath)
+        setupScript = hooks?.scripts.setup?.trim()
+      } catch (error) {
+        return {
+          status: 'error',
+          setup: null,
+          reason: 'runner-failed',
+          message: error instanceof Error ? error.message : String(error)
+        }
+      }
+
+      if (!setupScript) {
+        return { status: 'ok', setup: null, reason: 'no-setup-configured' }
+      }
+
+      try {
+        const setup = createSetupRunnerScript(
+          repo,
+          args.worktreePath,
+          setupScript,
+          getLocalProjectWorktreeGitOptions(store, repo)
+        )
+        return { status: 'ok', setup }
+      } catch (error) {
+        return {
+          status: 'error',
+          setup: null,
+          reason: 'runner-failed',
+          message: error instanceof Error ? error.message : String(error)
+        }
+      }
     }
   )
 
