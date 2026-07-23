@@ -12,6 +12,7 @@ import {
 } from '@/runtime/web-session-tabs-sync'
 import { resolveTerminalWorktreeRoute } from '@/lib/terminal-worktree-route'
 import { guardPinnedTabClose, resolvePinnedTabLabel } from '@/store/pinned-tab-close-guard'
+import { guardRunningTerminalClose } from '@/store/running-terminal-close-guard'
 import type {
   TerminalTabCloseReason,
   TerminalTabRetirementPlan
@@ -95,6 +96,17 @@ export function closeTerminalTab(
     guardPinnedTabClose({
       isPinned: true,
       tabLabel: resolvePinnedTabLabel(state, owningWorktreeId, terminalTabId),
+      onClose: () => closeTerminalTab(tabId, { ...options, force: true }),
+      ...(options?.onCancel ? { onCancel: options.onCancel } : {})
+    })
+    return
+  }
+
+  // Why: tab X / middle-click must share Cmd+W's running-process confirm. Pin
+  // already took precedence above; `force` skips this after either dialog.
+  if (options?.reason !== 'pty-exit' && !options?.force) {
+    guardRunningTerminalClose({
+      tabId: terminalTabId,
       onClose: () => closeTerminalTab(tabId, { ...options, force: true }),
       ...(options?.onCancel ? { onCancel: options.onCancel } : {})
     })
