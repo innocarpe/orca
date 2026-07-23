@@ -26033,8 +26033,13 @@ export class OrcaRuntimeService {
     if (!waiters || waiters.size === 0) {
       return
     }
+    // Why: OSC idle can fire while Grok background tasks still run (#9905).
+    // Skip here; the fallback poll re-checks and resolves once work clears.
+    const backgroundWorkActive = hasActiveAgentBackgroundWork(
+      buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
+    )
     for (const waiter of [...waiters]) {
-      if (waiter.condition === 'tui-idle') {
+      if (waiter.condition === 'tui-idle' && !backgroundWorkActive) {
         this.resolveWaiter(waiter, buildTerminalWaitResult(handle, 'tui-idle', leaf))
       }
     }
@@ -26068,8 +26073,13 @@ export class OrcaRuntimeService {
     if (!waiters || waiters.size === 0) {
       return
     }
+    // Why: title-transition path is the primary live trigger; gate it the same
+    // as immediate/poll checks so Grok background HUD still blocks tui-idle.
+    const backgroundWorkActive = hasActiveAgentBackgroundWork(
+      buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview)
+    )
     for (const waiter of [...waiters]) {
-      if (waiter.condition === 'tui-idle') {
+      if (waiter.condition === 'tui-idle' && !backgroundWorkActive) {
         this.resolveWaiter(waiter, buildPtyTerminalWaitResult(handle, 'tui-idle', pty))
       }
     }
