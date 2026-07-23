@@ -61,7 +61,8 @@ export function nextTaskProjectSelectionAfterToggle(args: {
   group: TaskProjectPickerGroup
 }): Set<string> | null {
   if (isAllTaskProjectsSelected(args.groups, args.selected)) {
-    return new Set([args.group.repo.id])
+    // Keep the host the user actually had selected, not just the group primary.
+    return new Set([getSelectedTaskProjectSource(args.group, args.selected).id])
   }
 
   const next = new Set(args.selected)

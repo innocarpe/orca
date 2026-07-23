@@ -73,7 +73,7 @@ describe('nextTaskProjectSelectionAfterToggle', () => {
     const multi = group('proj', [local, remote])
     // Three groups so deselecting multi is not the "all selected → only this" path.
     const groupsWithMulti = [multi, group('other', [b]), group('c', [c])]
-    const selected = new Set(['proj-local', 'b'])
+    const selected = new Set(['proj-local', 'proj-ssh', 'b'])
     const next = nextTaskProjectSelectionAfterToggle({
       groups: groupsWithMulti,
       selected,
@@ -82,7 +82,7 @@ describe('nextTaskProjectSelectionAfterToggle', () => {
     expect(next).toEqual(new Set(['b']))
   })
 
-  it('from All projects with multi-host groups, click keeps the group primary source', () => {
+  it('from All projects with multi-host groups, click keeps the selected source', () => {
     const local = repo('proj-local', 'proj')
     const remote = repo('proj-ssh', 'proj')
     const multi = group('proj', [local, remote])
@@ -94,5 +94,20 @@ describe('nextTaskProjectSelectionAfterToggle', () => {
       group: multi
     })
     expect(next).toEqual(new Set(['proj-local']))
+  })
+
+  it('from All projects, narrowing preserves a non-primary selected host', () => {
+    const local = repo('proj-local', 'proj')
+    const remote = repo('proj-ssh', 'proj')
+    // group.repo is sources[0] (local), but the user had the ssh host selected.
+    const multi = group('proj', [local, remote])
+    const groupsWithMulti = [multi, group('other', [b])]
+    const selected = new Set(['proj-ssh', 'b'])
+    const next = nextTaskProjectSelectionAfterToggle({
+      groups: groupsWithMulti,
+      selected,
+      group: multi
+    })
+    expect(next).toEqual(new Set(['proj-ssh']))
   })
 })
