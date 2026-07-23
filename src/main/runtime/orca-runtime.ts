@@ -809,7 +809,8 @@ import {
   mergeWorktree,
   sanitizeWorktreeName,
   shouldSetDisplayName,
-  areWorktreePathsEqual
+  areWorktreePathsEqual,
+  findListedWorktreeByPath
 } from '../ipc/worktree-logic'
 import { findCreatedWorktree } from '../ipc/created-worktree-reconciliation'
 import { worktreePathComparisonKey } from '../ipc/worktree-path-comparison'
@@ -18760,8 +18761,13 @@ export class OrcaRuntimeService {
     const gitWorktrees = hasLocalWorktreeGitOptions
       ? await listWorktrees(repo.path, localWorktreeGitOptions)
       : await listWorktrees(repo.path)
-    // Why: Git may canonicalize a symlinked create path; its exact branch identifies the listed row.
-    const created = findCreatedWorktree(gitWorktrees, worktreePath, branchName)
+    // Why: native host Git may list the realpath while we requested a symlink path
+    // (e.g. /home → /var/home on immutable Linux). Skip host realpath for WSL.
+    // Branch fallback covers remaining Git-canonicalized paths main already handles.
+    const created =
+      (await findListedWorktreeByPath(gitWorktrees, worktreePath, {
+        resolveSymlinks: !localWorktreeGitOptions.wslDistro
+      })) ?? findCreatedWorktree(gitWorktrees, worktreePath, branchName)
     if (!created) {
       throw new Error('Worktree created but not found in listing')
     }
