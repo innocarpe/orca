@@ -406,8 +406,8 @@ describe('applyTerminalAppearance theme assignment', () => {
     expect(pane.terminal.options.theme?.background).toBe('#102030')
   })
 
-  // #7934 / #10104: light bg keeps 4.5; dark bg uses a milder floor (not 1) so near-bg body text stays readable.
-  // Gate by the composed theme's background luminance (either theme slot can hold either kind of theme).
+  // #7934: contrast correction rescues invisible white text on light backgrounds but over-corrects on dark;
+  // gate by the composed theme's background luminance (either theme slot can hold either kind of theme).
   it('keeps xterm contrast correction on light themes', () => {
     const pane = makePane(1)
     const settings = getDefaultSettings('/tmp')
@@ -417,7 +417,9 @@ describe('applyTerminalAppearance theme assignment', () => {
     expect(pane.terminal.options.minimumContrastRatio).toBe(4.5)
   })
 
-  it('uses the dark-background contrast floor on dark themes', () => {
+  it('applies the mild dark-background contrast floor on dark themes', () => {
+    // #10104: a floor of 3 rescues near-background body text (e.g. Antigravity's #262b30 on #1e242a)
+    // without the 4.5-floor over-brightening of vibrant ANSI colors that #7934 fixed.
     const pane = makePane(1)
     const settings = getDefaultSettings('/tmp')
 
@@ -437,7 +439,7 @@ describe('applyTerminalAppearance theme assignment', () => {
     expect(pane.terminal.options.minimumContrastRatio).toBe(3)
   })
 
-  it('uses the dark floor in light mode when the terminal matches dark mode', () => {
+  it('applies the dark-background floor in light mode when the terminal matches dark mode', () => {
     // terminalUseSeparateLightTheme=false keeps the dark terminal theme in light app mode; the gate must follow the background.
     const pane = makePane(1)
     const settings = getDefaultSettings('/tmp')
