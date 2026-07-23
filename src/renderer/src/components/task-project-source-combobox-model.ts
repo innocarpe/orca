@@ -40,6 +40,13 @@ export function hasMultipleTaskProjectHostsInGroup(group: TaskProjectPickerGroup
   return hasMultipleTaskProjectHosts([group])
 }
 
+export function isAllTaskProjectsSelected(
+  groups: readonly TaskProjectPickerGroup[],
+  selected: ReadonlySet<string>
+): boolean {
+  return groups.length > 0 && selectedTaskProjectGroups(groups, selected).length === groups.length
+}
+
 /**
  * Toggle a project group in the Tasks project selector.
  * Returns null when the click is a no-op (cannot deselect the last project).
@@ -53,16 +60,13 @@ export function nextTaskProjectSelectionAfterToggle(args: {
   selected: ReadonlySet<string>
   group: TaskProjectPickerGroup
 }): Set<string> | null {
-  const selectedGroups = selectedTaskProjectGroups(args.groups, args.selected)
-  const allSelected = args.groups.length > 0 && selectedGroups.length === args.groups.length
-  if (allSelected) {
+  if (isAllTaskProjectsSelected(args.groups, args.selected)) {
     return new Set([args.group.repo.id])
   }
 
   const next = new Set(args.selected)
-  const selectedSource = args.group.sources.find((source) => next.has(source.id))
-  if (selectedSource) {
-    if (selectedGroups.length <= 1) {
+  if (isTaskProjectGroupSelected(args.group, next)) {
+    if (selectedTaskProjectGroups(args.groups, args.selected).length <= 1) {
       return null
     }
     for (const source of args.group.sources) {
