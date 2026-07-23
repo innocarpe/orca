@@ -406,8 +406,8 @@ describe('applyTerminalAppearance theme assignment', () => {
     expect(pane.terminal.options.theme?.background).toBe('#102030')
   })
 
-  // #7934: contrast correction rescues invisible white text on light backgrounds but over-corrects on dark;
-  // gate by the composed theme's background luminance (either theme slot can hold either kind of theme).
+  // #7934 / #10104: light bg keeps 4.5; dark bg uses a milder floor (not 1) so near-bg body text stays readable.
+  // Gate by the composed theme's background luminance (either theme slot can hold either kind of theme).
   it('keeps xterm contrast correction on light themes', () => {
     const pane = makePane(1)
     const settings = getDefaultSettings('/tmp')
@@ -417,13 +417,13 @@ describe('applyTerminalAppearance theme assignment', () => {
     expect(pane.terminal.options.minimumContrastRatio).toBe(4.5)
   })
 
-  it('disables xterm contrast correction on dark themes', () => {
+  it('uses the dark-background contrast floor on dark themes', () => {
     const pane = makePane(1)
     const settings = getDefaultSettings('/tmp')
 
     apply(pane, { ...settings, theme: 'dark' })
 
-    expect(pane.terminal.options.minimumContrastRatio).toBe(1)
+    expect(pane.terminal.options.minimumContrastRatio).toBe(3)
   })
 
   it('re-gates contrast correction when the theme flips live', () => {
@@ -434,17 +434,17 @@ describe('applyTerminalAppearance theme assignment', () => {
     expect(pane.terminal.options.minimumContrastRatio).toBe(4.5)
 
     apply(pane, { ...settings, theme: 'dark' })
-    expect(pane.terminal.options.minimumContrastRatio).toBe(1)
+    expect(pane.terminal.options.minimumContrastRatio).toBe(3)
   })
 
-  it('disables contrast correction in light mode when the terminal matches dark mode', () => {
+  it('uses the dark floor in light mode when the terminal matches dark mode', () => {
     // terminalUseSeparateLightTheme=false keeps the dark terminal theme in light app mode; the gate must follow the background.
     const pane = makePane(1)
     const settings = getDefaultSettings('/tmp')
 
     apply(pane, { ...settings, theme: 'light', terminalUseSeparateLightTheme: false })
 
-    expect(pane.terminal.options.minimumContrastRatio).toBe(1)
+    expect(pane.terminal.options.minimumContrastRatio).toBe(3)
   })
 
   it('keeps contrast correction in dark mode when a light theme fills the dark slot', () => {
