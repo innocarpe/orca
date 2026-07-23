@@ -109,11 +109,25 @@ export async function killWorkspacePort(
       await terminateWindowsProcessTree(pid)
       // Why: terminateWindowsProcessTree is best-effort (always resolves) so PTY
       // teardown is never blocked; Ports UI still needs a real success signal.
+      // Only ESRCH means "gone". EPERM (still alive, no signal rights) is failure.
       try {
         process.kill(pid, 0)
         return { ok: false, reason: 'Failed to stop the process.' }
-      } catch {
-        return { ok: true }
+      } catch (error) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : ''
+        if (code === 'ESRCH') {
+          return { ok: true }
+        }
+        return {
+          ok: false,
+          reason:
+            error instanceof Error
+              ? error.message || 'Failed to stop the process.'
+              : 'Failed to stop the process.'
+        }
       }
     }
     process.kill(pid, 'SIGTERM')

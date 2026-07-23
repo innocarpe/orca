@@ -51,9 +51,11 @@ describe('killWorkspacePort', () => {
       ports: [workspacePort(4242, 5173)]
     })
     terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
-    // process.kill(pid, 0) throws when the process is gone (success path).
+    // process.kill(pid, 0) throws ESRCH when the process is gone (success path).
     const killMock = vi.spyOn(process, 'kill').mockImplementation(() => {
-      throw new Error('ESRCH')
+      const err = new Error('kill ESRCH') as Error & { code?: string }
+      err.code = 'ESRCH'
+      throw err
     })
 
     await expect(
@@ -81,6 +83,30 @@ describe('killWorkspacePort', () => {
     await expect(
       killWorkspacePort(worktrees, { pid: 4242, port: 5173, repoId: 'repo' })
     ).resolves.toEqual({ ok: false, reason: 'Failed to stop the process.' })
+
+    if (platformDescriptor) {
+      Object.defineProperty(process, 'platform', platformDescriptor)
+    }
+  })
+
+  it('on Windows reports failure for EPERM liveness probes (still alive)', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    scanWorkspacePortsMock.mockResolvedValue({
+      platform: 'win32',
+      scannedAt: Date.now(),
+      ports: [workspacePort(4242, 5173)]
+    })
+    terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
+    vi.spyOn(process, 'kill').mockImplementation(() => {
+      const err = new Error('kill EPERM') as Error & { code?: string }
+      err.code = 'EPERM'
+      throw err
+    })
+
+    await expect(
+      killWorkspacePort(worktrees, { pid: 4242, port: 5173, repoId: 'repo' })
+    ).resolves.toEqual({ ok: false, reason: 'kill EPERM' })
 
     if (platformDescriptor) {
       Object.defineProperty(process, 'platform', platformDescriptor)
