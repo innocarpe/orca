@@ -88,6 +88,8 @@ import {
   getGitHubRuntimeRepoId,
   getGitHubSourceRuntimeTarget
 } from '@/lib/github-source-runtime-context'
+import IssueSourceSelector, { issueSourceChipClass } from '@/components/github/IssueSourceSelector'
+import { selectComposerIssueSourceCandidates } from './composer-issue-source'
 
 type RepoOption = ReturnType<typeof useAppStore.getState>['repos'][number]
 const EMPTY_REPO_SEARCH_REPOS: readonly RepoOption[] = []
@@ -201,7 +203,10 @@ export default function SmartWorkspaceNameField({
     expectedPreflightContextKey,
     refreshPreflightStatus,
     searchLinearIssues,
-    settings
+    settings,
+    setIssueSourcePreference,
+    workItemsCache,
+    workItemsInvalidationNonce
   } = useAppStore(
     useShallow((s) => ({
       addRepo: s.addRepo,
@@ -218,7 +223,10 @@ export default function SmartWorkspaceNameField({
       expectedPreflightContextKey: localPreflightContextKey(getLocalPreflightContext(s)),
       refreshPreflightStatus: s.refreshPreflightStatus,
       searchLinearIssues: s.searchLinearIssues,
-      settings: s.settings
+      settings: s.settings,
+      setIssueSourcePreference: s.setIssueSourcePreference,
+      workItemsCache: s.workItemsCache,
+      workItemsInvalidationNonce: s.workItemsInvalidationNonce
     }))
   )
   const selectedRepo = useMemo(
@@ -228,6 +236,12 @@ export default function SmartWorkspaceNameField({
   const selectedRepoOwnerSettings = useMemo(
     () => getRepoOwnerRoutedSettings(settings, selectedRepo),
     [selectedRepo, settings]
+  )
+  // Why: fork checkouts need an explicit Upstream|Origin control on branch-from-issue
+  // create flow; Tasks already has it, the composer did not (#9281).
+  const issueSourceCandidates = useMemo(
+    () => selectComposerIssueSourceCandidates(workItemsCache, selectedRepo?.id),
+    [selectedRepo?.id, workItemsCache]
   )
   const githubSourceContext = useMemo(() => {
     if (githubSourceContextOverride?.provider === 'github') {
@@ -241,6 +255,31 @@ export default function SmartWorkspaceNameField({
         })
       : null
   }, [githubSourceContextOverride, selectedRepo])
+
+  // Why: warm listWorkItems so origin/upstream candidates exist for the selector
+  // even before the user opens the smart picker dropdown (#9281).
+  useEffect(() => {
+    if (textOnly || disabled || repoBackedSourcesDisabled || !selectedRepo?.path) {
+      return
+    }
+    if (issueSourceCandidates) {
+      return
+    }
+    void fetchWorkItems(selectedRepo.id, selectedRepo.path, RESULT_LIMIT, '', {
+      sourceContext: githubSourceContext
+    }).catch(() => {
+      // Why: selector is optional polish; a failed warm fetch must not toast.
+    })
+  }, [
+    disabled,
+    fetchWorkItems,
+    githubSourceContext,
+    issueSourceCandidates,
+    repoBackedSourcesDisabled,
+    selectedRepo,
+    textOnly,
+    workItemsInvalidationNonce
+  ])
   const gitlabSourceContext = useMemo(
     () =>
       selectedRepo
@@ -788,7 +827,11 @@ export default function SmartWorkspaceNameField({
     githubSourceContext,
     selectedRepo,
     crossRepoSwitchTarget,
-    shouldQueryGithub
+    shouldQueryGithub,
+    // Why: preference flips evict the work-items cache and bump this nonce; re-run so
+    // the smart picker lists issues from the newly selected origin/upstream (#9281).
+    selectedRepo?.issueSourcePreference,
+    workItemsInvalidationNonce
   ])
 
   const branchSearchRequest = useMemo(
@@ -1342,6 +1385,23 @@ export default function SmartWorkspaceNameField({
               ))}
             </TabsList>
           </Tabs>
+          {selectedRepo && issueSourceCandidates ? (
+            <div className={cn(issueSourceChipClass, 'shrink-0')} data-composer-issue-source="true">
+              <IssueSourceSelector
+                preference={selectedRepo.issueSourcePreference}
+                origin={issueSourceCandidates.origin}
+                upstream={issueSourceCandidates.upstream}
+                density="compact"
+                // Why: composer only picks issue/PR sources for branch create, so the
+                // mixed-surface PR caveat tooltip is redundant (Tasks header keeps it).
+                suppressTooltip
+                disabled={disabled}
+                onChange={(next) => {
+                  void setIssueSourcePreference(selectedRepo.id, selectedRepo.path, next)
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       )}
 
