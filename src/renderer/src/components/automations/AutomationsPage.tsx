@@ -79,6 +79,7 @@ import {
   isSshConnectionBusy
 } from './external-automation-source-availability'
 import {
+  buildAutomationListHostOptions,
   createAutomationForTarget,
   deleteAutomationForTarget,
   getAutomationHostTargetFromKey,
@@ -88,9 +89,17 @@ import {
   getAutomationTargetFromHostId,
   listAutomationRunsForTarget,
   listAutomationsForTarget,
+  resolveAutomationListHostTarget,
   runAutomationNowForTarget,
   updateAutomationForTarget
 } from './automation-host-client'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import type { FetchExternalAutomationRuns } from './ExternalAutomationRunTable'
 import {
   AUTOMATION_DEFAULT_TIME,
@@ -760,12 +769,28 @@ export default function AutomationsPage(): React.JSX.Element {
     }
   }, [activeWorktreeId, repoMap, repos, worktreeMap, worktreesByRepo])
 
+  const automationListHostOptions = useMemo(
+    () =>
+      buildAutomationListHostOptions({
+        localLabel: getLocalExecutionHostLabel(),
+        environments: runtimeEnvironments.map((environment) => ({
+          id: environment.id,
+          name: environment.name
+        }))
+      }),
+    [runtimeEnvironments]
+  )
+
   const refresh = useCallback(async () => {
     setIsLoading(true)
     const pendingNavigation = useAppStore.getState().pendingAutomationRunNavigation
-    const automationHostTarget = pendingNavigation
-      ? getAutomationTargetFromHostId(pendingNavigation.hostId)
-      : getAutomationListTarget(settings)
+    // Why: keep an explicit page host selection so remote automations stay
+    // visible without flipping the global active runtime (#9964).
+    const automationHostTarget = resolveAutomationListHostTarget({
+      pendingHostId: pendingNavigation?.hostId,
+      selectedKey: automationHostTargetKey,
+      settings
+    })
     try {
       const [nextAutomations, nextRuns, nextExternalManagers] = await Promise.all([
         listAutomationsForTarget(automationHostTarget),
@@ -789,7 +814,11 @@ export default function AutomationsPage(): React.JSX.Element {
         : []
       setAutomations(nextAutomations)
       setRuns(nextRuns)
-      setAutomationHostTargetKey(getAutomationHostTargetKey(automationHostTarget))
+      // Why: pending navigation only temporarily targets a host for the deep-link
+      // refresh — do not overwrite the user's explicit selector choice (#10347).
+      if (!pendingNavigation) {
+        setAutomationHostTargetKey(getAutomationHostTargetKey(automationHostTarget))
+      }
       setSelectedAutomationRuns({
         automationId: nextSelectedId,
         runs: nextSelectedRuns
@@ -801,7 +830,19 @@ export default function AutomationsPage(): React.JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [selectAutomationId, settings])
+  }, [automationHostTargetKey, selectAutomationId, settings])
+
+  const handleAutomationHostTargetChange = useCallback(
+    (nextKey: string) => {
+      if (nextKey === automationHostTargetKey) {
+        return
+      }
+      setAutomationHostTargetKey(nextKey)
+      selectAutomationId(null)
+      setSelectedAutomationRunPageId(null)
+    },
+    [automationHostTargetKey, selectAutomationId]
+  )
 
   useEffect(() => {
     if (!pendingAutomationRunNavigation || isLoading) {
@@ -1956,6 +1997,30 @@ export default function AutomationsPage(): React.JSX.Element {
           </Tooltip>
         </div>
         <div className="flex items-center gap-2">
+          {automationListHostOptions.length > 1 ? (
+            <Select
+              value={automationHostTargetKey ?? 'local'}
+              onValueChange={handleAutomationHostTargetChange}
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-8 min-w-[9rem] max-w-[14rem] border-border/50 bg-transparent text-xs"
+                aria-label={translate(
+                  'auto.components.automations.AutomationsPage.environmentSelector',
+                  'Automation host'
+                )}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {automationListHostOptions.map((option) => (
+                  <SelectItem key={option.key} value={option.key} className="text-xs">
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -1965,7 +2030,7 @@ export default function AutomationsPage(): React.JSX.Element {
                   'auto.components.automations.AutomationsPage.19a6e30eae',
                   'Refresh automations'
                 )}
-                onClick={refresh}
+                onClick={() => void refresh()}
                 disabled={isLoading}
                 className="border border-border/50 bg-transparent hover:bg-muted/50"
               >
