@@ -24,7 +24,10 @@ import {
   shouldSuppressNativeChatExitForPane as shouldSuppressNativeChatExitForPaneImpl
 } from './native-chat-exit-suppress'
 
-export { NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS } from './native-chat-exit-suppress'
+export {
+  getNativeChatExitSuppressRemainingMs,
+  NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
+} from './native-chat-exit-suppress'
 
 /** An optimistic, not-yet-confirmed composer send. */
 export type NativeChatPendingSend = {

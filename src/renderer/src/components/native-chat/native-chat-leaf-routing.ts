@@ -85,6 +85,16 @@ export function resolveNativeChatLeafRoute(args: {
     // event, so keep its chat surface until the pane itself is removed.
     return { chatLeafId: args.chatLeafId, exitChat: false }
   }
+  // Why: run before eligible-sibling retarget so a false exit during the send
+  // grace window cannot steal Chat onto a sibling pane (#10098 / CodeRabbit).
+  if (
+    args.suppressExitChat &&
+    args.chatLeafId &&
+    args.chatLeafStillMounted &&
+    args.chatLeafHasConfirmedAgentExit
+  ) {
+    return { chatLeafId: args.chatLeafId, exitChat: false }
+  }
   // Manager hydration can briefly have no active pane; preserve the requested
   // mode until a concrete leaf exists instead of toggling it off during mount.
   if (!args.activeLeafId && !args.chatLeafHasConfirmedAgentExit) {
@@ -95,16 +105,6 @@ export function resolveNativeChatLeafRoute(args: {
     (!args.chatLeafHasConfirmedAgentExit || args.activeLeafId !== args.chatLeafId)
   ) {
     return { chatLeafId: args.activeLeafId, exitChat: false }
-  }
-  // Why: a transient shell-title OSC after a Chat UI send is not a real agent
-  // exit — keep the mounted chat leaf until the grace window ends (#10098).
-  if (
-    args.suppressExitChat &&
-    args.chatLeafId &&
-    args.chatLeafStillMounted &&
-    args.chatLeafHasConfirmedAgentExit
-  ) {
-    return { chatLeafId: args.chatLeafId, exitChat: false }
   }
   // Why: removing the owning leaf or confirming its agent exited must not leave
   // the composer targeting a plain shell. Return the tab to terminal mode.
