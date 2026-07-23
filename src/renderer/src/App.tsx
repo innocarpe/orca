@@ -88,6 +88,7 @@ import { RecoverableRenderErrorBoundary } from './components/error-boundaries/Re
 import { ConfirmationDialogProvider } from './components/confirmation-dialog'
 import { LinkRoutingPreferenceDialogProvider } from './components/link-routing-preference-dialog'
 import RecentTabSwitcher from './components/tab-bar/RecentTabSwitcher'
+import { requestOpenNotesSendMenu } from './components/editor/notes-send-menu-open-request'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import { useEditorExternalWatch } from './hooks/useEditorExternalWatch'
 import { useAutoAckViewedAgent } from './hooks/useAutoAckViewedAgent'
@@ -1599,6 +1600,21 @@ function App(): React.JSX.Element {
           store.setRenamingTabId(store.activeTabId)
           return
         }
+      }
+
+      // Mod+Shift+Enter — open "Send notes to an agent" when unsent review notes exist.
+      // Why: skip terminal context so Mod+Shift+Enter still expands the terminal pane there.
+      if (
+        workspaceChromeActive &&
+        !floatingWorkspaceFocused &&
+        !input.isAutoRepeat &&
+        context !== 'terminal' &&
+        matchShortcut('editor.sendNotesToAgent')
+      ) {
+        if (requestOpenNotesSendMenu({ worktreeId: activeWorktreeId })) {
+          input.preventDefault()
+        }
+        return
       }
 
       // Open/reveal the worktree card first so its inline title editor is mounted even when filters or collapse state would hide it.

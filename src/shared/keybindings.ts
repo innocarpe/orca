@@ -91,6 +91,7 @@ export type KeybindingActionId =
   | 'editor.previousChange'
   | 'editor.nextChange'
   | 'editor.addReviewNote'
+  | 'editor.sendNotesToAgent'
   | 'fileExplorer.undo'
   | 'fileExplorer.redo'
   | 'fileExplorer.copyPath'
@@ -837,6 +838,25 @@ export const KEYBINDING_DEFINITIONS: readonly KeybindingDefinition[] = [
     searchKeywords: ['shortcut', 'editor', 'markdown', 'note', 'comment', 'annotation', 'review'],
     // Why: Ctrl+Alt+letter is AltGr text input on Windows/Linux, so an editor default must not reserve chars like Polish `ń`.
     defaultBindings: platformBindings(['Mod+Shift+A'])
+  },
+  {
+    id: 'editor.sendNotesToAgent',
+    title: 'Send notes to an agent',
+    group: 'Editors',
+    scope: 'editor',
+    // Why: pairs with Add Review Note for a keyboard review loop (#10027). Same chord as
+    // terminal.expandPane is OK — scopes differ (editor vs terminal).
+    searchKeywords: [
+      'shortcut',
+      'editor',
+      'diff',
+      'review',
+      'notes',
+      'send',
+      'agent',
+      'annotation'
+    ],
+    defaultBindings: platformBindings(['Mod+Shift+Enter'])
   },
   {
     id: 'fileExplorer.undo',
