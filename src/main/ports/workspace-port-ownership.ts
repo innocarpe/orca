@@ -107,7 +107,14 @@ export async function killWorkspacePort(
     // On Windows, kill the full tree so npm wrappers cannot leave a child holding the port (#10150).
     if (process.platform === 'win32') {
       await terminateWindowsProcessTree(pid)
-      return { ok: true }
+      // Why: terminateWindowsProcessTree is best-effort (always resolves) so PTY
+      // teardown is never blocked; Ports UI still needs a real success signal.
+      try {
+        process.kill(pid, 0)
+        return { ok: false, reason: 'Failed to stop the process.' }
+      } catch {
+        return { ok: true }
+      }
     }
     process.kill(pid, 'SIGTERM')
     return { ok: true }
