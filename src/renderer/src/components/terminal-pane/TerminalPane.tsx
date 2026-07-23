@@ -61,6 +61,8 @@ import { TerminalSessionStateSaveFailureDialog } from './TerminalSessionStateSav
 import TerminalContextMenu from './TerminalContextMenu'
 import TerminalPaneHeaderOverlay from './TerminalPaneHeaderOverlay'
 import NativeChatView from '../native-chat/NativeChatView'
+import { shouldSuppressNativeChatExitForPane } from '../native-chat/native-chat-pending'
+import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
 import { TerminalAgentSessionForkDialog } from './TerminalAgentSessionForkDialog'
 import { AgentSessionContinuationDialog } from '@/components/agent-session-continuation/AgentSessionContinuationDialog'
@@ -713,6 +715,12 @@ export default function TerminalPane({
         setChatLeafId(route.chatLeafId)
       }
       if (route.exitChat && unifiedTabId) {
+        // Why: post-hoc triage for #10098 — ordinary send must not flip Chat UI
+        // without a recorded programmatic handoff reason.
+        recordRendererCrashBreadcrumb('native_chat_exit_to_terminal', {
+          reason: 'leaf_route',
+          chatLeafId: route.chatLeafId
+        })
         // Why: event/effect replay must not flip terminal mode back to chat.
         setTabViewMode(unifiedTabId, 'terminal')
       }
@@ -726,6 +734,14 @@ export default function TerminalPane({
       }
       const panes = managerRef.current?.getPanes() ?? []
       const activeLeafId = managerRef.current?.getActivePane()?.leafId ?? null
+      const paneKey = makePaneKey(tabId, leafId)
+      const suppressExitChat = shouldSuppressNativeChatExitForPane(paneKey)
+      if (suppressExitChat) {
+        recordRendererCrashBreadcrumb('native_chat_agent_exit_suppressed', {
+          reason: 'recent_chat_send',
+          paneKey
+        })
+      }
       applyNativeChatLeafRoute(
         resolveNativeChatLeafRoute({
           isChatViewMode,
@@ -733,11 +749,12 @@ export default function TerminalPane({
           activeLeafId,
           chatLeafStillMounted: panes.some((pane) => pane.leafId === chatLeafId),
           activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId),
-          chatLeafHasConfirmedAgentExit: true
+          chatLeafHasConfirmedAgentExit: true,
+          suppressExitChat
         })
       )
     },
-    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode]
+    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode, tabId]
   )
   useEffect(() => {
     // Why: transport callbacks must observe only committed chat ownership; render work can be replayed/discarded under concurrent React.

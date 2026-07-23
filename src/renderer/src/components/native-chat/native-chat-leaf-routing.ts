@@ -73,6 +73,8 @@ export function resolveNativeChatLeafRoute(args: {
   chatLeafStillMounted: boolean
   activeLeafIsEligible: boolean
   chatLeafHasConfirmedAgentExit?: boolean
+  /** Suppress exitChat when a recent Chat UI send may race a false title exit. */
+  suppressExitChat?: boolean
 }): NativeChatLeafRoute {
   if (!args.isChatViewMode) {
     return { chatLeafId: null, exitChat: false }
@@ -93,6 +95,16 @@ export function resolveNativeChatLeafRoute(args: {
     (!args.chatLeafHasConfirmedAgentExit || args.activeLeafId !== args.chatLeafId)
   ) {
     return { chatLeafId: args.activeLeafId, exitChat: false }
+  }
+  // Why: a transient shell-title OSC after a Chat UI send is not a real agent
+  // exit — keep the mounted chat leaf until the grace window ends (#10098).
+  if (
+    args.suppressExitChat &&
+    args.chatLeafId &&
+    args.chatLeafStillMounted &&
+    args.chatLeafHasConfirmedAgentExit
+  ) {
+    return { chatLeafId: args.chatLeafId, exitChat: false }
   }
   // Why: removing the owning leaf or confirming its agent exited must not leave
   // the composer targeting a plain shell. Return the tab to terminal mode.
