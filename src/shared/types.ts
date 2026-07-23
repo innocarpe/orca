@@ -148,6 +148,8 @@ export type ProjectHostSetup = {
   kind?: RepoKind
   connectionId?: string | null
   executionHostId?: ExecutionHostId | null
+  /** Renderer projection of the paired runtime that owns this setup's transport. */
+  runtimeOwnerEnvironmentId?: string
   worktreeBasePath?: string
   hookSettings?: RepoHookSettings
   gitUsername?: string
@@ -470,6 +472,8 @@ export type Worktree = {
   projectId?: string
   /** Execution host that owns the workspace. Optional for pre-project-host metadata. */
   hostId?: ExecutionHostId
+  /** Renderer projection of the paired runtime that transports operations to `hostId`. */
+  runtimeOwnerEnvironmentId?: string
   /** Host-specific setup used to create/run this workspace. */
   projectHostSetupId?: string
   displayName: string
@@ -2499,6 +2503,9 @@ export type TaskViewPresetId = 'all' | 'issues' | 'review' | 'my-issues' | 'my-p
  *  - 'split-horizontal': split the initial terminal pane with a horizontal divider. */
 export type SetupScriptLaunchMode = 'split-vertical' | 'split-horizontal' | 'new-tab'
 
+/** Opt-in East Asian Ambiguous cell width for the terminal (iTerm2-style escape hatch). */
+export type TerminalEastAsianAmbiguousWidth = 'narrow' | 'wide'
+
 /** Direction used when the setup script launch mode is a split. */
 export type SetupSplitDirection = 'vertical' | 'horizontal'
 
@@ -2643,6 +2650,11 @@ export type GlobalSettings = {
   terminalFontSize: number
   terminalFontFamily: string
   terminalFontWeight: number
+  /**
+   * East Asian Ambiguous (① ■ ★ →) cell width. Default `narrow` matches modern
+   * CLI width tables; `wide` matches conhost/CJK locales (#9958).
+   */
+  terminalEastAsianAmbiguousWidth?: TerminalEastAsianAmbiguousWidth
   terminalLineHeight: number
   terminalScrollSensitivity: number
   terminalFastScrollSensitivity: number
@@ -3419,6 +3431,19 @@ export type LegacyPaneKeyAliasEntry = {
   updatedAt: number
 }
 
+/** Last tab selection a paired client made in a worktree; restores phone navigation across host restarts. */
+export type PersistedMobileClientTabSelection = {
+  activeTabId: string | null
+  activeGroupId: string | null
+  activeTabIdByGroupId: Readonly<Record<string, string>>
+}
+
+/** deviceId → worktreeId → selection. */
+export type PersistedMobileClientTabSelections = Record<
+  string,
+  Record<string, PersistedMobileClientTabSelection>
+>
+
 // ─── Persistence shape ──────────────────────────────────────────────
 export type PersistedState = {
   schemaVersion: number
@@ -3429,6 +3454,8 @@ export type PersistedState = {
   folderWorkspaces: FolderWorkspace[]
   /** Sparse-checkout presets keyed by repoId. */
   sparsePresetsByRepo: Record<string, SparsePreset[]>
+  /** Per paired device last tab selection by worktree; keeps mobile navigation across host restarts. */
+  mobileClientTabSelectionsByDeviceId?: PersistedMobileClientTabSelections
   worktreeMeta: Record<string, WorktreeMeta>
   worktreeLineageById: Record<string, WorktreeLineage>
   workspaceLineageByChildKey: Record<WorkspaceKey, WorkspaceLineage>
