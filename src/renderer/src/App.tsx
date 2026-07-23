@@ -88,6 +88,7 @@ import { RecoverableRenderErrorBoundary } from './components/error-boundaries/Re
 import { ConfirmationDialogProvider } from './components/confirmation-dialog'
 import { LinkRoutingPreferenceDialogProvider } from './components/link-routing-preference-dialog'
 import RecentTabSwitcher from './components/tab-bar/RecentTabSwitcher'
+import { requestActiveTabMoveToSplit } from './components/tab-bar/request-active-tab-move-to-split'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import { useEditorExternalWatch } from './hooks/useEditorExternalWatch'
 import { useAutoAckViewedAgent } from './hooks/useAutoAckViewedAgent'
@@ -1599,6 +1600,20 @@ function App(): React.JSX.Element {
           store.setRenamingTabId(store.activeTabId)
           return
         }
+      }
+
+      // Mod+\ — move active tab to a new split column (editor/browser/terminal). Sole-tab groups leave the chord free.
+      if (
+        workspaceChromeActive &&
+        !floatingWorkspaceFocused &&
+        !input.isAutoRepeat &&
+        matchShortcut('tab.moveToSplitRight')
+      ) {
+        if (requestActiveTabMoveToSplit('right')) {
+          input.preventDefault()
+          notifyTerminalCapture('tab.moveToSplitRight')
+        }
+        return
       }
 
       // Open/reveal the worktree card first so its inline title editor is mounted even when filters or collapse state would hide it.
