@@ -156,49 +156,78 @@ function buildTitleDerivedAgentRow(args: {
     ? 'idle'
     : (classifyTitleActivity(title) ?? (isCursorAgentTitle(title) ? 'idle' : null))
   const label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
-  if (!status || !label) {
-    return null
-  }
   if (!isTerminalLeafId(args.leafId)) {
     return null
   }
   const paneKey = makePaneKey(args.tab.id, args.leafId)
   const orchestration = args.runtimeAgentOrchestrationByPaneKey?.[paneKey]
-  const titleAgentType = isClaudeAgentsTitle
-    ? 'claude'
-    : resolveTitleDerivedAgentType(title, label, args.ownerAgentType)
-  // Why: a status frame proves activity, not identity, so the resolver drops it.
-  // Hook-less agents over SSH (Codex, #8711; OpenCode's '. '/'* ' frames, #8940)
-  // surface only decorated task titles; fall back to the pane's known owner instead
-  // of hiding the pane. Safe because the `!status || !label` gate above already
-  // rejects plain shell titles — this path must never manufacture a row from one.
+  const titleAgentType =
+    status && label
+      ? isClaudeAgentsTitle
+        ? 'claude'
+        : resolveTitleDerivedAgentType(title, label, args.ownerAgentType)
+      : null
+  // Why: a status frame proves activity, not identity; use the pane's known owner
+  // for hook-less SSH panes after the title has established agent activity.
   const agentType = titleAgentType ?? args.ownerAgentType
-  if (!agentType) {
+  const launchAgent = args.tab.launchAgent ?? null
+
+  if (status && label) {
+    if (!agentType) {
+      return null
+    }
+    const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
+    const rowState = titleStatusToRowState(status)
+    const secondary =
+      status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
+    const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+    const entry: AgentStatusEntry = {
+      paneKey,
+      state: entryState,
+      prompt: rowLabel,
+      updatedAt: args.now,
+      stateStartedAt: args.now,
+      stateHistory: [],
+      agentType,
+      terminalTitle: title,
+      lastAssistantMessage: secondary,
+      ...(orchestration ? { orchestration } : {}),
+      observation: {
+        origin: 'title',
+        authorityId: TITLE_DERIVED_AGENT_ROW_AUTHORITY_ID,
+        incarnation: 0,
+        revision: args.now,
+        observedAt: args.now,
+        kind: 'snapshot'
+      }
+    }
+    return {
+      paneKey,
+      entry,
+      tab: args.tab,
+      agentType,
+      rowSource: 'live',
+      state: rowState,
+      startedAt: 0
+    }
+  }
+
+  // Why: hook-less SSH Codex leaves a live pane at its cwd title after a turn.
+  if (!launchAgent || status === 'working' || status === 'permission') {
     return null
   }
-  const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
-  const rowState = titleStatusToRowState(status)
-  const secondary =
-    status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
-  const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+  const rowLabel = formatAgentTypeLabel(launchAgent)
   const entry: AgentStatusEntry = {
     paneKey,
-    state: entryState,
+    state: 'working',
     prompt: rowLabel,
     updatedAt: args.now,
     stateStartedAt: args.now,
     stateHistory: [],
-    agentType,
+    agentType: launchAgent,
     terminalTitle: title,
-    lastAssistantMessage: secondary,
+    lastAssistantMessage: 'Idle',
     ...(orchestration ? { orchestration } : {}),
-    // Why not the renderer sequencer: this row is RE-DERIVED from the pane's title on every
-    // render, not observed once, so a counter would churn a new revision per frame and break
-    // memoization. Deriving revision from `now` keeps the stamp deterministic in the same clock
-    // the row already publishes as updatedAt, and monotonic for the pane.
-    // The origin tag is the point: `entryState` above collapses a title-derived IDLE row to
-    // 'working' while the row itself reports idle. That contradiction is out of scope here —
-    // this tag is what makes it findable instead of indistinguishable from a real hook row.
     observation: {
       origin: 'title',
       authorityId: TITLE_DERIVED_AGENT_ROW_AUTHORITY_ID,
@@ -212,9 +241,9 @@ function buildTitleDerivedAgentRow(args: {
     paneKey,
     entry,
     tab: args.tab,
-    agentType,
+    agentType: launchAgent,
     rowSource: 'live',
-    state: rowState,
+    state: 'idle',
     startedAt: 0
   }
 }
