@@ -2999,6 +2999,10 @@ function TerminalPane(
         menuPaneIsExpanded={
           contextMenu.menuPaneId !== null && contextMenu.menuPaneId === expandedPaneId
         }
+        linkTarget={contextMenu.linkTarget}
+        onOpenLinkTarget={contextMenu.onOpenLinkTarget}
+        onCopyLinkTarget={() => void contextMenu.onCopyLinkTarget()}
+        onRevealLinkTarget={contextMenu.onRevealLinkTarget}
         onCopy={() => void contextMenu.onCopy()}
         onPaste={() => void contextMenu.onPaste()}
         onSplitRight={contextMenu.onSplitRight}
