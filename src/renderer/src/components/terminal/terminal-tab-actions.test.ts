@@ -6,6 +6,7 @@ const {
   createWebRuntimeSessionTerminalMock,
   getLatestWebSessionTabsPublicationEpochMock,
   getStateMock,
+  inspectRuntimeTerminalProcessMock,
   isWebRuntimeSessionActiveMock,
   isWebTerminalSurfaceTabIdMock,
   resolveHostSessionTabIdForWebSessionTabMock,
@@ -16,6 +17,7 @@ const {
   createWebRuntimeSessionTerminalMock: vi.fn(),
   getLatestWebSessionTabsPublicationEpochMock: vi.fn(() => 'epoch-1'),
   getStateMock: vi.fn(),
+  inspectRuntimeTerminalProcessMock: vi.fn(),
   isWebRuntimeSessionActiveMock: vi.fn(),
   isWebTerminalSurfaceTabIdMock: vi.fn(() => false),
   resolveHostSessionTabIdForWebSessionTabMock: vi.fn<() => string | null>(() => null),
@@ -40,6 +42,10 @@ vi.mock('@/runtime/web-runtime-session', () => ({
 vi.mock('@/runtime/web-session-tabs-sync', () => ({
   getLatestWebSessionTabsPublicationEpoch: getLatestWebSessionTabsPublicationEpochMock,
   resolveHostSessionTabIdForWebSessionTab: resolveHostSessionTabIdForWebSessionTabMock
+}))
+
+vi.mock('@/runtime/runtime-terminal-inspection', () => ({
+  inspectRuntimeTerminalProcess: inspectRuntimeTerminalProcessMock
 }))
 
 import {
@@ -717,6 +723,80 @@ describe('closeTerminalTab', () => {
 
     closeTerminalTab('tab-1')
 
+    expect(closeTab).toHaveBeenCalledWith('tab-1')
+  })
+
+  it('requests a running-process confirm for tab X / middle-click closes', async () => {
+    const closeTab = vi.fn()
+    const requestRunningTerminalCloseConfirm = vi.fn()
+    getStateMock.mockReturnValue({
+      settings: {
+        activeRuntimeEnvironmentId: null,
+        skipCloseTerminalWithRunningProcessConfirm: false
+      },
+      tabsByWorktree: {
+        'wt-1': [{ id: 'tab-1' }, { id: 'tab-2' }]
+      },
+      unifiedTabsByWorktree: {},
+      ptyIdsByTabId: { 'tab-1': ['pty-1'] },
+      terminalLayoutsByTabId: {},
+      agentStatusByPaneKey: {},
+      activeWorktreeId: 'wt-1',
+      activeTabId: 'tab-2',
+      openFiles: [],
+      browserTabsByWorktree: {},
+      closeTab,
+      setActiveTab: vi.fn(),
+      requestRunningTerminalCloseConfirm
+    })
+    inspectRuntimeTerminalProcessMock.mockResolvedValue({
+      foregroundProcess: 'npm',
+      hasChildProcesses: true
+    })
+
+    closeTerminalTab('tab-1')
+    await vi.waitFor(() => expect(requestRunningTerminalCloseConfirm).toHaveBeenCalledTimes(1))
+
+    expect(closeTab).not.toHaveBeenCalled()
+    expect(requestRunningTerminalCloseConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ copyKind: 'command', onConfirm: expect.any(Function) })
+    )
+
+    const { onConfirm } = requestRunningTerminalCloseConfirm.mock.calls[0][0] as {
+      onConfirm: () => void
+    }
+    onConfirm()
+    expect(closeTab).toHaveBeenCalledWith('tab-1')
+  })
+
+  it('force-closes without inspecting processes after confirmation', () => {
+    const closeTab = vi.fn()
+    const requestRunningTerminalCloseConfirm = vi.fn()
+    getStateMock.mockReturnValue({
+      settings: {
+        activeRuntimeEnvironmentId: null,
+        skipCloseTerminalWithRunningProcessConfirm: false
+      },
+      tabsByWorktree: {
+        'wt-1': [{ id: 'tab-1' }, { id: 'tab-2' }]
+      },
+      unifiedTabsByWorktree: {},
+      ptyIdsByTabId: { 'tab-1': ['pty-1'] },
+      terminalLayoutsByTabId: {},
+      agentStatusByPaneKey: {},
+      activeWorktreeId: 'wt-1',
+      activeTabId: 'tab-2',
+      openFiles: [],
+      browserTabsByWorktree: {},
+      closeTab,
+      setActiveTab: vi.fn(),
+      requestRunningTerminalCloseConfirm
+    })
+
+    closeTerminalTab('tab-1', { force: true })
+
+    expect(inspectRuntimeTerminalProcessMock).not.toHaveBeenCalled()
+    expect(requestRunningTerminalCloseConfirm).not.toHaveBeenCalled()
     expect(closeTab).toHaveBeenCalledWith('tab-1')
   })
 })

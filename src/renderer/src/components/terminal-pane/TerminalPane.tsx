@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import type { IDisposable } from '@xterm/xterm'
 import { useAppStore } from '../../store'
-import { isUnifiedTabPinned } from '@/store/pinned-tab-close-guard'
 import { useLinkRoutingPreferenceDialog } from '@/components/link-routing-preference-dialog'
 import { DaemonActionDialog, useDaemonActions } from '@/components/shared/useDaemonActions'
 import {
@@ -1302,15 +1301,12 @@ export default function TerminalPane({
 
   const handleRequestClosePane = useCallback(
     (paneId: number) => {
-      // Why: closing the last pane of a pinned tab prefers the pin dialog over the running-process prompt; non-pinned tabs keep the process prompt.
+      // Why: last-pane close is whole-tab close — pin + running-process confirm
+      // live in closeTerminalTab so X / middle-click / Cmd+W share one policy.
       const isLastPane = (managerRef.current?.getPanes().length ?? 0) <= 1
       if (isLastPane) {
-        const state = useAppStore.getState()
-        const confirmPinned = state.settings?.confirmClosePinnedTab ?? true
-        if (confirmPinned && isUnifiedTabPinned(state, worktreeId, tabId)) {
-          executeClosePane(paneId)
-          return
-        }
+        executeClosePane(paneId)
+        return
       }
       const transport = paneTransportsRef.current.get(paneId)
       const ptyId = transport?.getPtyId()
@@ -1330,7 +1326,7 @@ export default function TerminalPane({
         // Why: if the child-process probe rejects (wedged IPC, legacy provider), close anyway — Cmd+W doing nothing is worse than closing a pane with a child.
         .catch(() => executeClosePane(paneId))
     },
-    [executeClosePane, tabId, worktreeId, getCloseDialogCopyKind]
+    [executeClosePane, getCloseDialogCopyKind]
   )
 
   const handleSearchSelectedText = useCallback((selectedText: string): void => {
