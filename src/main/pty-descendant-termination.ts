@@ -229,10 +229,10 @@ type KillSweepDeps = SnapshotDeps &
   }
 
 /**
- * Standard agent-session kill sequencing.
- * - POSIX: snapshot the descendant tree, signal members, then killRoot.
- * - Windows: taskkill /T /F walks the ConPTY tree (shell → agent → MCP) so
- *   worktree teardown is not blocked by orphans holding the cwd handle.
+ * Kill sequencing for local PTYs that may own child process trees.
+ * - POSIX agents: snapshot the descendant tree, signal members, then killRoot.
+ * - Windows (all local PTYs): taskkill /T /F walks the ConPTY tree so npm/dev
+ *   servers and agent/MCP children cannot keep listening ports after stop (#10150).
  * Callers must not signal the root before this runs on POSIX — a dead root's
  * descendants reparent to pid 1 and become unfindable. Snapshot failure
  * degrades to killRoot alone on POSIX.

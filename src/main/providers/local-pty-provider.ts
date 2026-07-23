@@ -77,9 +77,9 @@ const PANE_IDENTITY_ENV_KEYS = [
 let ptyCounter = 0
 const ptyProcesses = new Map<string, pty.IPty>()
 const ptyIncarnations = new Map<string, string>()
-// Why: only agent sessions get descendant tree-kill (tool children run in detached groups SIGHUP can't reach); plain terminals skip it so nohup-detached children survive.
+// Why: marks agent PTYs for POSIX descendant tree-kill (detached tool children). Windows tree-kills every local PTY via taskkill /T (#10150).
 const ptyAgentSessionIds = new Set<string>()
-// Why: descendant capture is async, so reattach/duplicate shutdown must wait for the original owner, not return a dying PTY.
+// Why: descendant capture / taskkill is async, so reattach/duplicate shutdown must wait for the original owner, not return a dying PTY.
 type PtyShutdownOperation = {
   promise: Promise<void>
   immediate: boolean
@@ -1122,9 +1122,9 @@ export class LocalPtyProvider implements IPtyProvider {
       operation.rootSignalled = true
       this.requestTrackedPtyShutdown(id, proc, operation.immediate)
     }
-    if (ptyAgentSessionIds.has(id)) {
-      // Why: POSIX needs a pre-kill descendant snapshot; Windows uses taskkill /T so
-      // agent/MCP orphans cannot hold the worktree cwd after shell stop (#10004).
+    // Why: Windows ConPTY shell-only kill leaves npm/node children holding ports (#10150);
+    // agent sessions also need tree-kill on POSIX for detached tool children (#10004).
+    if (process.platform === 'win32' || ptyAgentSessionIds.has(id)) {
       await killWithDescendantSweep(proc.pid, signalRoot, {
         ownsRoot: () => ptyProcesses.get(id) === proc
       })

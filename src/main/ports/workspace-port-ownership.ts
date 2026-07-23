@@ -9,6 +9,7 @@ import type {
   WorkspacePortScanResult
 } from '../../shared/workspace-ports'
 import { scanWorkspacePorts } from './local-workspace-port-scanner'
+import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
 
 export type WorkspacePortProbeInput = WorkspacePortProbe & {
   connectionId?: string | null
@@ -102,8 +103,12 @@ export async function killWorkspacePort(
   }
 
   try {
-    // Why: caller-supplied pids are not trusted; the re-scan above proves
-    // this pid still owns the requested workspace listener before SIGTERM.
+    // Why: re-scan above proves this pid still owns the requested workspace listener.
+    // On Windows, kill the full tree so npm wrappers cannot leave a child holding the port (#10150).
+    if (process.platform === 'win32') {
+      await terminateWindowsProcessTree(pid)
+      return { ok: true }
+    }
     process.kill(pid, 'SIGTERM')
     return { ok: true }
   } catch (error) {
