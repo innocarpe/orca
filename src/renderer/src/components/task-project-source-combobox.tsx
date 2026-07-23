@@ -14,6 +14,7 @@ import {
   hasMultipleTaskProjectHosts,
   hasMultipleTaskProjectHostsInGroup,
   isTaskProjectGroupSelected,
+  nextTaskProjectSelectionAfterToggle,
   selectedTaskProjectGroups
 } from './task-project-source-combobox-model'
 
@@ -170,19 +171,10 @@ export default function TaskProjectSourceCombobox({
 
   const toggleProject = useCallback(
     (group: TaskProjectPickerGroup) => {
-      const next = new Set(selected)
-      const selectedSource = group.sources.find((source) => next.has(source.id))
-      if (selectedSource) {
-        if (selectedTaskProjectGroups(groups, selected).length <= 1) {
-          return
-        }
-        for (const source of group.sources) {
-          next.delete(source.id)
-        }
-      } else {
-        next.add(group.repo.id)
+      const next = nextTaskProjectSelectionAfterToggle({ groups, selected, group })
+      if (next) {
+        onChange(next)
       }
-      onChange(next)
     },
     [groups, onChange, selected]
   )
