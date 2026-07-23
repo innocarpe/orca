@@ -1749,6 +1749,18 @@ function Terminal(): React.JSX.Element | null {
         }
       }
 
+      // Why: long/structured files need a discoverable unwrap path without Settings (#9974).
+      if (!e.repeat && matchShortcut('editor.toggleWordWrap')) {
+        const state = useAppStore.getState()
+        if (state.activeTabType === 'editor' && state.activeFileId) {
+          e.preventDefault()
+          notifyTerminalCapture('editor.toggleWordWrap')
+          const wrapOn = state.settings?.editorWordWrap !== false
+          void state.updateSettings({ editorWordWrap: !wrapOn })
+          return
+        }
+      }
+
       // Cmd/Ctrl+Shift+M - new markdown file
       if (!e.repeat && matchShortcut('tab.newMarkdown')) {
         e.preventDefault()
