@@ -232,8 +232,16 @@ export class PluginOverlayManager {
 
   /** Install the Pi/OMP status extension into the remote real agent dir and
    *  return that directory. `kind` selects which Pi-compatible agent's default
-   *  dir to use when `existingAgentDir` is not supplied. */
-  materializePi(id: string, existingAgentDir?: string, kind: PiAgentKind = 'pi'): string | null {
+   *  dir to use when `existingAgentDir` is not supplied.
+   *
+   *  When `materializeDefaultHome` is false (bare shells), missing default
+   *  homes are left alone so unused agents do not recreate `~/.<agent>` (#10196). */
+  materializePi(
+    id: string,
+    existingAgentDir?: string,
+    kind: PiAgentKind = 'pi',
+    options?: { materializeDefaultHome?: boolean }
+  ): string | null {
     const extensionSource = this.getPiExtensionSource(kind)
     if (!extensionSource || !isUsableId(id)) {
       return null
@@ -241,6 +249,10 @@ export class PluginOverlayManager {
     try {
       const sourceAgentDir = existingAgentDir ?? this.getDefaultPiAgentDir(kind)
       if (existingAgentDir && !existsSync(existingAgentDir)) {
+        return null
+      }
+      const materializeDefaultHome = options?.materializeDefaultHome !== false
+      if (!existingAgentDir && !existsSync(sourceAgentDir) && !materializeDefaultHome) {
         return null
       }
       const extensionsDir = join(sourceAgentDir, 'extensions')

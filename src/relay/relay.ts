@@ -502,7 +502,11 @@ async function main(): Promise<void> {
       const shouldPrepareOmpShadow = kind === 'omp' || !hasLaunchCommand
       if (kind === 'pi') {
         const sourceDir = resolvePiSourceAgentDir(ctx.env, ctx.shell, 'pi')
-        const dir = pluginOverlay.materializePi(overlayId, sourceDir, 'pi')
+        // Why: do not mkdir ~/.<agent> on bare shells when the agent home is
+        // missing — unused agents kept recreating deleted homes (#10196).
+        const dir = pluginOverlay.materializePi(overlayId, sourceDir, 'pi', {
+          materializeDefaultHome: hasLaunchCommand
+        })
         if (dir) {
           env.ORCA_PI_SOURCE_AGENT_DIR = dir
         }
@@ -513,7 +517,9 @@ async function main(): Promise<void> {
           kind === 'omp'
             ? resolvePiSourceAgentDir(ctx.env, ctx.shell, 'omp')
             : ctx.env.ORCA_OMP_SOURCE_AGENT_DIR
-        const dir = pluginOverlay.materializePi(overlayId, sourceDir, 'omp')
+        const dir = pluginOverlay.materializePi(overlayId, sourceDir, 'omp', {
+          materializeDefaultHome: kind === 'omp'
+        })
         if (dir) {
           env.ORCA_OMP_STATUS_EXTENSION = getRelayPiStatusExtensionPath(dir)
           env.ORCA_OMP_SOURCE_AGENT_DIR = dir

@@ -268,6 +268,28 @@ describe('PluginOverlayManager', () => {
       const extensions = readdirSync(join(dir!, 'extensions')).sort()
       expect(extensions).toEqual(['orca-agent-status.ts'])
     })
+
+    it('bare-shell prep does not create missing remote agent homes (#10196)', () => {
+      expect(existsSync(join(homeDir, '.pi'))).toBe(false)
+      expect(existsSync(join(homeDir, '.omp'))).toBe(false)
+      manager.setSources({
+        piExtensionSource: '// pi extension',
+        ompExtensionSource: '// omp extension'
+      })
+
+      expect(
+        manager.materializePi('tab-bare-pi:0', undefined, 'pi', {
+          materializeDefaultHome: false
+        })
+      ).toBeNull()
+      expect(
+        manager.materializePi('tab-bare-omp:0', undefined, 'omp', {
+          materializeDefaultHome: false
+        })
+      ).toBeNull()
+      expect(existsSync(join(homeDir, '.pi'))).toBe(false)
+      expect(existsSync(join(homeDir, '.omp'))).toBe(false)
+    })
   })
 
   it('does not override a missing preexisting Pi agent dir', () => {
