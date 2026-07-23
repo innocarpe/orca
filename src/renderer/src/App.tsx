@@ -88,6 +88,7 @@ import { RecoverableRenderErrorBoundary } from './components/error-boundaries/Re
 import { ConfirmationDialogProvider } from './components/confirmation-dialog'
 import { LinkRoutingPreferenceDialogProvider } from './components/link-routing-preference-dialog'
 import RecentTabSwitcher from './components/tab-bar/RecentTabSwitcher'
+import { requestActiveTabMoveToSplit } from './components/tab-bar/request-active-tab-move-to-split'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import { useEditorExternalWatch } from './hooks/useEditorExternalWatch'
 import { useAutoAckViewedAgent } from './hooks/useAutoAckViewedAgent'
@@ -344,6 +345,9 @@ const SshPassphraseDialog = lazy(() =>
 )
 const UpdateCard = lazy(() =>
   import('./components/UpdateCard').then((module) => ({ default: module.UpdateCard }))
+)
+const RemoteServerUpdateDialog = lazy(
+  () => import('./components/settings/RemoteServerUpdateDialog')
 )
 const ContextualTourOverlay = lazy(() =>
   import('./components/contextual-tours/ContextualTourOverlay').then((module) => ({
@@ -1598,6 +1602,20 @@ function App(): React.JSX.Element {
         }
       }
 
+      // Mod+\ — move active tab to a new split column (editor/browser/terminal). Sole-tab groups leave the chord free.
+      if (
+        workspaceChromeActive &&
+        !floatingWorkspaceFocused &&
+        !input.isAutoRepeat &&
+        matchShortcut('tab.moveToSplitRight')
+      ) {
+        if (requestActiveTabMoveToSplit('right')) {
+          input.preventDefault()
+          notifyTerminalCapture('tab.moveToSplitRight')
+        }
+        return
+      }
+
       // Open/reveal the worktree card first so its inline title editor is mounted even when filters or collapse state would hide it.
       if (
         workspaceChromeActive &&
@@ -2535,6 +2553,15 @@ function App(): React.JSX.Element {
             >
               <SkillFreshnessUpdateDialog />
             </RecoverableRenderErrorBoundary>
+            <Suspense fallback={null}>
+              <RecoverableRenderErrorBoundary
+                boundaryId="overlay.remote-server-update-dialog"
+                surface="overlay"
+                compact
+              >
+                <RemoteServerUpdateDialog />
+              </RecoverableRenderErrorBoundary>
+            </Suspense>
           </LinkRoutingPreferenceDialogProvider>
         </ConfirmationDialogProvider>
       </TooltipProvider>

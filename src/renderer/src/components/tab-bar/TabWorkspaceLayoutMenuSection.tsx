@@ -3,11 +3,13 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  DropdownMenuItem
+  DropdownMenuItem,
+  DropdownMenuShortcut
 } from '@/components/ui/dropdown-menu'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Columns2 } from 'lucide-react'
 import type { TabSplitDirection } from '../../store/slices/tabs'
 import { translate } from '@/i18n/i18n'
+import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import { canMoveTabToNewPaneColumn, moveTabToNewPaneColumn } from './tab-move-to-pane-column'
 
 const PANE_COLUMN_DIRECTIONS: TabSplitDirection[] = ['right', 'left', 'down', 'up']
@@ -47,6 +49,8 @@ export function TabWorkspaceLayoutMenuSection({
   groupId: string
   trailingSeparator?: boolean
 }): React.JSX.Element | null {
+  const moveToSplitRightShortcut = useOptionalShortcutLabel('tab.moveToSplitRight')
+
   if (!canMoveTabToNewPaneColumn(unifiedTabId, groupId)) {
     return null
   }
@@ -71,6 +75,9 @@ export function TabWorkspaceLayoutMenuSection({
             >
               {paneColumnDirectionIcon(direction)}
               {paneColumnDirectionLabel(direction)}
+              {direction === 'right' && moveToSplitRightShortcut ? (
+                <DropdownMenuShortcut>{moveToSplitRightShortcut}</DropdownMenuShortcut>
+              ) : null}
             </DropdownMenuItem>
           ))}
         </DropdownMenuSubContent>
