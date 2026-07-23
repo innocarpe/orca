@@ -114,23 +114,35 @@ function getManagedCommand(scriptPath: string): string {
     : wrapPosixHookCommand(scriptPath)
 }
 
+/**
+ * Windows `grok-hook.cmd` body. Exported for unit tests — empty GROK_HOME must
+ * not hit cmd substring expansion (`%VAR:~n,m%`), which can syntax-fail SessionStart (#9941).
+ */
+export function buildWindowsGrokHookScript(): string {
+  return [
+    '@echo off',
+    'setlocal',
+    'if defined ORCA_AGENT_HOOK_ENDPOINT if exist "%ORCA_AGENT_HOOK_ENDPOINT%" call "%ORCA_AGENT_HOOK_ENDPOINT%" 2>nul',
+    ...buildWindowsHookEnvironmentGuardLines(),
+    // Why: default installs leave GROK_HOME unset; only expand substrings when defined.
+    'set "ORCA_GROK_HOME="',
+    'if defined GROK_HOME (',
+    '  set "ORCA_GROK_HOME=%GROK_HOME%"',
+    `  if not "%ORCA_GROK_HOME:~${GROK_HOME_ENVELOPE_MAX_LENGTH},1%"=="" set "ORCA_GROK_HOME="`,
+    // Why: a trailing backslash escapes curl's closing argv quote on Windows,
+    // merging the payload option into grokHome and dropping the hook body.
+    '  if defined ORCA_GROK_HOME if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."',
+    ')',
+    WINDOWS_GROK_HOOK_POST_COMMAND,
+    'exit /b 0',
+    ...buildWindowsHookStdinDrainEpilogue(),
+    ''
+  ].join('\r\n')
+}
+
 function getManagedScript(target: 'local' | 'posix' = 'local'): string {
   if (target === 'local' && process.platform === 'win32') {
-    return [
-      '@echo off',
-      'setlocal',
-      'if defined ORCA_AGENT_HOOK_ENDPOINT if exist "%ORCA_AGENT_HOOK_ENDPOINT%" call "%ORCA_AGENT_HOOK_ENDPOINT%" 2>nul',
-      ...buildWindowsHookEnvironmentGuardLines(),
-      'set "ORCA_GROK_HOME=%GROK_HOME%"',
-      `if not "%GROK_HOME:~${GROK_HOME_ENVELOPE_MAX_LENGTH},1%"=="" set "ORCA_GROK_HOME="`,
-      // Why: a trailing backslash escapes curl's closing argv quote on Windows,
-      // merging the payload option into grokHome and dropping the hook body.
-      'if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."',
-      WINDOWS_GROK_HOOK_POST_COMMAND,
-      'exit /b 0',
-      ...buildWindowsHookStdinDrainEpilogue(),
-      ''
-    ].join('\r\n')
+    return buildWindowsGrokHookScript()
   }
 
   return [
