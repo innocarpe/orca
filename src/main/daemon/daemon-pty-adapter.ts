@@ -1061,7 +1061,8 @@ export class DaemonPtyAdapter implements IPtyProvider {
     // before killing so a healthy daemon session is not orphaned (#7742). Connect
     // and kill share the caller's one absolute deadline, so a wedged handshake
     // cannot burn the whole teardown budget before the kill even starts.
-    await this.ensureConnected(opts.deadlineMs)
+    // Why withDaemonRetry: same dead-pipe path as listProcesses during remove (#10087).
+    await this.withDaemonRetry(() => this.ensureConnected(opts.deadlineMs))
     // Why: sleep/exact-stop kills the live PTY before the periodic checkpoint may run.
     // Force a final snapshot so wake can restore the pane users left.
     if (opts.keepHistory) {
@@ -1409,49 +1410,52 @@ export class DaemonPtyAdapter implements IPtyProvider {
     // be reconciled away below.
     const preRequestActiveIds = new Set(this.activeSessionIds)
     try {
-      // Why: connect + listSessions share the caller's one absolute deadline so a
-      // wedged handshake cannot burn the whole teardown budget before the list issues.
-      await this.ensureConnected(opts?.deadlineMs)
-      const result = await this.client.request<ListSessionsResult>(
-        'listSessions',
-        undefined,
-        remainingRequestTimeoutMs(opts?.deadlineMs)
-      )
-      const admission = new PtyProcessListAdmission()
-      const processes: PtyProcessInfo[] = []
-      const aliveSessionIds = new Set<string>()
-      for (const session of result.sessions) {
-        if (!session.isAlive) {
-          continue
-        }
-        aliveSessionIds.add(session.sessionId)
-        const { worktreeId } = parsePtySessionId(session.sessionId)
-        processes.push(
-          admission.admit({
-            id: session.sessionId,
-            ...(session.incarnationId ? { incarnationId: session.incarnationId } : {}),
-            // Why: OSC 7 may not arrive before cleanup; spawn cwd is authoritative until the daemon reports a live cwd.
-            cwd: session.cwd ?? this.initialCwds.get(session.sessionId) ?? '',
-            title: 'shell',
-            ...(worktreeId ? { worktreeId } : {}),
-            ...(session.terminalHandle ? { terminalHandle: session.terminalHandle } : {}),
-            ...(session.wslDistro !== undefined ? { wslDistro: session.wslDistro } : {}),
-            ...this.validatedAgentSessionOwners(session.agentSessionOwners)
-          })
+      // Why: worktree removal may inventory through a retired daemon endpoint.
+      return await this.withDaemonRetry(async () => {
+        // Why: connect + listSessions share the caller's one absolute deadline so a
+        // wedged handshake cannot burn the whole teardown budget before the list issues.
+        await this.ensureConnected(opts?.deadlineMs)
+        const result = await this.client.request<ListSessionsResult>(
+          'listSessions',
+          undefined,
+          remainingRequestTimeoutMs(opts?.deadlineMs)
         )
-      }
-      // Why: hasPty reads activeSessionIds, and an exit missed while the socket
-      // was disconnected otherwise survives an authoritative inventory forever —
-      // defeating every absence proof built on the cache.
-      for (const id of preRequestActiveIds) {
-        if (!aliveSessionIds.has(id)) {
-          this.activeSessionIds.delete(id)
+        const admission = new PtyProcessListAdmission()
+        const processes: PtyProcessInfo[] = []
+        const aliveSessionIds = new Set<string>()
+        for (const session of result.sessions) {
+          if (!session.isAlive) {
+            continue
+          }
+          aliveSessionIds.add(session.sessionId)
+          const { worktreeId } = parsePtySessionId(session.sessionId)
+          processes.push(
+            admission.admit({
+              id: session.sessionId,
+              ...(session.incarnationId ? { incarnationId: session.incarnationId } : {}),
+              // Why: OSC 7 may not arrive before cleanup; spawn cwd is authoritative until the daemon reports a live cwd.
+              cwd: session.cwd ?? this.initialCwds.get(session.sessionId) ?? '',
+              title: 'shell',
+              ...(worktreeId ? { worktreeId } : {}),
+              ...(session.terminalHandle ? { terminalHandle: session.terminalHandle } : {}),
+              ...(session.wslDistro !== undefined ? { wslDistro: session.wslDistro } : {}),
+              ...this.validatedAgentSessionOwners(session.agentSessionOwners)
+            })
+          )
         }
-      }
-      this.publishAuditObservation(
-        recordAuthenticatedInventory(this.auditContext, this.exactDaemonIncarnation)
-      )
-      return processes
+        // Why: hasPty reads activeSessionIds, and an exit missed while the socket
+        // was disconnected otherwise survives an authoritative inventory forever —
+        // defeating every absence proof built on the cache.
+        for (const id of preRequestActiveIds) {
+          if (!aliveSessionIds.has(id)) {
+            this.activeSessionIds.delete(id)
+          }
+        }
+        this.publishAuditObservation(
+          recordAuthenticatedInventory(this.auditContext, this.exactDaemonIncarnation)
+        )
+        return processes
+      })
     } catch (error) {
       const missingAuthenticatedToken =
         isMissingTokenFileError(error) && this.client.hasObservedAuthenticatedDisconnect()
