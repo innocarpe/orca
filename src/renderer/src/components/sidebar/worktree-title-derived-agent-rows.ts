@@ -135,51 +135,84 @@ function buildTitleDerivedAgentRow(args: {
   // the management/list screen as active work.
   const status = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
   const label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
-  if (!status || !label) {
-    return null
-  }
   if (!isTerminalLeafId(args.leafId)) {
     return null
   }
   const paneKey = makePaneKey(args.tab.id, args.leafId)
   const orchestration = args.runtimeAgentOrchestrationByPaneKey?.[paneKey]
-  const titleAgentType = isClaudeAgentsTitle ? 'claude' : resolveTitleDerivedAgentType(title, label)
-  // Why: a braille spinner proves activity, not identity, so the resolver drops
-  // it. Hook-less agents over SSH (Codex, #8711) surface only spinner+cwd titles;
-  // fall back to the tab's launch identity instead of hiding the pane. Gated on
-  // the spinner on purpose — unlike the hook path's unconditional launchAgent
-  // fallback (resolveRowAgentType), this path manufactures agent-ness from a
-  // title alone, so a non-agent title must never become a row. Residual: a split
-  // pane whose own title carries a braille glyph is still attributed to launchAgent.
-  const agentType =
-    titleAgentType ?? (containsBrailleSpinner(title) ? (args.tab.launchAgent ?? null) : null)
-  if (!agentType) {
+  const launchAgent = args.tab.launchAgent ?? null
+
+  if (status && label) {
+    const titleAgentType = isClaudeAgentsTitle
+      ? 'claude'
+      : resolveTitleDerivedAgentType(title, label)
+    // Why: a braille spinner proves activity, not identity, so the resolver drops
+    // it. Hook-less agents over SSH (Codex, #8711) surface only spinner+cwd titles;
+    // fall back to the tab's launch identity instead of hiding the pane. Gated on
+    // the spinner on purpose — unlike the hook path's unconditional launchAgent
+    // fallback (resolveRowAgentType), this path manufactures agent-ness from a
+    // title alone, so a non-agent title must never become a row. Residual: a split
+    // pane whose own title carries a braille glyph is still attributed to launchAgent.
+    const agentType = titleAgentType ?? (containsBrailleSpinner(title) ? launchAgent : null)
+    if (!agentType) {
+      return null
+    }
+    const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
+    const rowState = titleStatusToRowState(status)
+    const secondary =
+      status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
+    const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+    const entry: AgentStatusEntry = {
+      paneKey,
+      state: entryState,
+      prompt: rowLabel,
+      updatedAt: args.now,
+      stateStartedAt: args.now,
+      stateHistory: [],
+      agentType,
+      terminalTitle: title,
+      lastAssistantMessage: secondary,
+      ...(orchestration ? { orchestration } : {})
+    }
+    return {
+      paneKey,
+      entry,
+      tab: args.tab,
+      agentType,
+      rowSource: 'live',
+      state: rowState,
+      startedAt: 0
+    }
+  }
+
+  // Why: after a hook-less SSH Codex turn finishes, the title reverts to a bare
+  // cwd/shell with no spinner and no agent name (#10130). Spinner fallback no
+  // longer applies, and remote hooks are dead (#8711), so without this path the
+  // reusable idle session vanishes from the sidebar while the PTY/tab remain.
+  // Only manufacture Idle when the title is not claiming work/permission.
+  if (!launchAgent || status === 'working' || status === 'permission') {
     return null
   }
-  const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
-  const rowState = titleStatusToRowState(status)
-  const secondary =
-    status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
-  const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+  const rowLabel = formatAgentTypeLabel(launchAgent)
   const entry: AgentStatusEntry = {
     paneKey,
-    state: entryState,
+    state: 'working',
     prompt: rowLabel,
     updatedAt: args.now,
     stateStartedAt: args.now,
     stateHistory: [],
-    agentType,
+    agentType: launchAgent,
     terminalTitle: title,
-    lastAssistantMessage: secondary,
+    lastAssistantMessage: 'Idle',
     ...(orchestration ? { orchestration } : {})
   }
   return {
     paneKey,
     entry,
     tab: args.tab,
-    agentType,
+    agentType: launchAgent,
     rowSource: 'live',
-    state: rowState,
+    state: 'idle',
     startedAt: 0
   }
 }
