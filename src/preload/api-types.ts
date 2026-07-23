@@ -2848,6 +2848,9 @@ export type PreloadApi = {
     onToggleRightSidebar: (callback: () => void) => () => void
     onToggleWorktreePalette: (callback: () => void) => () => void
     onToggleFloatingTerminal: (callback: () => void) => () => void
+    onOpenFloatingMarkdownDocuments: (
+      callback: (documents: MarkdownDocument[]) => void
+    ) => () => void
     onTerminalShortcutCaptured: (
       callback: (data: { actionId: KeybindingActionId }) => void
     ) => () => void

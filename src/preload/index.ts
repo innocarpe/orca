@@ -3255,6 +3255,14 @@ const api = {
       ipcRenderer.on('ui:toggleFloatingTerminal', listener)
       return () => ipcRenderer.removeListener('ui:toggleFloatingTerminal', listener)
     },
+    onOpenFloatingMarkdownDocuments: (
+      callback: (documents: MarkdownDocument[]) => void
+    ): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, documents: MarkdownDocument[]) =>
+        callback(documents)
+      ipcRenderer.on('ui:openFloatingMarkdownDocuments', listener)
+      return () => ipcRenderer.removeListener('ui:openFloatingMarkdownDocuments', listener)
+    },
     onTerminalShortcutCaptured: (
       callback: (data: { actionId: KeybindingActionId }) => void
     ): (() => void) => {

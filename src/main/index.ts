@@ -126,6 +126,7 @@ import {
 import { ensureWindowsUserDataAclGrant } from './startup/windows-user-data-acl'
 import { shouldQuitWhenAllWindowsClosed } from './startup/window-all-closed-quit-policy'
 import { createServeDesktopActivationGate } from './startup/serve-desktop-activation'
+import { createOsOpenMarkdownBridge } from './startup/os-open-markdown-bridge'
 import { RateLimitService } from './rate-limits/service'
 import { readMiniMaxSessionCookie } from './minimax/minimax-cookie-store'
 import { getInitialClaudeRateLimitTarget } from './rate-limits/claude-rate-limit-target'
@@ -298,6 +299,15 @@ const isServeMode = process.argv.includes('--serve')
 if (isServeMode) {
   reserveServeStdoutForReadiness()
 }
+// Why: OS "Open With" / double-click markdown paths may arrive before the main window exists.
+const osOpenMarkdownBridge = createOsOpenMarkdownBridge()
+
+function flushOsOpenMarkdownDocuments(): void {
+  void osOpenMarkdownBridge.flush(() =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+  )
+}
+
 const desktopActivationGate = createServeDesktopActivationGate({
   initialState: isServeMode ? 'initializing' : 'ready',
   activateWindow: () => {
@@ -305,6 +315,8 @@ const desktopActivationGate = createServeDesktopActivationGate({
     if (!isQuittingForUpdate()) {
       focusExistingWindow()
     }
+    // Why: second-instance Open With may focus an already-loaded window without did-finish-load.
+    flushOsOpenMarkdownDocuments()
   },
   onBlocked: (reason) => console.error(`[serve] Desktop activation blocked: ${reason}`)
 })
@@ -508,8 +520,12 @@ function focusExistingWindow(): void {
   })
 }
 
-function requestDesktopActivation(): void {
+function requestDesktopActivation(commandLine?: string[]): void {
+  if (commandLine && commandLine.length > 0) {
+    osOpenMarkdownBridge.enqueueArgv(commandLine)
+  }
   desktopActivationGate.requestActivation()
+  flushOsOpenMarkdownDocuments()
 }
 
 function getDesktopWindowStatus(): RuntimeDesktopWindowStatus {
@@ -612,7 +628,23 @@ const hasSingleInstanceLock = skipSingleInstanceLock
   ? true
   : bypassSingleInstanceLock
     ? true
-    : acquireSingleInstanceLock(app, requestDesktopActivation)
+    : acquireSingleInstanceLock(app, (commandLine) => {
+        requestDesktopActivation(commandLine)
+      })
+
+// Why: macOS delivers open-file before ready; queue early so cold start does not drop Finder opens.
+if (process.platform === 'darwin') {
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    osOpenMarkdownBridge.enqueuePaths([filePath])
+    if (app.isReady()) {
+      requestDesktopActivation()
+    }
+  })
+}
+
+// Why: Windows/Linux pass absolute paths on the initial argv when launched via "Open with".
+osOpenMarkdownBridge.enqueueArgv(process.argv)
 if (startupDiagnosticsEnabled) {
   logStartupDiagnostic('single-instance-lock-result', {
     acquired: hasSingleInstanceLock,
@@ -1108,6 +1140,8 @@ function openMainWindow(): BrowserWindow {
     clearExpectedRendererReload(rendererWebContentsId)
     recordCrashBreadcrumb('main_window_loaded')
     logStartupMilestone('did-finish-load')
+    // Why: cold-start Open With may have queued before the renderer mounted listeners.
+    flushOsOpenMarkdownDocuments()
     if (!store) {
       return
     }

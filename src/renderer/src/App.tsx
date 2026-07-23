@@ -69,6 +69,7 @@ import { MarkdownTemplatePicker } from './components/editor/MarkdownTemplatePick
 import { FloatingTerminalToggleButton } from './components/floating-terminal/FloatingTerminalToggleButton'
 import { OrcaProfileSwitcher } from './components/orca-profiles/OrcaProfileSwitcher'
 import {
+  OPEN_FLOATING_TERMINAL_EVENT,
   TOGGLE_FLOATING_TERMINAL_EVENT,
   requestFloatingTerminalOpenMaximized
 } from '@/lib/floating-terminal'
@@ -611,8 +612,16 @@ function App(): React.JSX.Element {
         setFloatingTerminalOpenWithFocus((open) => !open)
       }
     }
+    // Why: OS Open With may enable the floating workspace in the same turn; always honor force-open.
+    const openFloatingTerminal = (): void => {
+      setFloatingTerminalOpenWithFocus(true)
+    }
     window.addEventListener(TOGGLE_FLOATING_TERMINAL_EVENT, toggleFloatingTerminal)
-    return () => window.removeEventListener(TOGGLE_FLOATING_TERMINAL_EVENT, toggleFloatingTerminal)
+    window.addEventListener(OPEN_FLOATING_TERMINAL_EVENT, openFloatingTerminal)
+    return () => {
+      window.removeEventListener(TOGGLE_FLOATING_TERMINAL_EVENT, toggleFloatingTerminal)
+      window.removeEventListener(OPEN_FLOATING_TERMINAL_EVENT, openFloatingTerminal)
+    }
   }, [floatingTerminalEnabled, setFloatingTerminalOpenWithFocus])
 
   useEffect(() => {

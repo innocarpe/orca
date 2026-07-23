@@ -67,7 +67,11 @@ import {
   shouldSuppressInheritedTerminalStatus
 } from '../../../shared/agent-status-identity'
 import { isGitRepoKind } from '../../../shared/repo-kind'
-import { TOGGLE_FLOATING_TERMINAL_EVENT } from '@/lib/floating-terminal'
+import {
+  OPEN_FLOATING_TERMINAL_EVENT,
+  TOGGLE_FLOATING_TERMINAL_EVENT
+} from '@/lib/floating-terminal'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { TOGGLE_QUICK_COMMANDS_MENU_EVENT } from '@/lib/quick-commands-menu-events'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { activateTabAndFocusPane } from '@/lib/activate-tab-and-focus-pane'
@@ -1330,6 +1334,37 @@ export function useIpcEvents(): void {
         window.dispatchEvent(new CustomEvent(TOGGLE_FLOATING_TERMINAL_EVENT))
       })
     )
+
+    if (window.api.ui.onOpenFloatingMarkdownDocuments) {
+      unsubs.push(
+        window.api.ui.onOpenFloatingMarkdownDocuments((documents) => {
+          void (async () => {
+            const store = useAppStore.getState()
+            // Why: OS Open With should surface the floating workspace even if the user hid it.
+            if (store.settings?.floatingTerminalEnabled === false) {
+              await store.updateSettings({ floatingTerminalEnabled: true })
+            }
+            window.dispatchEvent(new CustomEvent(OPEN_FLOATING_TERMINAL_EVENT))
+            for (const document of documents) {
+              useAppStore.getState().openFile(
+                {
+                  filePath: document.filePath,
+                  relativePath: document.relativePath,
+                  worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+                  language: detectLanguage(document.relativePath),
+                  mode: 'edit',
+                  runtimeEnvironmentId: null
+                },
+                {
+                  preview: false,
+                  suppressActiveRuntimeFallback: true
+                }
+              )
+            }
+          })()
+        })
+      )
+    }
 
     if (window.api.ui.onTerminalShortcutCaptured) {
       unsubs.push(
