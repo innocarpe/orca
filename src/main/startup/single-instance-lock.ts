@@ -26,11 +26,17 @@ export const SINGLE_INSTANCE_LOCK_BYPASS_MESSAGE =
  * way dev (`orca-dev` userData) and packaged (`orca` userData) runs lock in
  * separate namespaces instead of serialising against each other.
  */
-export function acquireSingleInstanceLock(app: App, onSecondInstance: () => void): boolean {
+export function acquireSingleInstanceLock(
+  app: App,
+  onSecondInstance: (commandLine: string[]) => void
+): boolean {
   if (!app.requestSingleInstanceLock()) {
     return false
   }
-  app.on('second-instance', onSecondInstance)
+  // Why: second-instance carries the OS "Open With" argv so we can open markdown paths.
+  app.on('second-instance', (_event, commandLine) => {
+    onSecondInstance(commandLine)
+  })
   return true
 }
 
