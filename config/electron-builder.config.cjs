@@ -65,6 +65,30 @@ module.exports = {
   appId,
   productName: 'Orca',
   ...(localBuildVersion ? { extraMetadata: { version: localBuildVersion } } : {}),
+  // Why: OS "Open With" / double-click markdown opens the floating workspace editor (#10138).
+  fileAssociations: [
+    {
+      ext: 'md',
+      name: 'Markdown Document',
+      description: 'Markdown Document',
+      mimeType: 'text/markdown',
+      role: 'Editor'
+    },
+    {
+      ext: 'mdx',
+      name: 'MDX Document',
+      description: 'MDX Document',
+      mimeType: 'text/mdx',
+      role: 'Editor'
+    },
+    {
+      ext: 'markdown',
+      name: 'Markdown Document',
+      description: 'Markdown Document',
+      mimeType: 'text/markdown',
+      role: 'Editor'
+    }
+  ],
   directories: {
     buildResources: 'resources/build'
   },
