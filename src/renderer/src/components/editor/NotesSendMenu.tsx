@@ -13,7 +13,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import { ReviewNotesSendMenuContent } from './ReviewNotesSendMenuContent'
+import {
+  markNotesSendMenuOpenAccepted,
+  OPEN_NOTES_SEND_MENU_EVENT,
+  type OpenNotesSendMenuDetail
+} from './notes-send-menu-open-request'
 import { translate } from '@/i18n/i18n'
 
 const ENABLED_SEND_TOOLTIP = 'Send notes to an agent'
@@ -69,6 +75,11 @@ export function NotesSendMenu<TNote>({
   const openAgentSendPopoverTargetMode = useAppStore((s) => s.openAgentSendPopoverTargetMode)
   const closeAgentSendPopoverTargetMode = useAppStore((s) => s.closeAgentSendPopoverTargetMode)
   const activeTargetModeId = useAppStore((s) => s.agentSendPopoverTargetMode?.id ?? null)
+  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const activeGroupId = useAppStore((s) =>
+    worktreeId ? (s.activeGroupIdByWorktree?.[worktreeId] ?? null) : null
+  )
+  const sendNotesShortcut = useOptionalShortcutLabel('editor.sendNotesToAgent')
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const targetModeId = useMemo(() => buildNotesSendTargetModeId(modeIdParts), [modeIdParts])
   const enabledScopes = useMemo(() => scopes.filter((scope) => scope.notes.length > 0), [scopes])
@@ -131,6 +142,38 @@ export function NotesSendMenu<TNote>({
     setSendMenuOpen(false)
   }
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const onOpenRequest = (event: Event): void => {
+      if (!hasDeliverableNotes || !defaultScope) {
+        return
+      }
+      const detail = (event as CustomEvent<OpenNotesSendMenuDetail>).detail ?? {}
+      if (detail.worktreeId && detail.worktreeId !== worktreeId) {
+        return
+      }
+      // Why: multi-group layouts may mount several pickers; only the active group
+      // should claim the shortcut so we do not thrash target mode.
+      if (activeWorktreeId === worktreeId && activeGroupId && activeGroupId !== groupId) {
+        return
+      }
+      handleOpenChange(true)
+      markNotesSendMenuOpenAccepted()
+    }
+    window.addEventListener(OPEN_NOTES_SEND_MENU_EVENT, onOpenRequest)
+    return () => window.removeEventListener(OPEN_NOTES_SEND_MENU_EVENT, onOpenRequest)
+  }, [
+    activeGroupId,
+    activeWorktreeId,
+    defaultScope,
+    groupId,
+    handleOpenChange,
+    hasDeliverableNotes,
+    worktreeId
+  ])
+
   useEffect(
     () => () => {
       closeAgentSendPopoverTargetMode(targetModeId)
@@ -181,7 +224,11 @@ export function NotesSendMenu<TNote>({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
-          {hasDeliverableNotes ? ENABLED_SEND_TOOLTIP : disabledTooltip}
+          {hasDeliverableNotes
+            ? sendNotesShortcut
+              ? `${ENABLED_SEND_TOOLTIP} (${sendNotesShortcut})`
+              : ENABLED_SEND_TOOLTIP
+            : disabledTooltip}
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent
