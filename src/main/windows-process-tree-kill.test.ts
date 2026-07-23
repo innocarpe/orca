@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { terminateWindowsProcessTree } from './windows-process-tree-kill'
+import {
+  terminateWindowsProcessTree,
+  WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS
+} from './windows-process-tree-kill'
 
 describe('terminateWindowsProcessTree', () => {
-  it('invokes taskkill /T /F for a positive root pid', async () => {
+  it('invokes taskkill /T /F with timeout and windowsHide', async () => {
     const execFileImpl = vi.fn(
-      (_cmd: string, _args: readonly string[], callback: (error: Error | null) => void) => {
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _options: { timeout?: number; windowsHide?: boolean },
+        callback: (error: Error | null) => void
+      ) => {
         callback(null)
       }
     )
@@ -14,13 +22,22 @@ describe('terminateWindowsProcessTree', () => {
     expect(execFileImpl).toHaveBeenCalledWith(
       'taskkill',
       ['/pid', '1234', '/T', '/F'],
+      {
+        timeout: WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS,
+        windowsHide: true
+      },
       expect.any(Function)
     )
   })
 
   it('resolves even when taskkill reports failure (already dead)', async () => {
     const execFileImpl = vi.fn(
-      (_cmd: string, _args: readonly string[], callback: (error: Error | null) => void) => {
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _options: { timeout?: number; windowsHide?: boolean },
+        callback: (error: Error | null) => void
+      ) => {
         callback(new Error('not found'))
       }
     )
