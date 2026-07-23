@@ -49,15 +49,20 @@ export default function PdfViewer({ content, filePath }: PdfViewerProps): JSX.El
   // Why: content reloads rebuild the pdf.js viewer; keep zoom across updates of
   // the same file, and only reset when the open path changes.
   const scalePreferenceRef = useRef<PdfScalePreference>('page-width')
-  const scalePreferenceFilePathRef = useRef(filePath)
-
-  if (scalePreferenceFilePathRef.current !== filePath) {
-    scalePreferenceFilePathRef.current = filePath
-    scalePreferenceRef.current = 'page-width'
-  }
 
   const filename = useMemo(() => filePath.split(/[/\\]/).pop() || filePath, [filePath])
   const cleanedContent = useMemo(() => content.replace(/\s/g, ''), [content])
+
+  // Why: reset zoom to fit-width when the open path changes. An effect keeps the
+  // reset out of render (refs mutated in render can leak from discarded renders)
+  // and covers same-content/different-path opens the load effect skips.
+  useEffect(() => {
+    scalePreferenceRef.current = 'page-width'
+    const viewer = pdfViewerRef.current
+    if (viewer) {
+      applyPdfScalePreference(viewer, 'page-width', SCALE_BOUNDS)
+    }
+  }, [filePath])
 
   useEffect(() => {
     const container = containerRef.current
@@ -163,6 +168,30 @@ export default function PdfViewer({ content, filePath }: PdfViewerProps): JSX.El
     setFindOpen(false)
   }, [])
 
+  // Why: every zoom entry point (toolbar + keyboard) must record the scale
+  // preference so the next content reload restores it (see scalePreferenceRef).
+  const stepZoom = useCallback((direction: 'in' | 'out') => {
+    const viewer = pdfViewerRef.current
+    if (!viewer) {
+      return
+    }
+    const next = stepPdfScalePreference(viewer.currentScale, direction, SCALE_BOUNDS)
+    viewer.currentScale = next.scale
+    scalePreferenceRef.current = next.preference
+  }, [])
+
+  const zoomIn = useCallback(() => stepZoom('in'), [stepZoom])
+  const zoomOut = useCallback(() => stepZoom('out'), [stepZoom])
+
+  const zoomReset = useCallback(() => {
+    const viewer = pdfViewerRef.current
+    if (!viewer) {
+      return
+    }
+    scalePreferenceRef.current = 'page-width'
+    applyPdfScalePreference(viewer, 'page-width', SCALE_BOUNDS)
+  }, [])
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       const platform = getShortcutPlatform()
@@ -174,58 +203,18 @@ export default function PdfViewer({ content, filePath }: PdfViewerProps): JSX.El
       }
       if (keybindingMatchesAction('zoom.in', e, platform, keybindings)) {
         e.preventDefault()
-        const viewer = pdfViewerRef.current
-        if (viewer) {
-          const next = stepPdfScalePreference(viewer.currentScale, 'in', SCALE_BOUNDS)
-          viewer.currentScale = next.scale
-          scalePreferenceRef.current = next.preference
-        }
+        zoomIn()
       } else if (keybindingMatchesAction('zoom.out', e, platform, keybindings)) {
         e.preventDefault()
-        const viewer = pdfViewerRef.current
-        if (viewer) {
-          const next = stepPdfScalePreference(viewer.currentScale, 'out', SCALE_BOUNDS)
-          viewer.currentScale = next.scale
-          scalePreferenceRef.current = next.preference
-        }
+        zoomOut()
       } else if (keybindingMatchesAction('zoom.reset', e, platform, keybindings)) {
         e.preventDefault()
-        const viewer = pdfViewerRef.current
-        if (viewer) {
-          scalePreferenceRef.current = 'page-width'
-          applyPdfScalePreference(viewer, 'page-width', SCALE_BOUNDS)
-        }
+        zoomReset()
       }
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [keybindings])
-
-  const zoomIn = useCallback(() => {
-    const viewer = pdfViewerRef.current
-    if (viewer) {
-      const next = stepPdfScalePreference(viewer.currentScale, 'in', SCALE_BOUNDS)
-      viewer.currentScale = next.scale
-      scalePreferenceRef.current = next.preference
-    }
-  }, [])
-
-  const zoomOut = useCallback(() => {
-    const viewer = pdfViewerRef.current
-    if (viewer) {
-      const next = stepPdfScalePreference(viewer.currentScale, 'out', SCALE_BOUNDS)
-      viewer.currentScale = next.scale
-      scalePreferenceRef.current = next.preference
-    }
-  }, [])
-
-  const zoomReset = useCallback(() => {
-    const viewer = pdfViewerRef.current
-    if (viewer) {
-      scalePreferenceRef.current = 'page-width'
-      applyPdfScalePreference(viewer, 'page-width', SCALE_BOUNDS)
-    }
-  }, [])
+  }, [keybindings, zoomIn, zoomOut, zoomReset])
 
   const zoomPercent = Math.round(scale * 100)
 
