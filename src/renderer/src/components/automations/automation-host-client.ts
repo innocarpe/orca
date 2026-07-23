@@ -51,7 +51,12 @@ export function getAutomationHostTargetFromKey(key: string | null): AutomationHo
     return null
   }
   if (key.startsWith('environment:')) {
-    return { kind: 'environment', environmentId: key.slice('environment:'.length) }
+    const environmentId = key.slice('environment:'.length).trim()
+    // Why: bare "environment:" must not override the global list fallback (#10187 review).
+    if (!environmentId) {
+      return null
+    }
+    return { kind: 'environment', environmentId }
   }
   if (key === 'local') {
     return { kind: 'local' }

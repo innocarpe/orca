@@ -96,6 +96,16 @@ describe('automation host client', () => {
     ).toEqual({ kind: 'environment', environmentId: 'server-01' })
   })
 
+  it('rejects empty environment keys so global fallback still applies', () => {
+    expect(
+      resolveAutomationListHostTarget({
+        pendingHostId: null,
+        selectedKey: 'environment:',
+        settings: { activeRuntimeEnvironmentId: 'gpu' }
+      })
+    ).toEqual({ kind: 'environment', environmentId: 'gpu' })
+  })
+
   it('prefers pending navigation host over page selection', () => {
     expect(
       resolveAutomationListHostTarget({
