@@ -94,6 +94,10 @@ import {
   type WindowsGpuFallbackEnvironment
 } from './startup/gpu-fallback-marker'
 import {
+  applyWindowsSoftwareGpuFallback,
+  isSoftwareGpuEnvRequested
+} from './startup/windows-software-gpu'
+import {
   DEFAULT_GPU_CRASH_FALLBACK_THRESHOLD,
   DEFAULT_GPU_CRASH_FALLBACK_WINDOW_MS,
   GpuCrashFallbackTracker,
@@ -1364,20 +1368,24 @@ function getWindowsGpuFallbackEnvironment(): WindowsGpuFallbackEnvironment | nul
   return { ...environment, platform: 'win32' }
 }
 
-// Why: read the GPU-fallback marker before app.whenReady() so app.disableHardwareAcceleration() takes effect. Windows desktop only.
+// Why: software GPU flags must be set before app.whenReady(); marker is sticky for this build, ORCA_SOFTWARE_GPU opts in without a crash burst.
 function maybeApplyGpuFallbackForThisLaunch(): void {
   if (isServeMode || process.platform !== 'win32') {
     return
   }
-  const marker = readActiveGpuFallbackMarker(app.getPath('userData'), getGpuFallbackEnvironment())
-  if (!marker) {
+  const envRequested = isSoftwareGpuEnvRequested()
+  const marker = envRequested
+    ? null
+    : readActiveGpuFallbackMarker(app.getPath('userData'), getGpuFallbackEnvironment())
+  if (!envRequested && !marker) {
     return
   }
-  app.disableHardwareAcceleration()
-  app.commandLine.appendSwitch('disable-gpu')
+  // Why: #10093 — disable-gpu alone still crashes the GPU child on some virtual displays; in-process + SwiftShader is the known recovery path.
+  applyWindowsSoftwareGpuFallback(app)
   gpuFallbackActiveThisLaunch = true
   recordCrashBreadcrumb('gpu_fallback_applied', {
-    crashesInWindow: marker.crashesInWindow
+    crashesInWindow: marker?.crashesInWindow ?? 0,
+    source: envRequested ? 'env' : 'marker'
   })
 }
 
