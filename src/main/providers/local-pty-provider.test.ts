@@ -1504,6 +1504,7 @@ describe('LocalPtyProvider', () => {
       })
 
       const shutdown = provider.shutdown(id, { immediate: true })
+      // Natural exit clears ownership before the delayed sweep finishes.
       exitCb?.({ exitCode: 0 })
       releaseSweep()
       await shutdown

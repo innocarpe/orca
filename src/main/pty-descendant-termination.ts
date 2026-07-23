@@ -235,9 +235,10 @@ type KillSweepDeps = SnapshotDeps &
   }
 
 /**
- * Standard agent-session kill sequencing.
+ * Kill sequencing for local PTYs that may own child process trees.
  * - POSIX: snapshot the descendant tree, signal members, then killRoot.
- * - Windows: taskkill /T /F walks the ConPTY tree only when the identity probe
+ * - Windows: taskkill /T /F walks the ConPTY tree (shell → agent/MCP → npm/dev
+ *   servers) so ports free after stop (#10150), but only when the identity probe
  *   returns `own` (and ownsRoot still holds). `unknown`/`foreign`/`absent` skip
  *   tree kill; killRoot always runs. Detached children may survive probe failure.
  * Callers must not signal the root before this runs on POSIX — a dead root's

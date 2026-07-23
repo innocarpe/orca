@@ -77,9 +77,9 @@ const PANE_IDENTITY_ENV_KEYS = [
 let ptyCounter = 0
 const ptyProcesses = new Map<string, pty.IPty>()
 const ptyIncarnations = new Map<string, string>()
-// Why: only agent sessions get descendant tree-kill (tool children run in detached groups SIGHUP can't reach); plain terminals skip it so nohup-detached children survive.
+// Why: marks agent PTYs for POSIX descendant tree-kill (detached tool children). Windows tree-kills every local PTY via taskkill /T (#10150).
 const ptyAgentSessionIds = new Set<string>()
-// Why: descendant capture is async, so reattach/duplicate shutdown must wait for the original owner, not return a dying PTY.
+// Why: descendant capture / taskkill is async, so reattach/duplicate shutdown must wait for the original owner, not return a dying PTY.
 type PtyShutdownOperation = {
   promise: Promise<void>
   immediate: boolean
@@ -1122,18 +1122,10 @@ export class LocalPtyProvider implements IPtyProvider {
       operation.rootSignalled = true
       this.requestTrackedPtyShutdown(id, proc, operation.immediate)
     }
-    if (ptyAgentSessionIds.has(id)) {
-      // Why: POSIX needs a pre-kill descendant snapshot; Windows tree-kills only when the
-      // identity probe returns `own` so agent/MCP orphans cannot hold the worktree cwd
-      // (#10004). `unknown`/`foreign`/`absent` skip taskkill and rely on root close alone.
-      await killWithDescendantSweep(proc.pid, signalRoot, {
-        ownsRoot: () => ptyProcesses.get(id) === proc
-      })
-    } else if (process.platform === 'win32' && operation.immediate) {
-      // Why: a plain shell's ConPTY teardown doesn't reap orphaned children (useConptyDll
-      // skips the console reap), so a live `pnpm i`/`node` keeps the ConPTY console alive and
-      // holds the worktree cwd. Tree kill runs only when the OS identity probe returns `own`;
-      // otherwise root close alone, and detached children may block physical stop (#10004).
+    // Why: Windows ConPTY shell-only kill leaves npm/node children holding ports (#10150);
+    // agent sessions need tree-kill on POSIX for detached tool children (#10004).
+    // Windows tree-kills only when the identity probe returns `own` (#10004).
+    if (ptyAgentSessionIds.has(id) || (process.platform === 'win32' && operation.immediate)) {
       await killWithDescendantSweep(proc.pid, signalRoot, {
         ownsRoot: () => ptyProcesses.get(id) === proc
       })
