@@ -33,8 +33,19 @@ const BASE_DRAFT: AutomationDraft = {
 }
 
 describe('AutomationSchedulePicker', () => {
-  it('offers custom cron as a selectable cadence', () => {
-    expect(AUTOMATION_SCHEDULE_PRESET_OPTIONS).toContainEqual(['custom', 'Custom cron'])
+  it('offers custom cron as a selectable cadence with an i18n key (#10043)', () => {
+    expect(AUTOMATION_SCHEDULE_PRESET_OPTIONS).toContainEqual([
+      'custom',
+      'Custom cron',
+      'auto.components.automations.AutomationSchedulePicker.ddba78647e'
+    ])
+    for (const [value, fallbackLabel, labelKey] of AUTOMATION_SCHEDULE_PRESET_OPTIONS) {
+      expect(value.length).toBeGreaterThan(0)
+      expect(fallbackLabel.length).toBeGreaterThan(0)
+      expect(labelKey).toMatch(
+        /^auto\.components\.automations\.AutomationSchedulePicker\.[0-9a-f]{10}$/
+      )
+    }
   })
 
   it('seeds custom cron from the current simple schedule', () => {
