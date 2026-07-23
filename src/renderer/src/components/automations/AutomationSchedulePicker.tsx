@@ -24,13 +24,35 @@ import { translate } from '@/i18n/i18n'
 
 const FIELD_CONTROL_CLASS = 'border-input bg-input/30 shadow-xs dark:bg-input/30'
 
+// Why: fallback English is the UI source of truth; i18n keys are
+// sha1(`src/renderer/src/components/automations/AutomationSchedulePicker.tsx:<text>`).slice(0,10).
 export const AUTOMATION_SCHEDULE_PRESET_OPTIONS = [
-  ['hourly', 'Hourly'],
-  ['daily', 'Daily'],
-  ['weekdays', 'Weekdays'],
-  ['weekly', 'Weekly'],
-  ['custom', 'Custom cron']
-] as const satisfies readonly [AutomationSchedulePreset, string][]
+  [
+    'hourly',
+    'Hourly',
+    'auto.components.automations.AutomationSchedulePicker.55b2ef82a4'
+  ],
+  [
+    'daily',
+    'Daily',
+    'auto.components.automations.AutomationSchedulePicker.f0202f3a89'
+  ],
+  [
+    'weekdays',
+    'Weekdays',
+    'auto.components.automations.AutomationSchedulePicker.57e83307d0'
+  ],
+  [
+    'weekly',
+    'Weekly',
+    'auto.components.automations.AutomationSchedulePicker.837d902bba'
+  ],
+  [
+    'custom',
+    'Custom cron',
+    'auto.components.automations.AutomationSchedulePicker.ddba78647e'
+  ]
+] as const satisfies readonly [AutomationSchedulePreset, string, string][]
 
 const DAY_OPTIONS = [
   ['0', 'Sunday'],
@@ -191,9 +213,9 @@ export function AutomationSchedulePicker({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {AUTOMATION_SCHEDULE_PRESET_OPTIONS.map(([value, presetLabel]) => (
+                {AUTOMATION_SCHEDULE_PRESET_OPTIONS.map(([value, fallbackLabel, labelKey]) => (
                   <SelectItem key={value} value={value}>
-                    {presetLabel}
+                    {translate(labelKey, fallbackLabel)}
                   </SelectItem>
                 ))}
               </SelectContent>
