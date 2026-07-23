@@ -345,6 +345,9 @@ const SshPassphraseDialog = lazy(() =>
 const UpdateCard = lazy(() =>
   import('./components/UpdateCard').then((module) => ({ default: module.UpdateCard }))
 )
+const RemoteServerUpdateDialog = lazy(
+  () => import('./components/settings/RemoteServerUpdateDialog')
+)
 const ContextualTourOverlay = lazy(() =>
   import('./components/contextual-tours/ContextualTourOverlay').then((module) => ({
     default: module.ContextualTourOverlay
@@ -456,6 +459,7 @@ function App(): React.JSX.Element {
       setRightSidebarTab: s.setRightSidebarTab,
       showRightSidebarFiles: s.showRightSidebarFiles,
       showRightSidebarSearch: s.showRightSidebarSearch,
+      openDiffNotesSendMenuForActiveWorktree: s.openDiffNotesSendMenuForActiveWorktree,
       setActiveView: s.setActiveView,
       updateSettings: s.updateSettings,
       pruneLastVisitedTimestamps: s.pruneLastVisitedTimestamps,
@@ -1675,6 +1679,15 @@ function App(): React.JSX.Element {
         return
       }
 
+      // Unbound by default; opens the active worktree's Source Control notes send picker. Only consumes the chord when there are unsent notes.
+      if (matchShortcut('sourceControl.sendReviewNotes')) {
+        if (actions.openDiffNotesSendMenuForActiveWorktree()) {
+          input.preventDefault()
+          notifyTerminalCapture('sourceControl.sendReviewNotes')
+          return
+        }
+      }
+
       if (matchShortcut('sidebar.checks.toggle')) {
         input.preventDefault()
         notifyTerminalCapture('sidebar.checks.toggle')
@@ -2535,6 +2548,15 @@ function App(): React.JSX.Element {
             >
               <SkillFreshnessUpdateDialog />
             </RecoverableRenderErrorBoundary>
+            <Suspense fallback={null}>
+              <RecoverableRenderErrorBoundary
+                boundaryId="overlay.remote-server-update-dialog"
+                surface="overlay"
+                compact
+              >
+                <RemoteServerUpdateDialog />
+              </RecoverableRenderErrorBoundary>
+            </Suspense>
           </LinkRoutingPreferenceDialogProvider>
         </ConfirmationDialogProvider>
       </TooltipProvider>

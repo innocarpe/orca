@@ -13,6 +13,7 @@ import {
 } from '../../shared/workspace-scope'
 import { inspectSetupScriptImportCandidates } from '../../shared/setup-script-imports'
 import { getProjectHostSetupWorktreeMeta } from '../../shared/project-host-setup-projection'
+import { projectResolvedWorktreeLineage } from '../../shared/resolved-worktree-lineage'
 import { deleteWorktreeHistoryDir } from '../terminal-history'
 import type {
   AutomationWorkspaceProvenance,
@@ -56,6 +57,7 @@ import { getSshGitProvider, requireSshGitProvider } from '../providers/ssh-git-d
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import {
   createIssueCommandRunnerScript,
+  createSetupRunnerScript,
   getEffectiveHooks,
   getEffectiveHooksFromConfig,
   getSetupRunnerEnvVars,
@@ -738,7 +740,7 @@ function buildDetectedGitWorktrees(
     repo.path,
     ...liveWorktrees.map((worktree) => worktree.path)
   ])
-  return liveWorktrees.map((gitWorktree) => {
+  const detected = liveWorktrees.map((gitWorktree) => {
     const worktreeId = `${repo.id}::${gitWorktree.path}`
     let meta = store.getWorktreeMeta(worktreeId)
     const worktree = mergeWorktree(repo.id, gitWorktree, meta, repo.displayName)
@@ -766,6 +768,7 @@ function buildDetectedGitWorktrees(
       agentScratchWorktreePathMatcher
     })
   })
+  return projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
 }
 
 function stampAndMergeVisibleDetectedWorktree(
@@ -959,7 +962,7 @@ function buildDisconnectedDetectedWorktrees(
     repo.path,
     ...worktrees.map((worktree) => worktree.path)
   ])
-  return worktrees.map((worktree) => {
+  const detected = worktrees.map((worktree) => {
     const meta = store.getWorktreeMeta(worktree.id)
     const detected = toDetectedWorktree({
       repo,
@@ -972,6 +975,7 @@ function buildDisconnectedDetectedWorktrees(
     })
     return applyMetadataFallbackVisibility(detected)
   })
+  return projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
 }
 
 export function registerWorktreeHandlers(
@@ -998,6 +1002,7 @@ export function registerWorktreeHandlers(
   ipcMain.removeHandler('hooks:check')
   ipcMain.removeHandler('hooks:inspectSetupScriptImports')
   ipcMain.removeHandler('hooks:createIssueCommandRunner')
+  ipcMain.removeHandler('hooks:prepareSetupRunner')
   ipcMain.removeHandler('hooks:readIssueCommand')
   ipcMain.removeHandler('hooks:writeIssueCommand')
 
@@ -1149,7 +1154,10 @@ export function registerWorktreeHandlers(
             repoId: repo.id,
             authoritative: true,
             source: 'git',
-            worktrees: buildFolderDetectedWorktrees(store, repo)
+            worktrees: projectResolvedWorktreeLineage(
+              buildFolderDetectedWorktrees(store, repo),
+              store.getAllWorktreeLineage?.() ?? {}
+            )
           }
         } else if (repo.connectionId) {
           const provider = getSshGitProvider(repo.connectionId)
@@ -2145,6 +2153,64 @@ export function registerWorktreeHandlers(
         args.command,
         getLocalProjectWorktreeGitOptions(store, repo)
       )
+    }
+  )
+
+  // Why: worktree create already materializes a setup runner; existing worktrees need
+  // the same launcher for manual re-run (#10015) without re-creating the worktree.
+  ipcMain.handle(
+    'hooks:prepareSetupRunner',
+    (
+      _event,
+      args: { repoId: string; worktreePath: string }
+    ): {
+      status: 'ok' | 'error'
+      setup: ReturnType<typeof createSetupRunnerScript> | null
+      reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
+      message?: string
+    } => {
+      const repo = store.getRepo(args.repoId)
+      if (!repo) {
+        throw new Error(`Repo not found: ${args.repoId}`)
+      }
+      if (isFolderRepo(repo)) {
+        return { status: 'ok', setup: null, reason: 'folder-repo' }
+      }
+
+      let setupScript: string | undefined
+      try {
+        // Prefer the worktree's orca.yaml so branch-specific setup matches create.
+        const hooks = getEffectiveHooks(repo, args.worktreePath)
+        setupScript = hooks?.scripts.setup?.trim()
+      } catch (error) {
+        return {
+          status: 'error',
+          setup: null,
+          reason: 'runner-failed',
+          message: error instanceof Error ? error.message : String(error)
+        }
+      }
+
+      if (!setupScript) {
+        return { status: 'ok', setup: null, reason: 'no-setup-configured' }
+      }
+
+      try {
+        const setup = createSetupRunnerScript(
+          repo,
+          args.worktreePath,
+          setupScript,
+          getLocalProjectWorktreeGitOptions(store, repo)
+        )
+        return { status: 'ok', setup }
+      } catch (error) {
+        return {
+          status: 'error',
+          setup: null,
+          reason: 'runner-failed',
+          message: error instanceof Error ? error.message : String(error)
+        }
+      }
     }
   )
 
