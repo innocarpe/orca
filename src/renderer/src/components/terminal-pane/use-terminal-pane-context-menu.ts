@@ -43,6 +43,13 @@ import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { copyTerminalHandleForPane } from './terminal-handle-copy'
+import {
+  getTerminalContextMenuLinkCopyText,
+  resolveTerminalContextMenuLinkTarget,
+  type TerminalContextMenuLinkTarget
+} from './terminal-context-menu-link-target'
+import { openDetectedFilePath } from './terminal-file-open-routing'
+import { openTerminalHttpLink } from './terminal-url-link-hit-testing'
 
 const CLOSE_ALL_CONTEXT_MENUS_EVENT = 'orca-close-all-context-menus'
 
@@ -84,12 +91,16 @@ type TerminalMenuState = {
   menuOpenedAtRef: React.RefObject<number>
   paneCount: number
   menuPaneId: number | null
+  linkTarget: TerminalContextMenuLinkTarget | null
   onContextMenuCapture: (event: React.MouseEvent<HTMLDivElement>) => void
   onPaneTitleContextMenu: (event: React.MouseEvent<HTMLElement>, paneId: number) => void
   onCopy: () => Promise<void>
   onCopyTerminalId: () => Promise<void>
   onCopyPaneId: () => Promise<void>
   onPaste: () => Promise<void>
+  onOpenLinkTarget: () => void
+  onCopyLinkTarget: () => Promise<void>
+  onRevealLinkTarget: () => void
   onSplitRight: () => void
   onSplitDown: () => void
   onEqualizePaneSizes: () => void
@@ -129,6 +140,7 @@ export function useTerminalPaneContextMenu({
   const menuOpenedAtRef = useRef(0)
   const [open, setOpen] = useState(false)
   const [point, setPoint] = useState({ x: 0, y: 0 })
+  const [linkTarget, setLinkTarget] = useState<TerminalContextMenuLinkTarget | null>(null)
 
   useEffect(() => {
     const closeMenu = (): void => {
@@ -136,6 +148,7 @@ export function useTerminalPaneContextMenu({
         return
       }
       setOpen(false)
+      setLinkTarget(null)
     }
     window.addEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, closeMenu)
     return () => window.removeEventListener(CLOSE_ALL_CONTEXT_MENUS_EVENT, closeMenu)
@@ -486,6 +499,31 @@ export function useTerminalPaneContextMenu({
     }
   }
 
+  const resolveLinkTargetForEvent = (
+    event: React.MouseEvent<HTMLElement>,
+    clickedPane: ManagedPane | null
+  ): TerminalContextMenuLinkTarget | null => {
+    if (!clickedPane) {
+      return null
+    }
+    const state = useAppStore.getState()
+    const worktree = state.getKnownWorktreeById(worktreeId)
+    const worktreePath =
+      worktree && 'path' in worktree && typeof worktree.path === 'string'
+        ? worktree.path
+        : fallbackCwd
+    const startupCwd = paneCwdRef.current.get(clickedPane.id)?.cwd || fallbackCwd || worktreePath
+    if (!startupCwd) {
+      return null
+    }
+    return resolveTerminalContextMenuLinkTarget(clickedPane.terminal, event.nativeEvent, {
+      startupCwd,
+      worktreeId,
+      worktreePath: worktreePath || startupCwd,
+      runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+    })
+  }
+
   const openContextMenu = (
     event: React.MouseEvent<HTMLElement>,
     clickedPaneId: number | null,
@@ -496,6 +534,7 @@ export function useTerminalPaneContextMenu({
     const manager = managerRef.current
     if (!manager) {
       contextPaneIdRef.current = null
+      setLinkTarget(null)
       return
     }
     const clickedPane =
@@ -503,11 +542,15 @@ export function useTerminalPaneContextMenu({
         ? (manager.getPanes().find((pane) => pane.id === clickedPaneId) ?? null)
         : null
     contextPaneIdRef.current = clickedPane?.id ?? null
+    const resolvedLinkTarget = resolveLinkTargetForEvent(event, clickedPane)
 
     // Why: when users opt into terminal-style right-click, a selection copies
     // and no selection pastes. Ctrl+right-click keeps the app menu reachable.
-    if (rightClickToPaste && !event.ctrlKey) {
+    // Why link exception: right-click on a detected URL/path opens the richer
+    // link menu so users do not need ⌘-click (#9279).
+    if (rightClickToPaste && !event.ctrlKey && !resolvedLinkTarget) {
       event.stopPropagation()
+      setLinkTarget(null)
       if (!clickedPane) {
         return
       }
@@ -524,6 +567,7 @@ export function useTerminalPaneContextMenu({
     menuOpenedAtRef.current = Date.now()
     const bounds = boundsElement.getBoundingClientRect()
     setPoint({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+    setLinkTarget(resolvedLinkTarget)
     setOpen(true)
   }
 
@@ -559,19 +603,69 @@ export function useTerminalPaneContextMenu({
   const paneCount = open ? (managerRef.current?.getPanes().length ?? 1) : 1
   const menuPaneId = open ? (resolveMenuPane()?.id ?? null) : null
 
+  const onOpenLinkTarget = useCallback((): void => {
+    if (!linkTarget) {
+      return
+    }
+    if (linkTarget.kind === 'http') {
+      openTerminalHttpLink(linkTarget.url, { worktreeId })
+      return
+    }
+    const state = useAppStore.getState()
+    const worktree = state.getKnownWorktreeById(worktreeId)
+    const worktreePath =
+      worktree && 'path' in worktree && typeof worktree.path === 'string'
+        ? worktree.path
+        : fallbackCwd
+    openDetectedFilePath(linkTarget.absolutePath, linkTarget.line, linkTarget.column, {
+      worktreeId,
+      worktreePath: worktreePath || fallbackCwd,
+      runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+    })
+  }, [fallbackCwd, linkTarget, worktreeId])
+
+  const onCopyLinkTarget = useCallback(async (): Promise<void> => {
+    if (!linkTarget) {
+      return
+    }
+    await window.api.ui.writeClipboardText(getTerminalContextMenuLinkCopyText(linkTarget))
+    resolveMenuPane()?.terminal.focus()
+  }, [linkTarget, resolveMenuPane])
+
+  const onRevealLinkTarget = useCallback((): void => {
+    if (!linkTarget || linkTarget.kind !== 'file') {
+      return
+    }
+    void window.api.shell.openInFileManager(linkTarget.absolutePath)
+  }, [linkTarget])
+
+  const setOpenAndClearLink = useCallback((next: boolean | ((prev: boolean) => boolean)): void => {
+    setOpen((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next
+      if (!resolved) {
+        setLinkTarget(null)
+      }
+      return resolved
+    })
+  }, [])
+
   return {
     open,
-    setOpen,
+    setOpen: setOpenAndClearLink,
     point,
     menuOpenedAtRef,
     paneCount,
     menuPaneId,
+    linkTarget,
     onContextMenuCapture,
     onPaneTitleContextMenu,
     onCopy,
     onCopyTerminalId,
     onCopyPaneId,
     onPaste,
+    onOpenLinkTarget,
+    onCopyLinkTarget,
+    onRevealLinkTarget,
     onSplitRight,
     onSplitDown,
     onEqualizePaneSizes,
