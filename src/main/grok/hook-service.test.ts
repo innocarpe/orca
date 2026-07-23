@@ -15,7 +15,11 @@ vi.mock('os', async () => {
   }
 })
 
-import { getGrokToolEventMatcherForTests, GrokHookService } from './hook-service'
+import {
+  buildWindowsGrokHookScript,
+  getGrokToolEventMatcherForTests,
+  GrokHookService
+} from './hook-service'
 
 const GROK_SCRIPT_FILE_NAME = process.platform === 'win32' ? 'grok-hook.cmd' : 'grok-hook.sh'
 const WINDOWS_POWERSHELL_LAUNCHER =
@@ -32,6 +36,24 @@ describe('GrokHookService', () => {
   afterEach(() => {
     vi.clearAllMocks()
     rmSync(homeDir, { recursive: true, force: true })
+  })
+
+  it('guards Windows GROK_HOME substring checks behind if defined (#9941)', () => {
+    const script = buildWindowsGrokHookScript()
+    // Why: empty GROK_HOME must never reach %VAR:~n,m% expansion at SessionStart.
+    expect(script).toContain('set "ORCA_GROK_HOME="')
+    expect(script).toContain('if defined GROK_HOME (')
+    expect(script).toMatch(
+      /if defined GROK_HOME \([\s\S]*set "ORCA_GROK_HOME=%GROK_HOME%"[\s\S]*\)/
+    )
+    expect(script).toContain('%ORCA_GROK_HOME:~4096,1%')
+    expect(script).toContain(
+      'if defined ORCA_GROK_HOME if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."'
+    )
+    // Substring ops only appear inside the defined block, not as bare top-level lines
+    // of the form: if not "%GROK_HOME:~… without a prior if defined GROK_HOME.
+    expect(script).not.toMatch(/^if not "%GROK_HOME:~/m)
+    expect(script).not.toMatch(/^if "%ORCA_GROK_HOME:~-1%"/m)
   })
 
   it('installs a dedicated global Grok hook config and managed script', () => {
@@ -88,10 +110,11 @@ describe('GrokHookService', () => {
     expect(script).toContain('/hook/grok')
     if (process.platform === 'win32') {
       expect(script).toContain('%SystemRoot%\\System32\\curl.exe')
+      expect(script).toContain('if defined GROK_HOME (')
       expect(script).toContain('set "ORCA_GROK_HOME=%GROK_HOME%"')
-      expect(script).toContain('%GROK_HOME:~4096,1%')
+      expect(script).toContain('%ORCA_GROK_HOME:~4096,1%')
       expect(script).toContain(
-        'if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."'
+        'if defined ORCA_GROK_HOME if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."'
       )
       expect(script).toContain('--data-urlencode "grokHome=%ORCA_GROK_HOME%"')
     } else {
