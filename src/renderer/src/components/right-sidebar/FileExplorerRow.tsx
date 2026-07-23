@@ -4,6 +4,7 @@ import { basename } from '@/lib/path'
 import {
   ChevronRight,
   CircleSlash,
+  Columns2,
   Copy,
   Download,
   ExternalLink,
@@ -79,6 +80,7 @@ export type InlineInput = {
   depth: number
   existingName?: string
   existingPath?: string
+  operationOwner?: TreeNode['operationOwner']
 }
 
 // ─── Inline Input Row ────────────────────────────────────────────
@@ -278,11 +280,13 @@ type FileExplorerRowProps = {
   targetDir: string
   targetDepth: number
   selectionSize: number
+  canCompareSelected: boolean
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
   onDoubleClick: () => void
   onViewFile: () => void
   onContextMenuSelect: () => void
   onCopyPaths: (pathKind: 'absolute' | 'relative') => void
+  onCompareSelected: () => void
   onStartNew: (type: 'file' | 'folder', dir: string, depth: number) => void
   onStartRename: (node: TreeNode) => void
   onDuplicate: (node: TreeNode) => void
@@ -449,11 +453,13 @@ export function FileExplorerRow({
   targetDir,
   targetDepth,
   selectionSize,
+  canCompareSelected,
   onClick,
   onDoubleClick,
   onViewFile,
   onContextMenuSelect,
   onCopyPaths,
+  onCompareSelected,
   onStartNew,
   onStartRename,
   onDuplicate,
@@ -637,7 +643,10 @@ export function FileExplorerRow({
             className={cn(
               'truncate',
               isSelected && !nodeStatus && !isIgnored && 'text-accent-foreground',
-              isIgnored && 'italic'
+              // Why: italic glyphs overhang their advance width; truncate's
+              // overflow:hidden clips it, shaving the last char (".md" → ".ma").
+              // pr-0.5 reserves room for the slant so the final letter survives.
+              isIgnored && 'italic pr-0.5'
             )}
             style={
               nodeStatus
@@ -720,6 +729,15 @@ export function FileExplorerRow({
             <ContextMenuShortcut>{copyRelativePathShortcutLabel}</ContextMenuShortcut>
           ) : null}
         </ContextMenuItem>
+        {canCompareSelected ? (
+          <ContextMenuItem onSelect={onCompareSelected}>
+            <Columns2 />
+            {translate(
+              'auto.components.right.sidebar.FileExplorerRow.compareSelectedFiles',
+              'Compare Selected Files'
+            )}
+          </ContextMenuItem>
+        ) : null}
         {!node.isDirectory && (
           <ContextMenuItem onSelect={() => onDuplicate(node)}>
             <Files />
