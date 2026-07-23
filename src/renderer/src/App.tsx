@@ -89,6 +89,7 @@ import { RecoverableRenderErrorBoundary } from './components/error-boundaries/Re
 import { ConfirmationDialogProvider } from './components/confirmation-dialog'
 import { LinkRoutingPreferenceDialogProvider } from './components/link-routing-preference-dialog'
 import RecentTabSwitcher from './components/tab-bar/RecentTabSwitcher'
+import { requestActiveTabMoveToSplit } from './components/tab-bar/request-active-tab-move-to-split'
 import { useGitStatusPolling } from './components/right-sidebar/useGitStatusPolling'
 import { useEditorExternalWatch } from './hooks/useEditorExternalWatch'
 import { useAutoAckViewedAgent } from './hooks/useAutoAckViewedAgent'
@@ -248,6 +249,8 @@ type ShortcutDispatchInput = {
   ctrlKey?: boolean
   shiftKey?: boolean
   doubleTapModifier?: PhysicalModifierToken
+  /** Why: OS key-repeat must not fire one-shot layout actions (split / notes menu). */
+  isAutoRepeat?: boolean
   target: EventTarget | null
   defaultPrevented: boolean
   preventDefault: () => void
@@ -1730,7 +1733,8 @@ function App(): React.JSX.Element {
         pluginCommands,
         terminalShortcutPolicy,
         setFloatingTerminalOpenWithFocus,
-        creationLayoutActive
+        creationLayoutActive,
+        workspaceChromeActive
       } = globalShortcutStateRef.current
 
       // Child handlers (e.g. terminal search) share this window capture phase and fire first; bail if they already preventDefault'd so both don't act.
@@ -1862,14 +1866,28 @@ function App(): React.JSX.Element {
               translate('auto.App.pluginCommandFailed', 'Could not run the plugin command.')
             )
           })
+           const handlers = createRegisteredCommandHandlers(input, context)
+      for (const actionId of PLUGIN_COMMAND_ALIAS_ACTION_IDS) {
+        if (matchShortcut(actionId) && handlers.get(actionId)?.()) {
           return
         }
       }
 
-      const handlers = createRegisteredCommandHandlers(input, context)
-      for (const actionId of PLUGIN_COMMAND_ALIAS_ACTION_IDS) {
-        if (matchShortcut(actionId) && handlers.get(actionId)?.()) {
-          return
+      // Mod+\ — move active tab to a new split column (editor/browser/terminal). Sole-tab groups leave the chord free.
+      if (
+        workspaceChromeActive &&
+        !floatingWorkspaceFocused &&
+        !input.isAutoRepeat &&
+        matchShortcut('tab.moveToSplitRight')
+      ) {
+        if (requestActiveTabMoveToSplit('right')) {
+          input.preventDefault()
+          notifyTerminalCapture('tab.moveToSplitRight')
+        }
+        return
+      }
+
+     return
         }
       }
 
@@ -1916,6 +1934,7 @@ function App(): React.JSX.Element {
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
         shiftKey: e.shiftKey,
+        isAutoRepeat: e.repeat,
         target: e.target,
         defaultPrevented: e.defaultPrevented,
         preventDefault: () => e.preventDefault()
