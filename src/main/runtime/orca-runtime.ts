@@ -848,6 +848,7 @@ import {
   getTerminalViewColorQueryReplyColors,
   registerTerminalViewAttributesApplier
 } from './terminal-view-attribute-store'
+import { shouldCreateTerminalInBackground } from './terminal-create-background-decision'
 import { killAllProcessesForWorktree, teardownRpcDeadline } from './worktree-teardown'
 import {
   MobileNotificationReplayBuffer,
@@ -21496,14 +21497,13 @@ export class OrcaRuntimeService {
     // requires a resolvable selector, so route the no-selector case through
     // the renderer IPC path to preserve that behavior.
     const rendererWindow = opts.rendererBacked === true ? availableAuthoritativeWindow : null
-    const shouldCreateInBackground =
-      worktreeSelector !== undefined &&
-      (Boolean(opts.agentSessionClaim) ||
-        (!requiresRendererFocus && opts.rendererBacked !== true) ||
-        // Why: `orca serve` exposes the local runtime without a renderer
-        // window. Renderer-backed Codex terminals are preferred for the app,
-        // but headless CLI users still need a usable terminal handle.
-        (opts.rendererBacked === true && rendererWindow === null))
+    const shouldCreateInBackground = shouldCreateTerminalInBackground({
+      worktreeSelector,
+      agentSessionClaim: Boolean(opts.agentSessionClaim),
+      requiresRendererFocus,
+      rendererBacked: opts.rendererBacked === true,
+      hasAuthoritativeWindow: availableAuthoritativeWindow !== null
+    })
 
     if (shouldCreateInBackground) {
       if (!this.ptyController?.spawn) {
