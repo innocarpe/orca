@@ -51,6 +51,7 @@ import { forgetForegroundTerminalTabs } from '@/lib/foreground-terminal-tabs'
 import { forgetAgentStartupDeliveriesForTabs } from '@/lib/agent-startup-delivery-guards'
 import { clearTransientTerminalState, emptyLayoutSnapshot } from './terminal-helpers'
 import { pushClosedTerminalTabSnapshot, pushRecentlyClosedTabKind } from './recently-closed-tabs'
+import { extractClosedTerminalAgentResume } from './closed-terminal-agent-resume'
 import { isClaudeAgent } from '@/lib/agent-status'
 import { classifyTitleActivity } from '@/lib/pane-agent-evidence'
 import { buildOrphanTerminalCleanupPatch, getOrphanTerminalIds } from './terminal-orphan-helpers'
@@ -1234,6 +1235,14 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         }
       }
       // Why: only explicit user closes feed the Cmd+Shift+T reopen stack; cleanup/PTY-exit closes must not pollute undo history.
+      // Capture resumable agent identity before sleeping/status retirement so Cmd+Shift+T can resume (#10377).
+      const agentResume =
+        closedTab &&
+        extractClosedTerminalAgentResume({
+          tabId: closedTab.id,
+          agentStatusByPaneKey: s.agentStatusByPaneKey,
+          sleepingAgentSessionsByPaneKey: s.sleepingAgentSessionsByPaneKey
+        })
       const capturedSnapshot =
         closeReason === 'user' &&
         opts?.captureRecentlyClosed !== false &&
@@ -1243,7 +1252,14 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
               ...(closedTab.startupCwd ? { startupCwd: closedTab.startupCwd } : {}),
               ...(closedTab.shellOverride ? { shellOverride: closedTab.shellOverride } : {}),
               ...(closedTab.customTitle ? { customTitle: closedTab.customTitle } : {}),
-              ...(closedTab.color ? { color: closedTab.color } : {})
+              ...(closedTab.color ? { color: closedTab.color } : {}),
+              ...(agentResume
+                ? {
+                    agent: agentResume.agent,
+                    providerSession: agentResume.providerSession,
+                    ...(agentResume.launchConfig ? { launchConfig: agentResume.launchConfig } : {})
+                  }
+                : {})
             }
           : null
       const nextExpanded = { ...s.expandedPaneByTabId }
