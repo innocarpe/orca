@@ -797,6 +797,7 @@ describe('FileExplorerRow collapse folder action', () => {
   it('passes the row node to the collapse folder handler', () => {
     const onCollapseFolderSubtree = vi.fn()
     const element = FileExplorerVirtualRows({
+      fontSize: 12,
       virtualizer: {
         getTotalSize: () => 26,
         getVirtualItems: () => [{ index: 0, key: 'src', start: 0 }],
@@ -850,6 +851,7 @@ describe('FileExplorerRow collapse folder action', () => {
   it('passes the row node to the find in folder handler', () => {
     const onFindInFolder = vi.fn()
     const element = FileExplorerVirtualRows({
+      fontSize: 12,
       virtualizer: {
         getTotalSize: () => 26,
         getVirtualItems: () => [{ index: 0, key: 'src', start: 0 }],
@@ -902,6 +904,7 @@ describe('FileExplorerRow collapse folder action', () => {
 
   it('passes the active connection id to virtualized rows', () => {
     const element = FileExplorerVirtualRows({
+      fontSize: 12,
       virtualizer: {
         getTotalSize: () => 26,
         getVirtualItems: () => [{ index: 0, key: 'index.ts', start: 0 }],
@@ -955,6 +958,7 @@ describe('FileExplorerRow collapse folder action', () => {
   it('passes the row node to the open in terminal handler', () => {
     const onOpenInTerminal = vi.fn()
     const element = FileExplorerVirtualRows({
+      fontSize: 12,
       virtualizer: {
         getTotalSize: () => 26,
         getVirtualItems: () => [{ index: 0, key: 'src', start: 0 }],
@@ -1008,6 +1012,7 @@ describe('FileExplorerRow collapse folder action', () => {
   it('passes the row node to the view file handler', () => {
     const onViewFile = vi.fn()
     const element = FileExplorerVirtualRows({
+      fontSize: 12,
       virtualizer: {
         getTotalSize: () => 26,
         getVirtualItems: () => [{ index: 0, key: 'src', start: 0 }],
