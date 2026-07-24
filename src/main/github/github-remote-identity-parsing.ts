@@ -2,10 +2,14 @@ import type { GitHubOwnerRepo } from '../../shared/types'
 
 export type GitHubRemoteIdentity = GitHubOwnerRepo & { host: string }
 
-function normalizeGitHubRemoteHost(host: string): string {
+export function normalizeGitHubRemoteHost(host: string): string {
   const normalizedHost = host.toLowerCase()
   // Why: GitHub documents ssh.github.com as SSH-over-HTTPS for github.com repos.
   return normalizedHost === 'ssh.github.com' ? 'github.com' : normalizedHost
+}
+
+export function isGitHubDotComHost(host: string): boolean {
+  return normalizeGitHubRemoteHost(host) === 'github.com'
 }
 
 // Why: HTTP ports identify the GHES web/API endpoint; SSH and git ports are
@@ -49,7 +53,39 @@ export function parseGitHubRemoteIdentity(remoteUrl: string): GitHubRemoteIdenti
 
 export function parseGitHubOwnerRepo(remoteUrl: string): GitHubOwnerRepo | null {
   const identity = parseGitHubRemoteIdentity(remoteUrl)
-  if (!identity || identity.host.toLowerCase() !== 'github.com') {
+  if (!identity || !isGitHubDotComHost(identity.host)) {
+    return null
+  }
+  return { owner: identity.owner, repo: identity.repo }
+}
+
+/** Pure helper: map an SSH config Host alias to HostName when present. */
+export function hostnameFromSshConfigHosts(
+  alias: string,
+  hosts: readonly { host: string; hostname?: string }[]
+): string | null {
+  const entry = hosts.find((host) => host.host === alias)
+  const hostname = entry?.hostname?.trim()
+  return hostname ? hostname : null
+}
+
+/**
+ * When the remote host token is an SSH config Host alias (e.g. github-work →
+ * ssh.github.com), re-check github.com after the alias is expanded.
+ */
+export function parseGitHubOwnerRepoWithResolvedHostname(
+  remoteUrl: string,
+  resolvedHostname: string
+): GitHubOwnerRepo | null {
+  const direct = parseGitHubOwnerRepo(remoteUrl)
+  if (direct) {
+    return direct
+  }
+  const identity = parseGitHubRemoteIdentity(remoteUrl)
+  if (!identity || isGitHubDotComHost(identity.host)) {
+    return null
+  }
+  if (!isGitHubDotComHost(resolvedHostname)) {
     return null
   }
   return { owner: identity.owner, repo: identity.repo }
