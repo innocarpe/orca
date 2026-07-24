@@ -190,4 +190,45 @@ describe('guardRunningTerminalClose', () => {
 
     expect(requestRunningTerminalCloseConfirm).not.toHaveBeenCalled()
   })
+
+  it('still confirms when one PTY probe fails and another has a child process', async () => {
+    const onClose = vi.fn()
+    const requestRunningTerminalCloseConfirm = vi.fn()
+    getStateMock.mockReturnValue(
+      makeState({
+        ptyIdsByTabId: { 'tab-1': ['pty-wedged', 'pty-running'] },
+        requestRunningTerminalCloseConfirm
+      })
+    )
+    inspectRuntimeTerminalProcessMock.mockImplementation(async (_settings, ptyId: string) => {
+      if (ptyId === 'pty-wedged') {
+        throw new Error('wedged')
+      }
+      return { foregroundProcess: 'npm', hasChildProcesses: true }
+    })
+
+    guardRunningTerminalClose({ tabId: 'tab-1', onClose })
+    await vi.waitFor(() => expect(requestRunningTerminalCloseConfirm).toHaveBeenCalledTimes(1))
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(inspectRuntimeTerminalProcessMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes when every multi-PTY probe rejects', async () => {
+    const onClose = vi.fn()
+    const requestRunningTerminalCloseConfirm = vi.fn()
+    getStateMock.mockReturnValue(
+      makeState({
+        ptyIdsByTabId: { 'tab-1': ['pty-a', 'pty-b'] },
+        requestRunningTerminalCloseConfirm
+      })
+    )
+    inspectRuntimeTerminalProcessMock.mockRejectedValue(new Error('wedged'))
+
+    guardRunningTerminalClose({ tabId: 'tab-1', onClose })
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+
+    expect(requestRunningTerminalCloseConfirm).not.toHaveBeenCalled()
+    expect(inspectRuntimeTerminalProcessMock).toHaveBeenCalledTimes(2)
+  })
 })

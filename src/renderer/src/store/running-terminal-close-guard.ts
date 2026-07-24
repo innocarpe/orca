@@ -39,7 +39,9 @@ export function resolveTabCloseDialogCopyKind(
 /**
  * Routes a tab close through the running-process confirmation when any child
  * process is still live. Idle tabs (and the "don't ask again" setting) close
- * immediately. Async inspect failures close rather than strand the tab.
+ * immediately. Per-PTY inspect failures are treated as idle so one wedged
+ * probe cannot suppress confirmation for another still-running process; if
+ * no successful probe reports children, close rather than strand the tab.
  */
 export function guardRunningTerminalClose(params: {
   tabId: string
@@ -60,9 +62,13 @@ export function guardRunningTerminalClose(params: {
   }
 
   const settings = state.settings
-  void Promise.all(ptyIds.map((ptyId) => inspectRuntimeTerminalProcess(settings, ptyId)))
-    .then((inspections) => {
-      if (!inspections.some((process) => process.hasChildProcesses)) {
+  // allSettled: one rejected inspect must not short-circuit siblings via Promise.all.
+  void Promise.allSettled(ptyIds.map((ptyId) => inspectRuntimeTerminalProcess(settings, ptyId)))
+    .then((results) => {
+      const hasRunningChild = results.some(
+        (result) => result.status === 'fulfilled' && result.value.hasChildProcesses
+      )
+      if (!hasRunningChild) {
         onClose()
         return
       }
@@ -77,7 +83,7 @@ export function guardRunningTerminalClose(params: {
         ...(onCancel ? { onCancel } : {})
       })
     })
-    // Why: wedged IPC / legacy providers must not leave Cmd+W / X unresponsive.
+    // Why: unexpected handler errors must not leave Cmd+W / X unresponsive.
     .catch(() => {
       onClose()
     })
