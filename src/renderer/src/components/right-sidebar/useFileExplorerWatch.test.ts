@@ -4,7 +4,8 @@ import {
   canonicalizeFileExplorerWatchPath,
   getFileExplorerWatchRuntimeEnvironmentId,
   getExternalFileChangeRelativePath,
-  payloadRequiresDeferredTreeRefresh
+  payloadRequiresDeferredTreeRefresh,
+  resolveCachedDirPath
 } from './useFileExplorerWatch'
 import type { AppState } from '@/store/types'
 
@@ -101,6 +102,26 @@ describe('canonicalizeFileExplorerWatchPath', () => {
         '//server/share/repository/src/index.ts'
       )
     ).toBeNull()
+  })
+})
+
+describe('resolveCachedDirPath', () => {
+  it('returns the exact cache key when present', () => {
+    const cache = { '/repo/src': { children: [] } }
+    expect(resolveCachedDirPath(cache, '/repo/src')).toBe('/repo/src')
+  })
+
+  it('matches Windows cache keys case-insensitively (#10264)', () => {
+    const cache = { 'C:\\Repo\\src': { children: [] } }
+    expect(resolveCachedDirPath(cache, 'c:\\repo\\src')).toBe('C:\\Repo\\src')
+  })
+
+  it('falls back to the worktree root path when the root is not yet cached', () => {
+    expect(resolveCachedDirPath({}, 'C:\\Repo', 'C:\\Repo')).toBe('C:\\Repo')
+  })
+
+  it('returns null when the directory is not cached and is not the worktree root', () => {
+    expect(resolveCachedDirPath({ '/repo': { children: [] } }, '/repo/src', '/repo')).toBeNull()
   })
 })
 
@@ -201,5 +222,22 @@ describe('getFileExplorerWatchRuntimeEnvironmentId', () => {
         'wt-1'
       )
     ).toBeNull()
+  })
+
+  it('disables a cached watch when its listing owner no longer matches', () => {
+    expect(
+      getFileExplorerWatchRuntimeEnvironmentId(
+        makeState({
+          activeRuntimeEnvironmentId: 'focused-runtime',
+          executionHostId: 'runtime:owner-runtime'
+        }),
+        'wt-1',
+        {
+          kind: 'runtime',
+          environmentId: 'old-owner-runtime',
+          executionHostId: 'runtime:old-owner-runtime'
+        }
+      )
+    ).toBeUndefined()
   })
 })

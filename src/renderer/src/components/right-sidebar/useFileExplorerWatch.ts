@@ -1,23 +1,28 @@
-import { useEffect, useRef } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import type { FsChangedPayload } from '../../../../shared/types'
-import type { DirCache } from './file-explorer-types'
+import type { DirCache, FileExplorerOperationOwner } from './file-explorer-types'
 import type { InlineInput } from './FileExplorerRow'
-import { joinPath, normalizeRelativePath, dirname } from '@/lib/path'
-import {
-  isPathInsideOrEqual,
-  normalizeRuntimePathForComparison,
-  relativePathInsideRoot
-} from '../../../../shared/cross-platform-path'
-import {
-  purgeDirCacheSubtree,
-  purgeExpandedDirsSubtree,
-  clearStalePendingReveal
-} from './file-explorer-watcher-reconcile'
 import { useAppStore } from '@/store'
 import { subscribeRuntimeFileChanges } from '@/runtime/runtime-file-client'
-import type { AppState } from '@/store/types'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import {
+  getFileExplorerOperationOwnerFromState,
+  type FileExplorerOwnerState
+} from './file-explorer-operation-owner'
+import { payloadRequiresDeferredTreeRefresh } from './file-explorer-watch-path'
+import { processFileExplorerFsPayload } from './file-explorer-watch-reconcile'
+
+export {
+  canonicalizeFileExplorerWatchPath,
+  getExternalFileChangeRelativePath,
+  payloadRequiresDeferredTreeRefresh,
+  resolveCachedDirPath
+} from './file-explorer-watch-path'
+
+type FileExplorerWatchOwnerState = Pick<
+  FileExplorerOwnerState,
+  'settings' | 'repos' | 'worktreesByRepo'
+> &
+  Partial<Omit<FileExplorerOwnerState, 'settings' | 'repos' | 'worktreesByRepo'>>
 
 type UseFileExplorerWatchParams = {
   worktreePath: string | null
@@ -31,65 +36,33 @@ type UseFileExplorerWatchParams = {
   inlineInput: InlineInput | null
   dragSourcePath: string | null
   isNativeDragOver: boolean
-}
-
-export function getExternalFileChangeRelativePath(
-  worktreePath: string,
-  absolutePath: string,
-  isDirectory: boolean | undefined
-): string | null {
-  if (isDirectory === true) {
-    return null
-  }
-
-  const relativePath = relativePathInsideRoot(worktreePath, absolutePath)
-  if (relativePath === null || relativePath === '') {
-    return null
-  }
-
-  // Why: EditorPanel reloads tabs only from a worktree-relative path, not the watcher's absolute one; normalize or contents go stale.
-  return normalizeRelativePath(relativePath)
-}
-
-export function canonicalizeFileExplorerWatchPath(
-  worktreePath: string,
-  absolutePath: string
-): string | null {
-  const relativePath = relativePathInsideRoot(worktreePath, absolutePath)
-  if (relativePath === null) {
-    return null
-  }
-
-  const rootPath = normalizeExplorerAbsolutePath(worktreePath)
-  return relativePath === '' ? rootPath : joinPath(rootPath, relativePath)
-}
-
-function normalizeExplorerAbsolutePath(path: string): string {
-  if (path === '/' || /^[A-Za-z]:[\\/]$/.test(path)) {
-    return path
-  }
-  return path.replace(/[\\/]+$/, '')
-}
-
-export function payloadRequiresDeferredTreeRefresh(
-  payload: FsChangedPayload,
-  currentWorktreePath: string
-): boolean {
-  if (
-    normalizeRuntimePathForComparison(payload.worktreePath) !==
-    normalizeRuntimePathForComparison(currentWorktreePath)
-  ) {
-    return false
-  }
-
-  return payload.events.some((evt) => evt.kind === 'rename')
+  operationOwner?: FileExplorerOperationOwner
 }
 
 export function getFileExplorerWatchRuntimeEnvironmentId(
-  state: Pick<AppState, 'repos' | 'settings' | 'worktreesByRepo'>,
-  activeWorktreeId: string | null
-): string | null {
-  return getRuntimeEnvironmentIdForWorktree(state, activeWorktreeId)
+  state: FileExplorerWatchOwnerState,
+  activeWorktreeId: string | null,
+  expectedOwner?: FileExplorerOperationOwner
+): string | null | undefined {
+  const ownerState: FileExplorerOwnerState = {
+    settings: state.settings,
+    repos: state.repos,
+    worktreesByRepo: state.worktreesByRepo,
+    detectedWorktreesByRepo: state.detectedWorktreesByRepo ?? {},
+    folderWorkspaces: state.folderWorkspaces ?? [],
+    projectGroups: state.projectGroups ?? [],
+    restoredRuntimeHostIdByWorkspaceSessionKey:
+      state.restoredRuntimeHostIdByWorkspaceSessionKey ?? {}
+  }
+  const owner = getFileExplorerOperationOwnerFromState(ownerState, activeWorktreeId)
+  if (expectedOwner && JSON.stringify(owner) !== JSON.stringify(expectedOwner)) {
+    return undefined
+  }
+  return owner.kind === 'runtime'
+    ? owner.environmentId
+    : owner.kind === 'unresolved'
+      ? undefined
+      : null
 }
 
 /**
@@ -108,11 +81,12 @@ export function useFileExplorerWatch({
   refreshTree,
   inlineInput,
   dragSourcePath,
-  isNativeDragOver
+  isNativeDragOver,
+  operationOwner
 }: UseFileExplorerWatchParams): void {
   // Why: subscriptions follow the selected worktree; host focus is only a legacy default, not an ownership signal.
   const activeRuntimeEnvironmentId = useAppStore((s) =>
-    getFileExplorerWatchRuntimeEnvironmentId(s, activeWorktreeId)
+    getFileExplorerWatchRuntimeEnvironmentId(s, activeWorktreeId, operationOwner)
   )
 
   // Keep refs for handler-accessed values so the IPC listener isn't re-subscribed on every render.
@@ -149,111 +123,32 @@ export function useFileExplorerWatch({
 
   // Why: one atomic effect avoids a cleanup-ordering race that drops events on rapid worktree switches (review issue §3).
   useEffect(() => {
-    if (!worktreePath) {
+    if (!worktreePath || activeRuntimeEnvironmentId === undefined) {
       return
     }
 
     const currentWorktreePath = worktreePath
 
     function processPayload(payload: FsChangedPayload): void {
-      // Why: stale batched events from the old worktree can arrive after a switch and corrupt dirCache (design §3).
-      if (
-        normalizeRuntimePathForComparison(payload.worktreePath) !==
-        normalizeRuntimePathForComparison(currentWorktreePath)
-      ) {
-        return
-      }
-
       const wtId = worktreeIdRef.current
       if (!wtId) {
         return
       }
-
-      const cache = dirCacheRef.current
-      const exp = expandedRef.current
-
-      // Collect directories that need refreshing
-      const dirsToRefresh = new Set<string>()
-      let needsFullRefresh = false
-
-      for (const evt of payload.events) {
-        if (evt.kind === 'overflow') {
-          needsFullRefresh = true
-          break
-        }
-
-        const normalizedPath = canonicalizeFileExplorerWatchPath(
-          currentWorktreePath,
-          evt.absolutePath
-        )
-        if (!normalizedPath) {
-          continue
-        }
-
-        if (evt.kind === 'delete') {
-          // Why: watcher can't report isDirectory for deletes; a dirCache key means it was an expanded dir (design §4.4).
-          const wasDirectory = normalizedPath in cache
-
-          if (wasDirectory) {
-            purgeDirCacheSubtree(setDirCache, normalizedPath)
-            purgeExpandedDirsSubtree(wtId, normalizedPath)
-          }
-
-          // Clear pendingExplorerReveal if it targets the deleted path or a descendant.
-          clearStalePendingReveal(normalizedPath)
-
-          // Clear selectedPath if it points into the deleted subtree
-          setSelectedPath((prev) => {
-            if (
-              prev &&
-              normalizeRuntimePathForComparison(prev) ===
-                normalizeRuntimePathForComparison(normalizedPath)
-            ) {
-              return null
-            }
-            if (prev && wasDirectory && isPathInsideOrEqual(normalizedPath, prev)) {
-              return null
-            }
-            return prev
-          })
-
-          // Invalidate the parent directory
-          const parent = normalizeExplorerAbsolutePath(dirname(normalizedPath))
-          if (parent in cache) {
-            dirsToRefresh.add(parent)
-          }
-        } else if (evt.kind === 'create') {
-          // Invalidate the parent directory
-          const parent = normalizeExplorerAbsolutePath(dirname(normalizedPath))
-          if (parent in cache) {
-            dirsToRefresh.add(parent)
-          }
-        } else if (evt.kind === 'update') {
-          // Why: only directory updates invalidate; file-content updates are ignored in v1 (design §6.1).
-          if (evt.isDirectory === true) {
-            if (normalizedPath in cache) {
-              dirsToRefresh.add(normalizedPath)
-            }
-          }
-        }
-        // 'rename' is deferred to v2 (design §5.3)
-      }
-
-      if (needsFullRefresh) {
-        void refreshTreeRef.current()
-        return
-      }
-
-      // Only refresh dirs already loaded and reachable (root, expanded, or cached).
-      for (const dirPath of dirsToRefresh) {
-        if (
-          dirPath === normalizeExplorerAbsolutePath(currentWorktreePath) ||
-          exp.has(dirPath) ||
-          dirPath in dirCacheRef.current
-        ) {
+      processFileExplorerFsPayload({
+        payload,
+        currentWorktreePath,
+        worktreeId: wtId,
+        cache: dirCacheRef.current,
+        expanded: expandedRef.current,
+        setDirCache,
+        setSelectedPath,
+        refreshDir: (dirPath) => {
           void refreshDirRef.current(dirPath)
+        },
+        refreshTree: () => {
+          void refreshTreeRef.current()
         }
-      }
+      })
     }
 
     // Why: expose processPayload to the flush effect so it can replay deferred payloads without re-subscribing.
