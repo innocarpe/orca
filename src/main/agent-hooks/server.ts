@@ -116,6 +116,8 @@ type PersistedAgentHookAuthorityCommitment = {
 }
 
 export type AgentHookStatusChangeEntry = {
+  /** Stable pane identity for per-agent consumers (stats, awake). */
+  paneKey: string
   state: AgentStatusState
   receivedAt: number
   observedInCurrentRuntime: boolean
