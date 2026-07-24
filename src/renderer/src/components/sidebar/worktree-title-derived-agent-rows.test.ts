@@ -271,4 +271,38 @@ describe('buildTitleDerivedAgentRows', () => {
 
     expect(rows).toHaveLength(0)
   })
+
+  it('shows a Cursor row for the native "cursor agent" title (#10258)', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'cursor', title: 'cursor agent' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'cursor agent' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-cursor'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state, row.entry.lastAssistantMessage])).toEqual([
+      ['cursor', 'idle', 'Idle']
+    ])
+  })
+
+  it('shows a Cursor row for synthetic hook titles without a live hook entry', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'cursor' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'cursor ready' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-cursor'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state])).toEqual([['cursor', 'idle']])
+  })
 })

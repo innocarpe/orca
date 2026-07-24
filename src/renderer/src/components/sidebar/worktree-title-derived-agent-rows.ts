@@ -1,6 +1,6 @@
 import type { DashboardAgentRow } from '@/components/dashboard/useDashboardData'
 import { formatAgentTypeLabel, isClaudeManagementTitle } from '@/lib/agent-status'
-import { containsBrailleSpinner } from '../../../../shared/agent-title-core'
+import { containsBrailleSpinner, isCursorAgentTitle } from '../../../../shared/agent-title-core'
 import { classifyTitleActivity, resolveTitleActivityLabel } from '@/lib/pane-agent-evidence'
 import { tabHasLivePty } from '@/lib/tab-has-live-pty'
 import type {
@@ -133,8 +133,14 @@ function buildTitleDerivedAgentRow(args: {
   // Why: `claude agents` is a live Claude Code Agent Teams surface, but the
   // shared detector keeps it neutral so runtime liveness probes do not treat
   // the management/list screen as active work.
-  const status = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
-  const label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
+  const titleStatus = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
+  const titleLabel = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
+  // Why: Cursor's native title ("cursor agent") intentionally returns null from
+  // detectAgentStatusFromTitle so re-emissions don't stomp hook-synthesized
+  // state. Identity still resolves via getAgentLabel → "Cursor", so treat that
+  // as idle and keep the sidebar row (#10258).
+  const status = titleStatus ?? (isCursorAgentTitle(title) ? ('idle' as const) : null)
+  const label = titleLabel
   if (!status || !label) {
     return null
   }
