@@ -56,3 +56,16 @@ export function isFloatingWorkspacePanelShortcut(
     keybindingMatchesAction(actionId, event, platform, keybindings, options)
   )
 }
+
+/** When true, Cmd/Ctrl+W must reach the pane handler instead of closing the whole floating tab. */
+export function shouldDeferFloatingWorkspaceTabCloseToPane(options: {
+  contentType: string | null | undefined
+  isFloatingTerminalInput: boolean
+  layoutRootType: string | null | undefined
+}): boolean {
+  return (
+    options.contentType === 'terminal' &&
+    options.isFloatingTerminalInput &&
+    options.layoutRootType === 'split'
+  )
+}

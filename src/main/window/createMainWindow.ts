@@ -48,9 +48,11 @@ import { resolveWindowCloseAction } from './window-close-decision'
 import { rectHasVisibleAreaOnAnyDisplay } from './window-bounds-validation'
 import { closeDashboardPopout } from './dashboard-popout-window'
 import { installPrivilegedWindowNavigationPolicy } from './privileged-window-navigation'
+import { isMacosTahoeOrNewer } from './macos-tahoe-release'
 
 // Why: show/restore/resume can overlap before the size nudge resets; never capture the temporary width as the next baseline.
 const activeRepaintJiggles = new WeakSet<BrowserWindow>()
+export const WINDOW_QUIT_RENDERER_ACK_TIMEOUT_MS = 10_000
 
 function forceRepaint(window: BrowserWindow): void {
   // Why: webContents can be destroyed a beat before the BrowserWindow during close, and this runs from timers/focus events in that gap.
@@ -61,15 +63,30 @@ function forceRepaint(window: BrowserWindow): void {
   if (window.isMaximized() || window.isFullScreen() || activeRepaintJiggles.has(window)) {
     return
   }
+  // Why: macOS 26 scene-backed windows can deadlock the main thread on re-entrant frame updates; invalidate alone recovers the compositor there.
+  if (isMacosTahoeOrNewer()) {
+    return
+  }
   activeRepaintJiggles.add(window)
-  const [width, height] = window.getSize()
-  window.setSize(width + 1, height)
+  // Why: show/restore fire from inside AppKit's window-state dispatch; mutating the frame there re-enters scene handling, so nudge on a fresh turn.
   setTimeout(() => {
-    if (!window.isDestroyed()) {
-      window.setSize(width, height)
+    if (window.isDestroyed()) {
+      activeRepaintJiggles.delete(window)
+      return
     }
-    activeRepaintJiggles.delete(window)
-  }, 32)
+    const [width, height] = window.getSize()
+    window.setSize(width + 1, height)
+    setTimeout(() => {
+      if (!window.isDestroyed()) {
+        const [currentWidth, currentHeight] = window.getSize()
+        // Why: a real user resize during the jiggle owns the final bounds.
+        if (currentWidth === width + 1 && currentHeight === height) {
+          window.setSize(width, height)
+        }
+      }
+      activeRepaintJiggles.delete(window)
+    }, 32)
+  }, 0)
 }
 
 function installMacosVisibilityRepaint(window: BrowserWindow): void {
@@ -92,15 +109,33 @@ function installMacosVisibilityRepaint(window: BrowserWindow): void {
     }
   }
 
+  // Why (STA-2383): occlusion-uncover fires no restore/show, so the renderer relays its genuine
+  // hidden→visible reveal instead. Unlike a bare focus (every Cmd+Tab, window never hidden), this
+  // only fires when the window was actually occluded/throttled — exactly when the stale dvh layout
+  // stranded the bottom status bar off-screen — so the full repaint's size jiggle is warranted.
+  const onRendererRevealed = (event: Electron.IpcMainEvent): void => {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) {
+      return
+    }
+    if (event.sender !== window.webContents) {
+      return
+    }
+    forceRepaint(window)
+  }
+  ipcMain.on('ui:window-revealed', onRendererRevealed)
+
   window.on('restore', repaintAfterVisibilityTransition)
   window.on('show', repaintAfterVisibilityTransition)
-  // Why: occlusion-uncover fires no restore/show, only focus; invalidate only — the setSize jiggle would SIGWINCH every terminal on Cmd+Tab.
+  // Why: occlusion-uncover fires no restore/show, only focus; invalidate only — the setSize jiggle would SIGWINCH every terminal on Cmd+Tab. The renderer-reveal relay above covers the stale-layout recovery that invalidate alone misses.
   window.on('focus', () => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
       window.webContents.invalidate()
     }
   })
-  window.on('closed', clearDelayedRepaint)
+  window.on('closed', () => {
+    clearDelayedRepaint()
+    ipcMain.removeListener('ui:window-revealed', onRendererRevealed)
+  })
 }
 
 function isMacAppPasteInput(input: Electron.Input): boolean {
@@ -433,6 +468,8 @@ export function createMainWindow(
   let markdownEditorFocused = false
   let terminalInputFocused = false
   let floatingTerminalInputFocused = false
+  // Why: panel chrome (tab bar) can hold focus without xterm; digit shortcuts still need to skip main interception.
+  let floatingPanelFocused = false
   let shortcutRecorderFocused = false
 
   const markdownFocusChannel = 'ui:setMarkdownEditorFocused'
@@ -462,6 +499,14 @@ export function createMainWindow(
     floatingTerminalInputFocused = focused === true
   }
   ipcMain.on(floatingTerminalInputFocusChannel, onFloatingTerminalInputFocused)
+  const floatingPanelFocusChannel = 'ui:setFloatingPanelFocused'
+  const onFloatingPanelFocused = (event: Electron.IpcMainEvent, focused: unknown): void => {
+    if (event.sender !== mainWindow.webContents) {
+      return
+    }
+    floatingPanelFocused = focused === true
+  }
+  ipcMain.on(floatingPanelFocusChannel, onFloatingPanelFocused)
   const shortcutRecorderFocusChannel = 'ui:setShortcutRecorderFocused'
   // Why: the Settings recorder must receive app shortcuts to rebind them; before-input-event would otherwise consume the key first.
   const onShortcutRecorderFocused = (event: Electron.IpcMainEvent, focused: unknown): void => {
@@ -491,6 +536,9 @@ export function createMainWindow(
   }
   const resetFloatingTerminalInputFocus = (): void => {
     floatingTerminalInputFocused = false
+  }
+  const resetFloatingPanelFocus = (): void => {
+    floatingPanelFocused = false
   }
   const resetShortcutRecorderFocus = (): void => {
     shortcutRecorderFocused = false
@@ -551,6 +599,7 @@ export function createMainWindow(
     resetMarkdownEditorFocus()
     resetTerminalInputFocus()
     resetFloatingTerminalInputFocus()
+    resetFloatingPanelFocus()
     resetShortcutRecorderFocus()
     // Why: macOS reports BrowserWindow teardown as renderer killed/SIGKILL after close — window noise, not a crash.
     if (!windowClosing) {
@@ -566,6 +615,7 @@ export function createMainWindow(
     resetMarkdownEditorFocus()
     resetTerminalInputFocus()
     resetFloatingTerminalInputFocus()
+    resetFloatingPanelFocus()
     resetShortcutRecorderFocus()
   })
   mainWindow.webContents.on('did-start-navigation', (_e, _url, _isInPlace, isMainFrame) => {
@@ -573,6 +623,7 @@ export function createMainWindow(
       resetMarkdownEditorFocus()
       resetTerminalInputFocus()
       resetFloatingTerminalInputFocus()
+      resetFloatingPanelFocus()
       resetShortcutRecorderFocus()
     }
   })
@@ -656,6 +707,13 @@ export function createMainWindow(
     if (
       floatingTerminalInputFocused &&
       (action.type === 'toggleLeftSidebar' || action.type === 'toggleRightSidebar')
+    ) {
+      return false
+    }
+    // Why: leave digit jumps for the floating panel's capture handler; main IPC would switch the workspace behind it.
+    if (
+      (floatingTerminalInputFocused || floatingPanelFocused) &&
+      (action.type === 'jumpToWorktreeIndex' || action.type === 'jumpToTabIndex')
     ) {
       return false
     }
@@ -849,6 +907,41 @@ export function createMainWindow(
   // Intercept close so the renderer can confirm killing running-process terminals (replies window:confirm-close to proceed).
   let windowCloseConfirmed = false
   const confirmCloseChannel = 'window:confirm-close'
+  const closeRequestReceivedChannel = 'window:close-request-received'
+  let closeRequestSequence = 0
+  let quitRendererAckRequestId: number | null = null
+  let quitRendererAckTimer: ReturnType<typeof setTimeout> | null = null
+  const clearQuitRendererAckTimer = (): void => {
+    quitRendererAckRequestId = null
+    if (quitRendererAckTimer) {
+      clearTimeout(quitRendererAckTimer)
+      quitRendererAckTimer = null
+    }
+  }
+  const armQuitRendererAckTimer = (requestId: number): void => {
+    quitRendererAckRequestId = requestId
+    if (quitRendererAckTimer) {
+      return
+    }
+    // Why: will-quit cannot run until the renderer-backed window closes; an
+    // already-frozen renderer otherwise makes Force Quit the only escape.
+    quitRendererAckTimer = setTimeout(() => {
+      quitRendererAckTimer = null
+      quitRendererAckRequestId = null
+      if (mainWindow.isDestroyed()) {
+        return
+      }
+      console.warn('[window] Renderer did not acknowledge quit; destroying unresponsive window')
+      freezeBoundsOnQuit()
+      mainWindow.destroy()
+    }, WINDOW_QUIT_RENDERER_ACK_TIMEOUT_MS)
+    quitRendererAckTimer.unref?.()
+  }
+  const onCloseRequestReceived = (event: Electron.IpcMainEvent, requestId: number): void => {
+    if (event.sender.id === rendererWebContentsId && requestId === quitRendererAckRequestId) {
+      clearQuitRendererAckTimer()
+    }
+  }
 
   // Windows minimize-to-tray: hide instead of close when enabled; returns true when it hid so callers skip their close path.
   const hideToTrayIfEnabled = (): boolean => {
@@ -909,19 +1002,27 @@ export function createMainWindow(
       return
     }
     e.preventDefault()
+    const isQuitting = opts?.getIsQuitting?.() ?? false
+    const requestId = ++closeRequestSequence
+    if (isQuitting) {
+      armQuitRendererAckTimer(requestId)
+    }
     // Why: renderer owns the close decision; the always-mounted App root subscription lets even pre-workspace states reply (#5144).
     mainWindow.webContents.send('window:close-requested', {
-      isQuitting: opts?.getIsQuitting?.() ?? false
+      isQuitting,
+      requestId
     })
   })
   mainWindow.webContents.on('will-prevent-unload', () => {
     // Why: a prevented beforeunload cancels the quit; release the bounds-persistence freeze so later resizing still saves.
     windowClosing = false
+    clearQuitRendererAckTimer()
     opts?.onQuitAborted?.()
     mainWindow.webContents.send('window:unload-prevented')
   })
 
   const onConfirmClose = (): void => {
+    clearQuitRendererAckTimer()
     windowCloseConfirmed = true
     if (!mainWindow.isDestroyed()) {
       mainWindow.close()
@@ -980,16 +1081,19 @@ export function createMainWindow(
   ipcMain.handle(isMaximizedChannel, onIsMaximized)
 
   ipcMain.on(confirmCloseChannel, onConfirmClose)
+  ipcMain.on(closeRequestReceivedChannel, onCloseRequestReceived)
   mainWindow.on('closed', () => {
     // Why: the dashboard pop-out is a companion of the main window — close it
     // alongside so it never orphans as a lone window after the app window is
     // gone (e.g. on macOS where the app stays alive after the window closes).
     closeDashboardPopout()
     clearInitialRevealFallbackTimer()
+    clearQuitRendererAckTimer()
     // Why: default-deny the Cmd+B carve-out after the window is gone so a stale-true flag can't leak into later state.
     markdownEditorFocused = false
     terminalInputFocused = false
     floatingTerminalInputFocused = false
+    floatingPanelFocused = false
     shortcutRecorderFocused = false
     clearRendererRecoveryTimer()
     ipcMain.removeListener(trafficLightChannel, onSyncTrafficLights)
@@ -1000,9 +1104,11 @@ export function createMainWindow(
     ipcMain.removeListener(popupMenuChannel, onPopupMenu)
     ipcMain.removeHandler(isMaximizedChannel)
     ipcMain.removeListener(confirmCloseChannel, onConfirmClose)
+    ipcMain.removeListener(closeRequestReceivedChannel, onCloseRequestReceived)
     ipcMain.removeListener(markdownFocusChannel, onMarkdownEditorFocused)
     ipcMain.removeListener(terminalInputFocusChannel, onTerminalInputFocused)
     ipcMain.removeListener(floatingTerminalInputFocusChannel, onFloatingTerminalInputFocused)
+    ipcMain.removeListener(floatingPanelFocusChannel, onFloatingPanelFocused)
     ipcMain.removeListener(shortcutRecorderFocusChannel, onShortcutRecorderFocused)
     // Why: powerMonitor is app-global; without this the resume relay leaks and fires against a destroyed webContents.
     powerMonitor.removeListener('resume', onSystemResume)

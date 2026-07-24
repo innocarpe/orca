@@ -18,7 +18,8 @@ export {
 } from './floating-workspace-tab-creation'
 export {
   isFloatingWorkspacePanelShortcut,
-  isFloatingWorkspacePanelShortcutTarget
+  isFloatingWorkspacePanelShortcutTarget,
+  shouldDeferFloatingWorkspaceTabCloseToPane
 } from './floating-workspace-shortcut-policy'
 
 type FloatingWorkspaceTabSwitchMode = 'same-type' | 'all-types' | 'terminal'

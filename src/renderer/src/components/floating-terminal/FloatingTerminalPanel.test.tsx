@@ -114,6 +114,7 @@ const mocks = vi.hoisted(() => ({
   pickFloatingMarkdownDocument: vi.fn(),
   pinFile: vi.fn(),
   setFloatingTerminalInputFocused: vi.fn(),
+  setFloatingPanelFocused: vi.fn(),
   setActiveTab: vi.fn(),
   setRenamingTabId: vi.fn(),
   setTabColor: vi.fn(),
@@ -769,7 +770,10 @@ describe('FloatingTerminalPanel close behavior', () => {
         },
         browser: { notifyActiveTabChanged: vi.fn() },
         cli: { getInstallStatus: mocks.getInstallStatus },
-        ui: { setFloatingTerminalInputFocused: mocks.setFloatingTerminalInputFocused }
+        ui: {
+          setFloatingTerminalInputFocused: mocks.setFloatingTerminalInputFocused,
+          setFloatingPanelFocused: mocks.setFloatingPanelFocused
+        }
       },
       innerHeight: 800,
       innerWidth: 1200,
