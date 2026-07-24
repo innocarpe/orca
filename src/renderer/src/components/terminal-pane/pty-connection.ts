@@ -7341,6 +7341,14 @@ export function connectPanePty(
           writeReplayData('\x1b[2J\x1b[3J\x1b[H')
           // Why: re-arm the kitty keyboard mirror from the snapshot preamble so Option chords keep their encoding after a window reload.
           kittyKeyboardModes.scanReplay(connectResult.snapshot)
+          // Why: stackless replay can zero nested push/pop windows while the live
+          // TUI still has protocol flags; seed from the daemon emulator (#10381).
+          if (
+            typeof connectResult.snapshotKittyKeyboardFlags === 'number' &&
+            connectResult.snapshotKittyKeyboardFlags > 0
+          ) {
+            kittyKeyboardModes.applyAuthoritativeFlags(connectResult.snapshotKittyKeyboardFlags)
+          }
           writeReplayData(connectResult.snapshot)
           // Snapshot reattach keeps a live session, so drop only renderer-owned state instead of the broader mode reset.
           writeReplayData(reattachReplayResetSequence(connectResult.snapshot))
@@ -7361,6 +7369,12 @@ export function connectPanePty(
           writeReplayData('\x1b[2J\x1b[3J\x1b[H')
           // Why: raw relay replay may contain the app's own kitty pushes; re-arm with set semantics so redelivery can't grow the stack.
           kittyKeyboardModes.scanReplay(connectResult.replay)
+          if (
+            typeof connectResult.snapshotKittyKeyboardFlags === 'number' &&
+            connectResult.snapshotKittyKeyboardFlags > 0
+          ) {
+            kittyKeyboardModes.applyAuthoritativeFlags(connectResult.snapshotKittyKeyboardFlags)
+          }
           writeReplayData(connectResult.replay)
           writeReplayData(reattachReplayResetSequence(connectResult.replay))
           sendFocusedReattachFocusInAfterReplay(ptyId, attemptGeneration)
