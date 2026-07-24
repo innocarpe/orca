@@ -63,6 +63,11 @@ export function buildTitleDerivedAgentRows(args: {
       continue
     }
     const layout = terminalLayoutsByTabId[tab.id]
+    const layoutLeafIds = collectLeafIds(layout?.root ?? null)
+    // Why: launchAgent is tab-scoped. Idle fallback may only bind to the sole
+    // launch-owning leaf — multi-leaf tabs must not mint Idle rows for every
+    // neutral sibling shell (#10130 / CodeRabbit on #10178).
+    const launchAgentOwnerLeafId = layoutLeafIds.length === 1 ? layoutLeafIds[0] : null
     const paneTitles = runtimePaneTitlesByTabId[tab.id]
     const paneTitleEntries =
       paneTitles && Object.keys(paneTitles).length > 0
@@ -85,6 +90,7 @@ export function buildTitleDerivedAgentRows(args: {
           leafId,
           title,
           now: args.now,
+          allowLaunchAgentIdleFallback: launchAgentOwnerLeafId === leafId,
           runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey
         })
         if (!row || args.seenPaneKeys.has(row.paneKey)) {
@@ -96,15 +102,21 @@ export function buildTitleDerivedAgentRows(args: {
       continue
     }
 
-    const leafId = layout?.activeLeafId ?? collectLeafIds(layout?.root ?? null)[0]
+    const leafId = layout?.activeLeafId ?? layoutLeafIds[0]
     if (!leafId) {
       continue
     }
+    // Why: tab-title path emits at most one row; allow when that leaf is the
+    // sole owner, or topology is unknown (no layout leaves) so single-pane
+    // SSH idle still surfaces without a hydrated layout snapshot.
+    const allowLaunchAgentIdleFallback =
+      launchAgentOwnerLeafId === leafId || layoutLeafIds.length === 0
     const row = buildTitleDerivedAgentRow({
       tab,
       leafId,
       title: tab.title,
       now: args.now,
+      allowLaunchAgentIdleFallback,
       runtimeAgentOrchestrationByPaneKey: args.runtimeAgentOrchestrationByPaneKey
     })
     if (!row || args.seenPaneKeys.has(row.paneKey)) {
@@ -126,6 +138,8 @@ function buildTitleDerivedAgentRow(args: {
   leafId: string
   title: string
   now: number
+  /** Why: idle launchAgent fallback is only safe for the launch-owning leaf. */
+  allowLaunchAgentIdleFallback?: boolean
   runtimeAgentOrchestrationByPaneKey?: Record<string, AgentStatusOrchestrationContext>
 }): DashboardAgentRow | null {
   const title = normalizeCompatibleAgentTitleForOwner(args.title, args.tab.launchAgent)
@@ -135,51 +149,90 @@ function buildTitleDerivedAgentRow(args: {
   // the management/list screen as active work.
   const status = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
   const label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
-  if (!status || !label) {
-    return null
-  }
   if (!isTerminalLeafId(args.leafId)) {
     return null
   }
   const paneKey = makePaneKey(args.tab.id, args.leafId)
   const orchestration = args.runtimeAgentOrchestrationByPaneKey?.[paneKey]
-  const titleAgentType = isClaudeAgentsTitle ? 'claude' : resolveTitleDerivedAgentType(title, label)
-  // Why: a braille spinner proves activity, not identity, so the resolver drops
-  // it. Hook-less agents over SSH (Codex, #8711) surface only spinner+cwd titles;
-  // fall back to the tab's launch identity instead of hiding the pane. Gated on
-  // the spinner on purpose — unlike the hook path's unconditional launchAgent
-  // fallback (resolveRowAgentType), this path manufactures agent-ness from a
-  // title alone, so a non-agent title must never become a row. Residual: a split
-  // pane whose own title carries a braille glyph is still attributed to launchAgent.
-  const agentType =
-    titleAgentType ?? (containsBrailleSpinner(title) ? (args.tab.launchAgent ?? null) : null)
-  if (!agentType) {
+  const launchAgent = args.tab.launchAgent ?? null
+
+  if (status && label) {
+    const titleAgentType = isClaudeAgentsTitle
+      ? 'claude'
+      : resolveTitleDerivedAgentType(title, label)
+    // Why: a braille spinner proves activity, not identity, so the resolver drops
+    // it. Hook-less agents over SSH (Codex, #8711) surface only spinner+cwd titles;
+    // fall back to the tab's launch identity instead of hiding the pane. Gated on
+    // the spinner on purpose — unlike the hook path's unconditional launchAgent
+    // fallback (resolveRowAgentType), this path manufactures agent-ness from a
+    // title alone, so a non-agent title must never become a row. Residual: a split
+    // pane whose own title carries a braille glyph is still attributed to launchAgent.
+    const agentType = titleAgentType ?? (containsBrailleSpinner(title) ? launchAgent : null)
+    if (!agentType) {
+      return null
+    }
+    const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
+    const rowState = titleStatusToRowState(status)
+    const secondary =
+      status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
+    const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+    const entry: AgentStatusEntry = {
+      paneKey,
+      state: entryState,
+      prompt: rowLabel,
+      updatedAt: args.now,
+      stateStartedAt: args.now,
+      stateHistory: [],
+      agentType,
+      terminalTitle: title,
+      lastAssistantMessage: secondary,
+      ...(orchestration ? { orchestration } : {})
+    }
+    return {
+      paneKey,
+      entry,
+      tab: args.tab,
+      agentType,
+      rowSource: 'live',
+      state: rowState,
+      startedAt: 0
+    }
+  }
+
+  // Why: after a hook-less SSH Codex turn finishes, the title reverts to a bare
+  // cwd/shell with no spinner and no agent name (#10130). Spinner fallback no
+  // longer applies, and remote hooks are dead (#8711), so without this path the
+  // reusable idle session vanishes from the sidebar while the PTY/tab remain.
+  // Only manufacture Idle when the title is not claiming work/permission, and
+  // only for the launch-owning leaf (tab.launchAgent is not per-pane).
+  if (
+    !launchAgent ||
+    !args.allowLaunchAgentIdleFallback ||
+    status === 'working' ||
+    status === 'permission'
+  ) {
     return null
   }
-  const rowLabel = titleAgentType ? label : formatAgentTypeLabel(agentType)
-  const rowState = titleStatusToRowState(status)
-  const secondary =
-    status === 'permission' ? 'Needs input' : status === 'working' ? 'Running' : 'Idle'
-  const entryState: AgentStatusState = rowState === 'waiting' ? 'waiting' : 'working'
+  const rowLabel = formatAgentTypeLabel(launchAgent)
   const entry: AgentStatusEntry = {
     paneKey,
-    state: entryState,
+    state: 'working',
     prompt: rowLabel,
     updatedAt: args.now,
     stateStartedAt: args.now,
     stateHistory: [],
-    agentType,
+    agentType: launchAgent,
     terminalTitle: title,
-    lastAssistantMessage: secondary,
+    lastAssistantMessage: 'Idle',
     ...(orchestration ? { orchestration } : {})
   }
   return {
     paneKey,
     entry,
     tab: args.tab,
-    agentType,
+    agentType: launchAgent,
     rowSource: 'live',
-    state: rowState,
+    state: 'idle',
     startedAt: 0
   }
 }
