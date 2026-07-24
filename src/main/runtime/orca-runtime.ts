@@ -74,9 +74,10 @@ import {
 } from '../../shared/terminal-input'
 import {
   AGENT_PROMPT_BRACKETED_PASTE_END,
+  AGENT_PROMPT_BRACKETED_PASTE_START,
   AGENT_PROMPT_SUBMIT,
   AGENT_PROMPT_SUBMIT_DELAY_MS,
-  buildAgentPromptPasteBytes
+  buildAgentPromptBodyBytes
 } from '../../shared/agent-prompt-injection'
 import { gitExecFileAsync, gitSpawn, nonInteractiveGitEnv } from '../git/runner'
 import { runWithGitReadCacheInvalidation } from '../git/status'
@@ -12736,13 +12737,15 @@ export class OrcaRuntimeService {
       suffixFailureError?: string
     } = {}
   ): Promise<RuntimeTerminalSend> {
-    const payload = buildAgentPromptPasteBytes(prompt)
-    const bytesWritten = Buffer.byteLength(`${payload}${AGENT_PROMPT_SUBMIT}`, 'utf8')
     const pty = this.getLivePtyForHandle(handle)
     if (pty) {
       if (!pty.pty.connected) {
         throw new Error('terminal_not_writable')
       }
+      // Why: Grok ignores bracketed-paste inject while plain send works (#9838).
+      const agent = pty.pty.launchAgent ?? pty.pty.foregroundAgent ?? null
+      const payload = buildAgentPromptBodyBytes(prompt, agent)
+      const bytesWritten = Buffer.byteLength(`${payload}${AGENT_PROMPT_SUBMIT}`, 'utf8')
       await assertTerminalInputWithinLimitWithYield(payload)
       await this.writeTerminalAgentPrompt(pty.pty.ptyId, payload, options)
       return { handle, accepted: true, bytesWritten }
@@ -12752,6 +12755,10 @@ export class OrcaRuntimeService {
     if (!leaf.writable || !leaf.ptyId) {
       throw new Error('terminal_not_writable')
     }
+    const leafPty = this.ptysById.get(leaf.ptyId)
+    const agent = leafPty?.launchAgent ?? leafPty?.foregroundAgent ?? null
+    const payload = buildAgentPromptBodyBytes(prompt, agent)
+    const bytesWritten = Buffer.byteLength(`${payload}${AGENT_PROMPT_SUBMIT}`, 'utf8')
     await assertTerminalInputWithinLimitWithYield(payload)
     await this.writeTerminalAgentPrompt(leaf.ptyId, payload, options)
     return { handle, accepted: true, bytesWritten }
@@ -13182,6 +13189,8 @@ export class OrcaRuntimeService {
   ): Promise<void> {
     let wrotePasteBytes = false
     let completedPaste = false
+    // Why: only BP frames need an emergency closer; plain-text Grok inject (#9838) must not emit \x1b[201~.
+    const needsBracketedPasteCloser = pastePayload.startsWith(AGENT_PROMPT_BRACKETED_PASTE_START)
     try {
       const chunks = iterateTerminalInputChunks(pastePayload)
       let chunk = chunks.next()
@@ -13199,7 +13208,7 @@ export class OrcaRuntimeService {
       }
       completedPaste = true
     } catch (error) {
-      if (wrotePasteBytes && !completedPaste) {
+      if (wrotePasteBytes && !completedPaste && needsBracketedPasteCloser) {
         this.ptyController?.write(ptyId, AGENT_PROMPT_BRACKETED_PASTE_END)
       }
       throw error
