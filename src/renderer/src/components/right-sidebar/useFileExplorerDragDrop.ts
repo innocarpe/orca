@@ -12,9 +12,16 @@ import {
   WORKSPACE_FILE_PATH_MIME
 } from '@/lib/workspace-file-drag'
 import { executeOpenEditorPathMove } from '@/lib/execute-open-editor-path-move'
+import { useConfirmationDialog } from '@/components/confirmation-dialog'
+import { translate } from '@/i18n/i18n'
 import { commitFileExplorerOp } from './fileExplorerUndoRedo'
 import type { FileExplorerOperationOwner } from './file-explorer-types'
 import { captureFileExplorerOperationGuard } from './file-explorer-operation-owner'
+import {
+  formatFileExplorerMovePath,
+  shouldConfirmFileExplorerMove,
+  type FileExplorerMoveConfirmMode
+} from './file-explorer-move-confirm'
 
 function extractIpcErrorMessage(err: unknown, fallback: string): string {
   if (!(err instanceof Error)) {
@@ -41,7 +48,7 @@ type UseFileExplorerDragDropResult = {
   dropTargetDir: string | null
   setDropTargetDir: (dir: string | null) => void
   dragSourcePath: string | null
-  setDragSourcePath: (path: string | null) => void
+  setDragSourcePath: (path: string | null, isDirectory?: boolean) => void
   isRootDragOver: boolean
   /** True when a native OS file drag (Files) is hovering over the explorer */
   isNativeDragOver: boolean
@@ -108,7 +115,14 @@ export function useFileExplorerDragDrop({
   const [isRootDragOver, setIsRootDragOver] = useState(false)
   const rootDragCounterRef = useRef(0)
   const [dropTargetDir, setDropTargetDir] = useState<string | null>(null)
-  const [dragSourcePath, setDragSourcePath] = useState<string | null>(null)
+  const [dragSourcePath, setDragSourcePathState] = useState<string | null>(null)
+  const dragSourceIsDirectoryRef = useRef(false)
+  const confirm = useConfirmationDialog()
+
+  const setDragSourcePath = useCallback((path: string | null, isDirectory = false) => {
+    setDragSourcePathState(path)
+    dragSourceIsDirectoryRef.current = path !== null && isDirectory
+  }, [])
 
   // Native Files drag state — tracked separately from internal move state
   const [isNativeDragOver, setIsNativeDragOver] = useState(false)
@@ -134,7 +148,7 @@ export function useFileExplorerDragDrop({
     setDragSourcePath(null)
     setIsNativeDragOver(false)
     setNativeDropTargetDir(null)
-  }, [])
+  }, [setDragSourcePath])
 
   const stopAndClearDragState = useCallback(() => {
     clearDragState()
@@ -210,8 +224,42 @@ export function useFileExplorerDragDrop({
 
       const newPath = joinPath(destDir, fileName)
       const operationOwner = getOperationOwnerForPath(sourcePath)
+      // Why: multi-select may drop several paths; use primary drag-source isDirectory
+      // when this path is that source, else treat unknown multi-paths as files unless
+      // mode is `always` (only primary gets directory-only confirmation).
+      const isDirectory = sourcePath === dragSourcePath ? dragSourceIsDirectoryRef.current : false
 
       const run = async (): Promise<void> => {
+        const mode = (useAppStore.getState().settings.confirmFileExplorerMove ??
+          'never') as FileExplorerMoveConfirmMode
+        if (shouldConfirmFileExplorerMove(mode, isDirectory)) {
+          const fromLabel = formatFileExplorerMovePath(sourcePath, worktreePath)
+          const toLabel = formatFileExplorerMovePath(destDir, worktreePath)
+          const confirmed = await confirm({
+            title: translate(
+              'auto.components.right.sidebar.fileExplorer.moveConfirm.title',
+              "Move '{{name}}'?",
+              { name: fileName }
+            ),
+            description: translate(
+              'auto.components.right.sidebar.fileExplorer.moveConfirm.description',
+              "Move '{{from}}' into '{{to}}'.",
+              { from: fromLabel, to: toLabel }
+            ),
+            confirmLabel: translate(
+              'auto.components.right.sidebar.fileExplorer.moveConfirm.action',
+              'Move'
+            ),
+            cancelLabel: translate(
+              'auto.components.right.sidebar.fileExplorer.moveConfirm.cancel',
+              'Cancel'
+            )
+          })
+          if (!confirmed) {
+            return
+          }
+        }
+
         try {
           const operationGuard = captureFileExplorerOperationGuard(activeWorktreeId, operationOwner)
           const operationRoute = operationGuard.route
@@ -264,7 +312,7 @@ export function useFileExplorerDragDrop({
       }
       void run()
     },
-    [worktreePath, activeWorktreeId, refreshDir, getOperationOwnerForPath]
+    [worktreePath, activeWorktreeId, refreshDir, getOperationOwnerForPath, confirm, dragSourcePath]
   )
 
   const clearNativeDragState = useCallback(() => {
