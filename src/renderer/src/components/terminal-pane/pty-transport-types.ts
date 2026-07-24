@@ -12,6 +12,7 @@ import type { ProjectExecutionRuntimeResolution } from '../../../../shared/proje
 import type { EventProps } from '../../../../shared/telemetry-events'
 import type { TerminalOscColorQueryReplyColors } from '../../../../shared/terminal-osc-color-reply'
 import type { TuiAgent } from '../../../../shared/types'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { PtyDataMeta } from './pty-dispatcher'
 
 export type PtyBufferSnapshot = {
@@ -58,6 +59,12 @@ export type PtyConnectResult = {
   sessionExpired?: boolean
   coldRestore?: { scrollback: string; cwd: string; cols?: number; rows?: number }
   replay?: string
+  /**
+   * Live PTY kitty keyboard flags from the daemon emulator at reattach time.
+   * Prefer this over stackless scanReplay arithmetic so Option chords stay
+   * protocol-encoded while the TUI still has the protocol pushed (#10381).
+   */
+  snapshotKittyKeyboardFlags?: number
   startupCwdFallback?: { kind: 'worktree'; cwd: string }
   /** Trailing partial escape the daemon emulator held mid-parse; the reattach
    *  replay writes it LAST (after the reset) so a racing live continuation
@@ -152,6 +159,10 @@ export type PtyTransport = {
   /** The runtime captured by this transport; legacy remote PTY ids do not
    * encode their owner, and current worktree settings may have changed. */
   getRuntimeEnvironmentId?: () => string | null
+  /** Execution host captured at spawn; nested SSH differs from its outer runtime owner. */
+  getExecutionHostId?: () => ExecutionHostId | null
+  /** Host platform captured by the PTY owner; paired-client OS is not authoritative. */
+  getRemotePlatform?: () => NodeJS.Platform | null
   getLocalSessionMetadata?: () => LocalPtySessionMetadata | null
   /** Drop cross-chunk parser carries (partial OSC-9999 prefix). Called when a
    *  model-restore marker reports dropped bytes — a carry spanning the gap
@@ -179,6 +190,7 @@ export type IpcPtyTransportOptions = {
   launchAgent?: TuiAgent
   startupCommandDelivery?: StartupCommandDelivery
   connectionId?: string | null
+  executionHostId?: ExecutionHostId | null
   worktreeId?: string
   tabId?: string
   leafId?: string
