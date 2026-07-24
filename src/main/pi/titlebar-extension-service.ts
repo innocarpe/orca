@@ -188,7 +188,7 @@ export class PiTitlebarExtensionService {
     const materializeDefaultHome = options?.materializeDefaultHome !== false
     if (!existsSync(sourceAgentDir) && !materializeDefaultHome) {
       if (kind === 'omp') {
-        const statusSource = withOrcaManagedPiExtensionMarker(getPiAgentStatusExtensionSource(kind))
+        const statusSource = withOrcaManagedExtensionMarker(getPiAgentStatusExtensionSource(kind))
         const statusExtensionPath = this.writeOmpFallbackStatusExtension(statusSource)
         return statusExtensionPath ? { ORCA_OMP_STATUS_EXTENSION: statusExtensionPath } : {}
       }

@@ -33,7 +33,7 @@ import { PortScanHandler } from './port-scan-handler'
 import { AgentExecHandler } from './agent-exec-handler'
 import { WorkspaceSessionHandler } from './workspace-session-handler'
 import { endpointDirForRelaySocket, RelayAgentHookServer } from './agent-hook-server'
-import { PluginOverlayManager, getRelayPiStatusExtensionPath } from './plugin-overlay'
+import { PluginOverlayManager } from './plugin-overlay'
 import {
   AGENT_HOOK_INSTALL_PLUGINS_METHOD,
   AGENT_HOOK_NOTIFICATION_METHOD,
@@ -504,11 +504,11 @@ async function main(): Promise<void> {
         const sourceDir = resolvePiSourceAgentDir(ctx.env, ctx.shell, 'pi')
         // Why: do not mkdir ~/.<agent> on bare shells when the agent home is
         // missing — unused agents kept recreating deleted homes (#10196).
-        const dir = pluginOverlay.materializePi(overlayId, sourceDir, 'pi', {
+        const result = pluginOverlay.materializePi(overlayId, sourceDir, 'pi', {
           materializeDefaultHome: hasLaunchCommand
         })
-        if (dir) {
-          env.ORCA_PI_SOURCE_AGENT_DIR = dir
+        if (result?.sourceAgentDir) {
+          env.ORCA_PI_SOURCE_AGENT_DIR = result.sourceAgentDir
         }
       }
       if (shouldPrepareOmpShadow) {
@@ -517,12 +517,16 @@ async function main(): Promise<void> {
           kind === 'omp'
             ? resolvePiSourceAgentDir(ctx.env, ctx.shell, 'omp')
             : ctx.env.ORCA_OMP_SOURCE_AGENT_DIR
-        const dir = pluginOverlay.materializePi(overlayId, sourceDir, 'omp', {
+        const result = pluginOverlay.materializePi(overlayId, sourceDir, 'omp', {
           materializeDefaultHome: kind === 'omp'
         })
-        if (dir) {
-          env.ORCA_OMP_STATUS_EXTENSION = getRelayPiStatusExtensionPath(dir)
-          env.ORCA_OMP_SOURCE_AGENT_DIR = dir
+        // Why: status-only fallback (no sourceAgentDir) is intentional for bare
+        // shells without ~/.omp — still export ORCA_OMP_STATUS_EXTENSION (#10196).
+        if (result?.statusExtensionPath) {
+          env.ORCA_OMP_STATUS_EXTENSION = result.statusExtensionPath
+        }
+        if (result?.sourceAgentDir) {
+          env.ORCA_OMP_SOURCE_AGENT_DIR = result.sourceAgentDir
         }
       }
     }
