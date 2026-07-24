@@ -57,6 +57,12 @@ import {
   type CodexAccountSelectionTarget
 } from './runtime-selection'
 import { assertOwnedHostCodexManagedHomePath } from './host-codex-managed-home-ownership'
+import {
+  assertSourceHomeIsNotManagedStorage,
+  copyExistingCodexHomeIntoManaged,
+  readRawAuthJsonFromHome,
+  resolveImportableCodexHomePath
+} from './import-existing-codex-home'
 
 const LOGIN_TIMEOUT_MS = 120_000
 const MAX_LOGIN_OUTPUT_CHARS = 4_000
@@ -295,6 +301,15 @@ export class CodexAccountService {
     target?: CodexAccountAddTarget
   ): Promise<CodexRateLimitAccountsState> {
     return this.serializeMutation(() => this.doAddAccountFromHome(sourceHome, target))
+  }
+
+async importAccountFromExistingHome(
+    sourceHomePath: string,
+    target?: CodexAccountAddTarget
+  ): Promise<CodexRateLimitAccountsState> {
+    return this.serializeMutation(() =>
+      this.doImportAccountFromExistingHome(sourceHomePath, target)
+    )
   }
 
   async reauthenticateAccount(accountId: string): Promise<CodexRateLimitAccountsState> {
@@ -744,6 +759,63 @@ export class CodexAccountService {
       this.assertOAuthAccountAddAllowed(canonicalConfig)
       this.safeSyncCanonicalConfigIntoManagedHome(managedHomePath, canonicalConfig, accountId)
       this.importCodexAuthFromHome(sourceHome, managedHomePath, accountId)
+      return await this.persistCapturedCodexAccount(accountId, managedHome)
+    } catch (error) {
+      this.safeRemoveManagedHome(managedHomePath, accountId)
+      throw error
+    }
+  }
+
+/**
+   * Import an already-authenticated external CODEX_HOME into Orca managed storage
+   * without running `codex login` again (Option B from issue #10366).
+   */
+  private async doImportAccountFromExistingHome(
+    sourceHomePath: string,
+    target?: CodexAccountAddTarget
+  ): Promise<CodexRateLimitAccountsState> {
+    if (target?.runtime === 'wsl') {
+      throw new Error(
+        'Importing an existing CODEX_HOME into a WSL account slot is not supported yet. Switch Account location to this device, or use Add Account for WSL.'
+      )
+    }
+
+    const resolvedSource = resolveImportableCodexHomePath(sourceHomePath)
+    assertSourceHomeIsNotManagedStorage(resolvedSource, this.getManagedAccountsRoot())
+
+    // Why: resolve identity from the external home before allocating storage so a
+    // missing email / corrupt auth fails cleanly without leaving empty managed dirs.
+    const sourceIdentity = this.resolveIdentityFromCredentials(
+      this.extractOAuthCredentials(readRawAuthJsonFromHome(resolvedSource))
+    )
+    if (!sourceIdentity.email) {
+      throw new Error(
+        'Could not resolve an account email from the selected CODEX_HOME. Orca only imports OAuth-authenticated Codex homes (auth.json with an id_token email claim).'
+      )
+    }
+
+    const accountId = randomUUID()
+    const managedHome = this.createManagedHome(accountId, target)
+    const { managedHomePath } = managedHome
+
+    try {
+      const canonicalConfig = this.readCanonicalConfigForManagedHome(managedHomePath)
+      this.assertOAuthAccountAddAllowed(canonicalConfig)
+      copyExistingCodexHomeIntoManaged({
+        sourceHomePath: resolvedSource,
+        managedHomePath,
+        accountId
+      })
+      // Why: after copying user config/auth, re-seed Orca-managed hooks/settings
+      // so the imported home matches other managed accounts for sandbox defaults.
+      this.safeSyncCanonicalConfigIntoManagedHome(managedHomePath, canonicalConfig, accountId)
+      const identity = this.readIdentityFromHome(managedHomePath, accountId)
+      if (!identity.email) {
+        throw new Error(
+          'Import copied auth.json, but Orca could not resolve the account email from the managed home.'
+        )
+      }
+
       return await this.persistCapturedCodexAccount(accountId, managedHome)
     } catch (error) {
       this.safeRemoveManagedHome(managedHomePath, accountId)
