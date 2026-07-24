@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseGitHubOwnerRepo, parseGitHubRemoteIdentity } from './github-remote-identity-parsing'
+import {
+  hostnameFromSshConfigHosts,
+  parseGitHubOwnerRepo,
+  parseGitHubOwnerRepoWithResolvedHostname,
+  parseGitHubRemoteIdentity
+} from './github-remote-identity-parsing'
 
 describe('parseGitHubRemoteIdentity', () => {
   it('parses a plain github.com https remote', () => {
@@ -105,5 +110,46 @@ describe('parseGitHubOwnerRepo', () => {
       owner: 'team',
       repo: 'orca'
     })
+  })
+
+  // Why: #10284 — multi-account SSH Host aliases keep a non-github.com token in remote.url.
+  it('returns null for an SSH Host alias without HostName expansion', () => {
+    expect(parseGitHubOwnerRepo('git@github-work:team/orca.git')).toBeNull()
+    expect(parseGitHubOwnerRepo('ssh://git@github-work/team/orca.git')).toBeNull()
+  })
+})
+
+describe('parseGitHubOwnerRepoWithResolvedHostname (#10284)', () => {
+  it('accepts SCP remotes once HostName expands to github.com', () => {
+    expect(
+      parseGitHubOwnerRepoWithResolvedHostname('git@github-work:team/orca.git', 'ssh.github.com')
+    ).toEqual({ owner: 'team', repo: 'orca' })
+  })
+
+  it('accepts ssh:// remotes once HostName expands to github.com', () => {
+    expect(
+      parseGitHubOwnerRepoWithResolvedHostname(
+        'ssh://git@github.com-work/team/orca.git',
+        'github.com'
+      )
+    ).toEqual({ owner: 'team', repo: 'orca' })
+  })
+
+  it('still rejects when HostName is not github.com', () => {
+    expect(
+      parseGitHubOwnerRepoWithResolvedHostname('git@lab-work:team/orca.git', 'gitlab.com')
+    ).toBeNull()
+  })
+
+  it('maps Host alias → HostName from parsed SSH config hosts', () => {
+    expect(
+      hostnameFromSshConfigHosts('github-work', [
+        { host: 'github-work', hostname: 'ssh.github.com' },
+        { host: 'other', hostname: 'example.com' }
+      ])
+    ).toBe('ssh.github.com')
+    expect(
+      hostnameFromSshConfigHosts('missing', [{ host: 'github-work', hostname: 'github.com' }])
+    ).toBeNull()
   })
 })

@@ -7,6 +7,7 @@ import {
   parseGitHubRemoteIdentity,
   type GitHubRemoteIdentity
 } from './github-remote-identity-parsing'
+import { resolveGitHubOwnerRepoFromRemoteUrl } from './github-owner-repo-ssh-alias'
 import { isStableMissingGitRemoteError } from './stable-missing-git-remote-error'
 import { githubRepoIdentityKey } from '../../shared/github-repository-identity-key'
 
@@ -177,7 +178,13 @@ async function resolveOwnerRepoForRemote(
   const now = Date.now()
   try {
     const remoteUrl = await getRemoteUrlForRepo(context, remoteName)
-    const result = remoteUrl ? parseGitHubOwnerRepo(remoteUrl) : null
+    // Why: do not expand SSH aliases over SSH-provider remotes — host is already
+    // the remote machine, not the user's local OpenSSH config.
+    const result = remoteUrl
+      ? context.connectionId
+        ? parseGitHubOwnerRepo(remoteUrl)
+        : await resolveGitHubOwnerRepoFromRemoteUrl(remoteUrl)
+      : null
     if (result) {
       ownerRepoCache.set(cacheKey, {
         value: result,
