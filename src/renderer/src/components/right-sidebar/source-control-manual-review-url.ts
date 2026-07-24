@@ -5,6 +5,7 @@ import {
   normalizeProvider,
   parseRemoteRepo,
   parseUpstream,
+  type GitHostWebSchemes,
   type RemoteRepoRef
 } from './source-control-remote-repo'
 
@@ -17,6 +18,8 @@ type ManualReviewUrlInput = {
   pushTarget?: GitPushTarget | null
   /** Tracking upstream in `<remote>/<branch>` form (git `branch.upstream`). */
   upstreamName?: string | null
+  /** Hostname → web UI scheme for ssh remotes (self-hosted http-only forges). */
+  webSchemeByHost?: GitHostWebSchemes | null
 }
 
 export type SourceControlManualReviewContext = ManualReviewUrlInput & {
@@ -138,8 +141,9 @@ export function buildSourceControlManualReviewUrl(input: ManualReviewUrlInput): 
     return null
   }
 
-  const baseRepo = parseRemoteRepo(baseRemoteUrl, input.provider)
-  const headRepo = parseRemoteRepo(headRemoteUrl, input.provider)
+  const parseOptions = { webSchemeByHost: input.webSchemeByHost ?? null }
+  const baseRepo = parseRemoteRepo(baseRemoteUrl, input.provider, parseOptions)
+  const headRepo = parseRemoteRepo(headRemoteUrl, input.provider, parseOptions)
   if (!baseRepo || !headRepo) {
     return null
   }
@@ -169,7 +173,12 @@ export function buildSourceControlManualReviewUrl(input: ManualReviewUrlInput): 
         githubHeadRef(baseRepo, headRepo, headBranch)
       )}?expand=1`
     case 'gitlab':
-      return appendQuery(`${baseRepo.webBaseUrl}/-/merge_requests/new`, {
+      // Why: the source branch lives in the head repo, so the New-MR page must
+      // be opened on that project — a fork's branch is invisible to the base
+      // project and its /-/merge_requests/new page would 404 the source_branch.
+      // GitLab defaults the target to the fork's upstream. headRepo === baseRepo
+      // for the non-fork case, so this is a no-op there.
+      return appendQuery(`${headRepo.webBaseUrl}/-/merge_requests/new`, {
         'merge_request[source_branch]': headBranch,
         'merge_request[target_branch]': baseBranch
       })
