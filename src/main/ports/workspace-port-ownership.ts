@@ -9,6 +9,7 @@ import type {
   WorkspacePortScanResult
 } from '../../shared/workspace-ports'
 import { scanWorkspacePorts } from './local-workspace-port-scanner'
+import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
 
 export type WorkspacePortProbeInput = WorkspacePortProbe & {
   connectionId?: string | null
@@ -102,8 +103,33 @@ export async function killWorkspacePort(
   }
 
   try {
-    // Why: caller-supplied pids are not trusted; the re-scan above proves
-    // this pid still owns the requested workspace listener before SIGTERM.
+    // Why: re-scan above proves this pid still owns the requested workspace listener.
+    // On Windows, kill the full tree so npm wrappers cannot leave a child holding the port (#10150).
+    if (process.platform === 'win32') {
+      await terminateWindowsProcessTree(pid)
+      // Why: terminateWindowsProcessTree is best-effort (always resolves) so PTY
+      // teardown is never blocked; Ports UI still needs a real success signal.
+      // Only ESRCH means "gone". EPERM (still alive, no signal rights) is failure.
+      try {
+        process.kill(pid, 0)
+        return { ok: false, reason: 'Failed to stop the process.' }
+      } catch (error) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : ''
+        if (code === 'ESRCH') {
+          return { ok: true }
+        }
+        return {
+          ok: false,
+          reason:
+            error instanceof Error
+              ? error.message || 'Failed to stop the process.'
+              : 'Failed to stop the process.'
+        }
+      }
+    }
     process.kill(pid, 'SIGTERM')
     return { ok: true }
   } catch (error) {
