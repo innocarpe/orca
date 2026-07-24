@@ -90,7 +90,7 @@ export class StatsCollector {
     this.scheduleSave()
   }
 
-  // ── Agent lifecycle (called by AgentDetector) ─────────────────────
+  // ── Agent lifecycle (AgentDetector OSC path + hook-status bridge) ─
 
   onAgentStart(ptyId: string, at: number, repoId?: string, worktreeId?: string): void {
     this.liveAgents.set(ptyId, at)
