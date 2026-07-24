@@ -70,7 +70,7 @@ type CreateWorktreeArgsWithSystemProvenance = CreateWorktreeArgs & {
 import {
   sanitizeWorktreeName,
   sanitizeWorktreeDisplayName,
-  computeBranchName,
+  computeValidatedBranchName,
   computeWorktreePath,
   computeRemoteWorktreePath,
   computeWorkspaceRoot,
@@ -80,8 +80,10 @@ import {
   hasRepoWorktreeBasePath,
   shouldSetDisplayName,
   mergeWorktree,
-  areWorktreePathsEqual
+  findListedWorktreeByPath
 } from './worktree-logic'
+import { findCreatedWorktree } from './created-worktree-reconciliation'
+import type { BranchPrefixSettings } from '../../shared/branch-prefix'
 import { getRepoIdFromWorktreeId } from '../../shared/worktree-id'
 import { parseWorkspaceKey, worktreeWorkspaceKey } from '../../shared/workspace-scope'
 import {
@@ -518,12 +520,12 @@ async function resolveCreateBranchName(
   repoPath: string,
   branchNameOverride: string | undefined,
   sanitizedName: string,
-  settings: { branchPrefix: string; branchPrefixCustom?: string },
+  settings: BranchPrefixSettings,
   username: string | null,
   gitOptions: { wslDistro?: string } = {}
 ): Promise<string> {
   if (!branchNameOverride) {
-    return computeBranchName(sanitizedName, settings, username)
+    return computeValidatedBranchName(sanitizedName, settings, username)
   }
   if (branchNameOverride.startsWith('-')) {
     throw new Error('Branch name must not start with "-"')
@@ -540,11 +542,11 @@ async function resolveCreateBranchNameSsh(
   repoPath: string,
   branchNameOverride: string | undefined,
   sanitizedName: string,
-  settings: { branchPrefix: string; branchPrefixCustom?: string },
+  settings: BranchPrefixSettings,
   username: string | null
 ): Promise<string> {
   if (!branchNameOverride) {
-    return computeBranchName(sanitizedName, settings, username)
+    return computeValidatedBranchName(sanitizedName, settings, username)
   }
   if (branchNameOverride.startsWith('-')) {
     throw new Error('Branch name must not start with "-"')
@@ -2378,7 +2380,13 @@ export async function createLocalWorktree(
       ? listWorktrees(repo.path, localWorktreeGitOptions)
       : listWorktrees(repo.path)
   )
-  const created = gitWorktrees.find((gw) => areWorktreePathsEqual(gw.path, worktreePath))
+  // Why: local immutable Linux (/home → /var/home) reports the realpath in
+  // `git worktree list`; resolve symlinks only for native host Git (not WSL).
+  // Branch fallback covers remaining Git-canonicalized paths main already handles.
+  const created =
+    (await findListedWorktreeByPath(gitWorktrees, worktreePath, {
+      resolveSymlinks: !localWorktreeGitOptions.wslDistro
+    })) ?? findCreatedWorktree(gitWorktrees, worktreePath, branchName)
   if (!created) {
     throw new Error('Worktree created but not found in listing')
   }
