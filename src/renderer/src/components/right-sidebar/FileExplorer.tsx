@@ -55,6 +55,11 @@ import { CLOSE_ALL_CONTEXT_MENUS_EVENT } from '@/components/tab-bar/SortableTab'
 import type { RightSidebarExplorerView } from '../../../../shared/types'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { createNewTerminalTab } from '@/components/terminal/terminal-tab-create'
+import {
+  clampFileExplorerFontSize,
+  DEFAULT_FILE_EXPLORER_FONT_SIZE,
+  fileExplorerRowHeightPx
+} from '../../../../shared/file-explorer-font-size'
 
 function FileExplorerFiles(): React.JSX.Element {
   const explorerView = useAppStore((s) => s.rightSidebarExplorerView)
@@ -78,6 +83,10 @@ function FileExplorerFiles(): React.JSX.Element {
     [nameFilterQuery, showRightSidebarFiles, showRightSidebarSearch]
   )
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const fileExplorerFontSize = useAppStore((s) =>
+    clampFileExplorerFontSize(s.settings?.fileExplorerFontSize ?? DEFAULT_FILE_EXPLORER_FONT_SIZE)
+  )
+  const fileExplorerRowHeight = fileExplorerRowHeightPx(fileExplorerFontSize)
   const activeWorktree = useActiveWorktree()
   const activeRepo = useRepoById(activeWorktree?.repoId ?? null)
   const supportsFolderDownload = useAppStore((s) => {
@@ -412,7 +421,7 @@ function FileExplorerFiles(): React.JSX.Element {
   const virtualizer = useVirtualizer({
     count: totalCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 26,
+    estimateSize: () => fileExplorerRowHeight,
     overscan: 20,
     getItemKey: (index) => {
       if (inlineInputIndex >= 0) {
@@ -425,6 +434,10 @@ function FileExplorerFiles(): React.JSX.Element {
       return rowProjection.getRowAtIndex(index)?.path ?? `__fallback_${index}`
     }
   })
+
+  useEffect(() => {
+    virtualizer.measure()
+  }, [fileExplorerRowHeight, virtualizer])
 
   const cancelRevealTimers = useFileExplorerReveal({
     activeWorktreeId,
@@ -738,6 +751,7 @@ function FileExplorerFiles(): React.JSX.Element {
             {showTree && (
               <FileExplorerVirtualRows
                 virtualizer={virtualizer}
+                fontSize={fileExplorerFontSize}
                 inlineInputIndex={inlineInputIndex}
                 rowProjection={rowProjection}
                 inlineInput={inlineInput}
