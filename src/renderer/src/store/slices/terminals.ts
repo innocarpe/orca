@@ -63,6 +63,7 @@ import {
   pushClosedTerminalTabSnapshot,
   pushRecentlyClosedTabKind
 } from './recently-closed-tabs'
+import { extractClosedTerminalAgentResume } from './closed-terminal-agent-resume'
 import { isClaudeAgent } from '@/lib/agent-status'
 import { recordTerminalInputActivity } from '@/lib/terminal-input-activity-coalescing'
 import { classifyTitleActivity } from '@/lib/pane-agent-evidence'
@@ -1665,6 +1666,14 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         closedWorktreeId && closedTab
           ? getRecentlyClosedTabPosition(s, closedWorktreeId, closedTab.id)
           : undefined
+      // Capture resumable agent identity before sleeping/status retirement so Cmd+Shift+T can resume (#10377).
+      const agentResume =
+        closedTab &&
+        extractClosedTerminalAgentResume({
+          tabId: closedTab.id,
+          agentStatusByPaneKey: s.agentStatusByPaneKey,
+          sleepingAgentSessionsByPaneKey: s.sleepingAgentSessionsByPaneKey
+        })
       const capturedSnapshot =
         closeReason === 'user' &&
         opts?.captureRecentlyClosed !== false &&
@@ -1675,7 +1684,14 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
               ...(closedTab.shellOverride ? { shellOverride: closedTab.shellOverride } : {}),
               ...(closedTab.customTitle ? { customTitle: closedTab.customTitle } : {}),
               ...(closedTab.color ? { color: closedTab.color } : {}),
-              ...(closedPosition ? { position: closedPosition } : {})
+              ...(closedPosition ? { position: closedPosition } : {}),
+              ...(agentResume
+                ? {
+                    agent: agentResume.agent,
+                    providerSession: agentResume.providerSession,
+                    ...(agentResume.launchConfig ? { launchConfig: agentResume.launchConfig } : {})
+                  }
+                : {})
             }
           : null
       const nextExpanded = { ...s.expandedPaneByTabId }
