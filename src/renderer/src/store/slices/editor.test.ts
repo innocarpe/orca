@@ -106,6 +106,30 @@ function mirroredEditorUnifiedTab(id: string, entityId: string, worktreeId: stri
 }
 
 describe('createEditorSlice right sidebar state', () => {
+  it('queues and safely consumes explicit editor focus requests', () => {
+    const store = createEditorStore()
+
+    store.getState().openFile(
+      {
+        filePath: '/repo/README.md',
+        relativePath: 'README.md',
+        worktreeId: 'wt-1',
+        language: 'markdown',
+        mode: 'edit'
+      },
+      { focusEditor: true }
+    )
+
+    const request = store.getState().pendingEditorFocusRequest
+    expect(request).toMatchObject({ fileId: '/repo/README.md', worktreeId: 'wt-1' })
+
+    store.getState().consumeEditorFocusRequest((request?.token ?? 0) + 1)
+    expect(store.getState().pendingEditorFocusRequest).toBe(request)
+
+    store.getState().consumeEditorFocusRequest(request?.token ?? 0)
+    expect(store.getState().pendingEditorFocusRequest).toBeNull()
+  })
+
   it('does not record markdown-file-created when opening an existing markdown file', () => {
     const store = createEditorStore()
 
