@@ -11,12 +11,14 @@ import {
   isLaunchPromptMessageId,
   isPendingMessageId,
   launchPromptAsMessage,
+  NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS,
   nextNativeChatPendingSendId,
   pendingSendsAsMessages,
   prunePendingSends,
   readCommandMarkerCache,
   readPendingSendCache,
   shouldPruneLaunchPrompt,
+  shouldSuppressNativeChatExitForPane,
   writePendingSendCache,
   type NativeChatPendingSend
 } from './native-chat-pending'
@@ -134,6 +136,16 @@ describe('prunePendingSends', () => {
     expect(prunePendingSends(pending, [oldUser, oldAnswer])).toEqual(pending)
   })
 
+  it('prunes a first send against a timestampless transcript turn (grok)', () => {
+    const pending = [{ ...pendingOf('p1', 'rename it'), afterMessageId: null }]
+    const transcript = [
+      { ...userMessage('u1', 'rename it'), timestamp: null },
+      { ...assistantMessage('a1', 'done'), timestamp: null }
+    ]
+
+    expect(prunePendingSends(pending, transcript)).toEqual([])
+  })
+
   it('prunes only one of two identical pending sends for one completed turn', () => {
     const pending = [pendingOf('p1', 'repeat'), pendingOf('p2', 'repeat')]
     expect(
@@ -246,6 +258,14 @@ describe('pendingSendsAsMessages', () => {
     expect(prunePendingSends(pending, remoteTranscript)).toEqual([])
   })
 
+  it('hides a first send while its timestampless transcript turn is visible (grok)', () => {
+    const pending = [{ ...pendingOf('p1', 'rename it'), afterMessageId: null }]
+
+    expect(
+      pendingSendsAsMessages(pending, [{ ...userMessage('u1', 'rename it'), timestamp: null }])
+    ).toEqual([])
+  })
+
   it('hides only one of two identical pending sends for one real user turn', () => {
     const pending = [pendingOf('p1', 'repeat'), pendingOf('p2', 'repeat')]
     expect(pendingSendsAsMessages(pending, [userMessage('u1', 'repeat')]).map((m) => m.id)).toEqual(
@@ -340,6 +360,20 @@ describe('launchPromptAsMessage', () => {
     ).toBe(true)
   })
 
+  // Grok transcripts carry no timestamps; before the null-matchable rule the
+  // seeded bubble was never hidden or pruned and sat rank-pinned at the list
+  // tail forever, reading as the conversation reordering.
+  it('hides and prunes the launch prompt against a timestampless transcript (grok)', () => {
+    const entry = { tabId: 'tab-1', agent: 'grok' as const, text: 'rename it', createdAt: 42 }
+    const transcript = [
+      { ...userMessage('u1', 'rename it'), timestamp: null },
+      { ...assistantMessage('a1', 'done'), timestamp: null }
+    ]
+
+    expect(launchPromptAsMessage(entry, transcript)).toBeNull()
+    expect(shouldPruneLaunchPrompt(entry, transcript)).toBe(true)
+  })
+
   it('does not bind a launch prompt to an older identical completed turn', () => {
     const entry = {
       tabId: 'tab-1',
@@ -354,6 +388,43 @@ describe('launchPromptAsMessage', () => {
 
     expect(launchPromptAsMessage(entry, oldHistory)).not.toBeNull()
     expect(shouldPruneLaunchPrompt(entry, oldHistory)).toBe(false)
+  })
+})
+
+describe('shouldSuppressNativeChatExitForPane', () => {
+  it('suppresses exit while an optimistic send is pending or within grace (#10098)', () => {
+    clearPendingSendCacheForTests()
+    const scope = { paneKey: 'tab-1:leaf-a', agent: 'codex' }
+    const sentAt = 1_000
+    appendPendingSendCache(scope, {
+      id: 'p1',
+      text: 'ordinary prose',
+      sentAt
+    })
+    expect(shouldSuppressNativeChatExitForPane(scope.paneKey, sentAt + 10)).toBe(true)
+    // Pruned (transcript caught up) but still inside grace window.
+    writePendingSendCache(scope, [])
+    expect(
+      shouldSuppressNativeChatExitForPane(
+        scope.paneKey,
+        sentAt + NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS - 1
+      )
+    ).toBe(true)
+    expect(
+      shouldSuppressNativeChatExitForPane(
+        scope.paneKey,
+        sentAt + NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
+      )
+    ).toBe(false)
+  })
+
+  it('does not suppress unrelated panes', () => {
+    clearPendingSendCacheForTests()
+    appendPendingSendCache(
+      { paneKey: 'tab-1:leaf-a', agent: 'codex' },
+      { id: 'p1', text: 'hi', sentAt: 50 }
+    )
+    expect(shouldSuppressNativeChatExitForPane('tab-1:leaf-b', 60)).toBe(false)
   })
 })
 
