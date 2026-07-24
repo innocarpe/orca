@@ -130,17 +130,27 @@ import {
   isSshConnectionBusy
 } from './external-automation-source-availability'
 import {
+  buildAutomationListHostOptions,
   createAutomationForTarget,
   deleteAutomationForTarget,
-  type AutomationHostTarget,
+  getAutomationHostTargetFromKey,
+  getAutomationHostTargetKey,
   getAutomationListTarget,
   getAutomationOwnerTarget,
   getAutomationTargetFromHostId,
   listAutomationRunsForTarget,
   listAutomationsForTarget,
+  resolveAutomationListHostTarget,
   runAutomationNowForTarget,
   updateAutomationForTarget
 } from './automation-host-client'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { getExternalAutomationScheduleDisplay } from './external-automation-schedule-display'
 import { ExternalAutomationManagers } from './ExternalAutomationManagers'
 import type { FetchExternalAutomationRuns } from './ExternalAutomationRunTable'
@@ -170,20 +180,6 @@ type SelectedExternalRunPage = {
   manager: ExternalAutomationManager
   job: ExternalAutomationJob
   run: ExternalAutomationRun
-}
-
-function getAutomationHostTargetKey(target: AutomationHostTarget): string {
-  return target.kind === 'environment' ? `environment:${target.environmentId}` : 'local'
-}
-
-function getAutomationHostTargetFromKey(key: string | null): AutomationHostTarget | null {
-  if (!key) {
-    return null
-  }
-  if (key.startsWith('environment:')) {
-    return { kind: 'environment', environmentId: key.slice('environment:'.length) }
-  }
-  return { kind: 'local' }
 }
 
 function getDefaultWorktree(worktrees: readonly Worktree[]): Worktree | null {
@@ -368,6 +364,7 @@ export default function AutomationsPage(): React.JSX.Element {
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const fetchWorktrees = useAppStore((s) => s.fetchWorktrees)
   const fetchAllWorktrees = useAppStore((s) => s.fetchAllWorktrees)
+  const startupWorktreeRefreshCompleted = useAppStore((s) => s.startupWorktreeRefreshCompleted)
   const updateSettings = useAppStore((s) => s.updateSettings)
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
@@ -992,12 +989,28 @@ export default function AutomationsPage(): React.JSX.Element {
     }
   }, [activeWorktreeId, repoMap, repos, worktreeMap, worktreesByRepo])
 
+  const automationListHostOptions = useMemo(
+    () =>
+      buildAutomationListHostOptions({
+        localLabel: getLocalExecutionHostLabel(),
+        environments: runtimeEnvironments.map((environment) => ({
+          id: environment.id,
+          name: environment.name
+        }))
+      }),
+    [runtimeEnvironments]
+  )
+
   const refresh = useCallback(async () => {
     setIsLoading(true)
     const pendingNavigation = useAppStore.getState().pendingAutomationRunNavigation
-    const automationHostTarget = pendingNavigation
-      ? getAutomationTargetFromHostId(pendingNavigation.hostId)
-      : getAutomationListTarget(settings)
+    // Why: keep an explicit page host selection so remote automations stay
+    // visible without flipping the global active runtime (#9964).
+    const automationHostTarget = resolveAutomationListHostTarget({
+      pendingHostId: pendingNavigation?.hostId,
+      selectedKey: automationHostTargetKey,
+      settings
+    })
     try {
       const [nextAutomations, nextRuns, nextExternalManagers] = await Promise.all([
         listAutomationsForTarget(automationHostTarget),
@@ -1033,7 +1046,19 @@ export default function AutomationsPage(): React.JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [selectAutomationId, settings])
+  }, [automationHostTargetKey, selectAutomationId, settings])
+
+  const handleAutomationHostTargetChange = useCallback(
+    (nextKey: string) => {
+      if (nextKey === automationHostTargetKey) {
+        return
+      }
+      setAutomationHostTargetKey(nextKey)
+      setSelectedId(null)
+      setSelectedAutomationRunPageId(null)
+    },
+    [automationHostTargetKey, setSelectedId]
+  )
 
   useEffect(() => {
     if (!pendingAutomationRunNavigation || isLoading) {
@@ -1051,10 +1076,24 @@ export default function AutomationsPage(): React.JSX.Element {
     useAppStore.getState().hydratePersistedUI(await window.api.ui.get(), 'sync')
   }, [])
 
+  const mountedBeforeStartupWorktreeRefreshRef = useRef(!startupWorktreeRefreshCompleted)
   useEffect(() => {
+    if (!startupWorktreeRefreshCompleted) {
+      return
+    }
+    if (mountedBeforeStartupWorktreeRefreshRef.current) {
+      // Why: App just supplied this mount's initial worktrees; a second full scan would duplicate every repo probe.
+      mountedBeforeStartupWorktreeRefreshRef.current = false
+      return
+    }
     void fetchAllWorktrees()
+  }, [fetchAllWorktrees, startupWorktreeRefreshCompleted])
+
+  // Why: initial load + host-selector changes share one refresh path so remote
+  // environments are listed without mutating global activeRuntimeEnvironmentId.
+  useEffect(() => {
     void refresh()
-  }, [fetchAllWorktrees, refresh])
+  }, [refresh])
 
   useEffect(() => {
     // Pause the relative-time clock while the window is hidden.
@@ -2168,6 +2207,30 @@ export default function AutomationsPage(): React.JSX.Element {
           </Tooltip>
         </div>
         <div className="flex items-center gap-2">
+          {automationListHostOptions.length > 1 ? (
+            <Select
+              value={automationHostTargetKey ?? 'local'}
+              onValueChange={handleAutomationHostTargetChange}
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-8 min-w-[9rem] max-w-[14rem] border-border/50 bg-transparent text-xs"
+                aria-label={translate(
+                  'auto.components.automations.AutomationsPage.environmentSelector',
+                  'Automation host'
+                )}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {automationListHostOptions.map((option) => (
+                  <SelectItem key={option.key} value={option.key} className="text-xs">
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -2177,7 +2240,7 @@ export default function AutomationsPage(): React.JSX.Element {
                   'auto.components.automations.AutomationsPage.19a6e30eae',
                   'Refresh automations'
                 )}
-                onClick={refresh}
+                onClick={() => void refresh()}
                 disabled={isLoading}
                 className="border border-border/50 bg-transparent hover:bg-muted/50"
               >

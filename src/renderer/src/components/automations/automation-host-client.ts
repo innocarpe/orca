@@ -42,6 +42,64 @@ export function getAutomationListTarget(
   return environmentId ? { kind: 'environment', environmentId } : { kind: 'local' }
 }
 
+export function getAutomationHostTargetKey(target: AutomationHostTarget): string {
+  return target.kind === 'environment' ? `environment:${target.environmentId}` : 'local'
+}
+
+export function getAutomationHostTargetFromKey(key: string | null): AutomationHostTarget | null {
+  if (!key) {
+    return null
+  }
+  if (key.startsWith('environment:')) {
+    const environmentId = key.slice('environment:'.length).trim()
+    // Why: bare "environment:" must not override the global list fallback (#10187 review).
+    if (!environmentId) {
+      return null
+    }
+    return { kind: 'environment', environmentId }
+  }
+  if (key === 'local') {
+    return { kind: 'local' }
+  }
+  return null
+}
+
+/**
+ * Resolve which host the Automations page should list against.
+ * Pending navigation wins, then an explicit page selection, then the global
+ * active runtime focus (legacy default).
+ */
+export function resolveAutomationListHostTarget(args: {
+  pendingHostId?: string | null
+  selectedKey: string | null
+  settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined
+}): AutomationHostTarget {
+  if (args.pendingHostId) {
+    return getAutomationTargetFromHostId(args.pendingHostId)
+  }
+  return getAutomationHostTargetFromKey(args.selectedKey) ?? getAutomationListTarget(args.settings)
+}
+
+export type AutomationListHostOption = {
+  key: string
+  label: string
+  target: AutomationHostTarget
+}
+
+export function buildAutomationListHostOptions(args: {
+  localLabel: string
+  environments: readonly { id: string; name: string }[]
+}): AutomationListHostOption[] {
+  return [
+    { key: 'local', label: args.localLabel, target: { kind: 'local' } },
+    ...args.environments.map((environment) => ({
+      key: getAutomationHostTargetKey({ kind: 'environment', environmentId: environment.id }),
+      label: environment.name || environment.id,
+      target: { kind: 'environment' as const, environmentId: environment.id }
+    }))
+  ]
+}
+
 export function getAutomationOwnerTarget(
   automation: Pick<Automation, 'runContext'>,
   sourceTarget?: AutomationHostTarget | null

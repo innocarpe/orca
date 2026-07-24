@@ -1,9 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { Automation, AutomationCreateInput } from '../../../../shared/automations-types'
 import {
+  buildAutomationListHostOptions,
   createAutomationForTarget,
   getAutomationListTarget,
   listAutomationsForTarget,
+  resolveAutomationListHostTarget,
   runAutomationNowForTarget,
   updateAutomationForTarget
 } from './automation-host-client'
@@ -82,6 +84,60 @@ describe('automation host client', () => {
       undefined,
       { timeoutMs: 15_000 }
     )
+  })
+
+  it('prefers explicit page host selection over global active runtime (#9964)', () => {
+    expect(
+      resolveAutomationListHostTarget({
+        pendingHostId: null,
+        selectedKey: 'environment:server-01',
+        settings: { activeRuntimeEnvironmentId: null }
+      })
+    ).toEqual({ kind: 'environment', environmentId: 'server-01' })
+  })
+
+  it('rejects empty environment keys so global fallback still applies', () => {
+    expect(
+      resolveAutomationListHostTarget({
+        pendingHostId: null,
+        selectedKey: 'environment:',
+        settings: { activeRuntimeEnvironmentId: 'gpu' }
+      })
+    ).toEqual({ kind: 'environment', environmentId: 'gpu' })
+  })
+
+  it('prefers pending navigation host over page selection', () => {
+    expect(
+      resolveAutomationListHostTarget({
+        pendingHostId: 'runtime:gpu',
+        selectedKey: 'local',
+        settings: { activeRuntimeEnvironmentId: null }
+      })
+    ).toEqual({ kind: 'environment', environmentId: 'gpu' })
+  })
+
+  it('builds local + connected environment options for the host selector', () => {
+    expect(
+      buildAutomationListHostOptions({
+        localLabel: 'This Mac',
+        environments: [
+          { id: 'server-01', name: 'server-01' },
+          { id: 'gpu', name: 'GPU box' }
+        ]
+      })
+    ).toEqual([
+      { key: 'local', label: 'This Mac', target: { kind: 'local' } },
+      {
+        key: 'environment:server-01',
+        label: 'server-01',
+        target: { kind: 'environment', environmentId: 'server-01' }
+      },
+      {
+        key: 'environment:gpu',
+        label: 'GPU box',
+        target: { kind: 'environment', environmentId: 'gpu' }
+      }
+    ])
   })
 
   it('creates and manually runs runtime-host automations through that server', async () => {
