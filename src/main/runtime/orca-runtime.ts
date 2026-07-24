@@ -1471,6 +1471,8 @@ type WorktreeStartupDraftPaste = {
 type WorktreeStartupFollowup = {
   expectedProcess: string
   prompt: string
+  /** When set and the agent declares draftPasteReadySignal, wait for that too (#10336). */
+  agent?: TuiAgent
 }
 
 function getAgentLaunchPlatformForRepo(
@@ -17781,7 +17783,8 @@ export class OrcaRuntimeService {
         ? {
             followup: {
               expectedProcess: startupPlan.expectedProcess,
-              prompt: startupPlan.followupPrompt
+              prompt: startupPlan.followupPrompt,
+              agent
             }
           }
         : {})
@@ -17919,17 +17922,34 @@ export class OrcaRuntimeService {
   }
 
   private sendStartupFollowupWhenReady(handle: string, followup: WorktreeStartupFollowup): void {
-    void this.waitForStartupFollowupReady(handle, followup.expectedProcess)
-      .then((ptyId) => {
-        if (!ptyId) {
+    void (async () => {
+      try {
+        const processPtyId = await this.waitForStartupFollowupReady(
+          handle,
+          followup.expectedProcess
+        )
+        if (!processPtyId) {
           console.warn('[worktree-create] agent did not become ready for follow-up prompt')
           return
         }
+        // Why: process liveness alone is too early for agents whose TUI mounts
+        // later (Kimi); wait for the configured stream marker when present (#10336).
+        let ptyId = processPtyId
+        if (followup.agent && TUI_AGENT_CONFIG[followup.agent].draftPasteReadySignal) {
+          const draftReadyPtyId = await this.waitForStartupDraftReady(handle, followup.agent)
+          if (!draftReadyPtyId) {
+            console.warn(
+              '[worktree-create] agent process started but draft-ready signal never fired; skipping follow-up prompt'
+            )
+            return
+          }
+          ptyId = draftReadyPtyId
+        }
         this.ptyController?.write(ptyId, `${followup.prompt}\r`)
-      })
-      .catch((error) => {
+      } catch (error) {
         console.warn('[worktree-create] failed to send startup follow-up prompt:', error)
-      })
+      }
+    })()
   }
 
   private async createDefaultTabTerminals(
