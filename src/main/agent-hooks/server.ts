@@ -79,6 +79,8 @@ type EnrichedAgentHookEventPayload = AgentHookEventPayload & {
 }
 
 export type AgentHookStatusChangeEntry = {
+  /** Stable pane identity for per-agent consumers (stats, awake). */
+  paneKey: string
   state: AgentStatusState
   receivedAt: number
   observedInCurrentRuntime: boolean
@@ -658,6 +660,7 @@ export class AgentHookServer {
         ? []
         : [
             {
+              paneKey,
               state: enriched.payload.state,
               receivedAt: enriched.receivedAt,
               observedInCurrentRuntime: this.runtimeObservedStatusPaneKeys.has(paneKey)

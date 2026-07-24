@@ -6,6 +6,8 @@ import { MacosSystemSleepAssertion } from './macos-system-sleep-assertion'
 export const AGENT_AWAKE_STATUS_STALE_AFTER_MS = 2 * 60 * 60 * 1000
 
 export type AgentAwakeStatus = {
+  /** Present when statuses come from AgentHookServer; awake logic does not require it. */
+  paneKey?: string
   state: AgentStatusState
   receivedAt: number
   observedInCurrentRuntime: boolean

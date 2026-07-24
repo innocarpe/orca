@@ -182,6 +182,7 @@ import {
 } from './claude-accounts/live-pty-gate'
 import { StarNagService } from './star-nag/service'
 import { agentHookServer } from './agent-hooks/server'
+import { createHookStatusStatsBridge } from './stats/hook-status-stats-bridge'
 import { wslHookRelayManager } from './agent-hooks/wsl-hook-relay-manager'
 import { maybeAutoRenameBranchOnFirstWork } from './agent-hooks/first-work-branch-rename'
 import { rememberBranchRenameFailureOutput } from './agent-hooks/branch-rename-failure-output'
@@ -275,6 +276,7 @@ let starNag: StarNagService | null = null
 let agentAwakeService: AgentAwakeService | null = null
 let crashReports: CrashReportStore | null = null
 let unsubscribeAgentAwakeStatusChanges: (() => void) | null = null
+let unsubscribeHookStatusStatsBridge: (() => void) | null = null
 let unsubscribeSystemResumeBroadcast: (() => void) | null = null
 let watcherShutdownPromise: Promise<void> | null = null
 let watcherShutdownDone = false
@@ -1910,6 +1912,16 @@ app.whenReady().then(async () => {
   initCohortClassifier(store)
   initOnboardingCohortClassifier(store)
   stats = new StatsCollector()
+  // Why: lifetime "Agents spawned" / "Time agents worked" only heard OSC titles via
+  // AgentDetector; modern agents report status through hooks, so feed that stream
+  // into StatsCollector too (#10201). Keys are pane-scoped with a hook: prefix so
+  // they never collide with residual OSC ptyId sessions.
+  {
+    const bridge = createHookStatusStatsBridge(stats)
+    unsubscribeHookStatusStatsBridge = agentHookServer.subscribeStatusChanges((statuses) => {
+      bridge.apply(statuses)
+    })
+  }
   claudeUsage = new ClaudeUsageStore(store)
   codexUsage = new CodexUsageStore(store)
   openCodeUsage = new OpenCodeUsageStore(store)
@@ -2489,6 +2501,8 @@ app.on('before-quit', () => {
   unsubscribeSystemResumeBroadcast = null
   unsubscribeAgentAwakeStatusChanges?.()
   unsubscribeAgentAwakeStatusChanges = null
+  unsubscribeHookStatusStatsBridge?.()
+  unsubscribeHookStatusStatsBridge = null
   agentAwakeService?.dispose()
   agentAwakeService = null
   // Why: defer PTY cleanup to will-quit so the renderer captures scrollback before PTY-exit events unmount TerminalPane (dropping its capture callbacks).
