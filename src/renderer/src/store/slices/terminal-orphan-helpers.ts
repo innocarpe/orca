@@ -1,4 +1,5 @@
 import type { AppState } from '../types'
+import { isTerminalSessionRetired } from './terminal-retired-session-ids'
 
 type TerminalTabReconnectState = Pick<
   AppState,
@@ -25,13 +26,27 @@ export function terminalTabHasReconnectablePty(
   tabId: string,
   rowPtyId: string | null | undefined
 ): boolean {
-  return Boolean(
-    (state.ptyIdsByTabId[tabId]?.length ?? 0) > 0 ||
-    rowPtyId ||
-    state.lastKnownRelayPtyIdByTabId[tabId] ||
-    state.deferredSshSessionIdsByTabId[tabId] ||
-    state.pendingReconnectPtyIdByTabId[tabId]
-  )
+  if ((state.ptyIdsByTabId[tabId]?.length ?? 0) > 0) {
+    return true
+  }
+  const deferred = state.deferredSshSessionIdsByTabId[tabId]
+  if (deferred && !isTerminalSessionRetired(deferred)) {
+    return true
+  }
+  const pending = state.pendingReconnectPtyIdByTabId[tabId]
+  if (pending && !isTerminalSessionRetired(pending)) {
+    return true
+  }
+  const lastKnown = state.lastKnownRelayPtyIdByTabId[tabId]
+  if (lastKnown && !isTerminalSessionRetired(lastKnown)) {
+    return true
+  }
+  // Why: tab.ptyId is a sleep/reattach wake hint, but an explicitly-killed
+  // serve-* session must not keep the tab off the orphan sweep (#10342).
+  if (rowPtyId && !isTerminalSessionRetired(rowPtyId)) {
+    return true
+  }
+  return false
 }
 
 type OrphanTerminalCleanupState = Pick<

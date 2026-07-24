@@ -32,6 +32,7 @@ import {
 import { createPtyInputWriteQueue } from './pty-input-write-queue'
 import type { PtyDataMeta } from './pty-dispatcher'
 import type { IpcPtyTransportOptions, PtyConnectResult, PtyTransport } from './pty-transport-types'
+import { markTerminalSessionRetired } from '@/store/slices/terminal-retired-session-ids'
 import { createBellDetector } from '../../../../shared/terminal-bell-detector'
 import {
   hasTerminalDisplayContent,
@@ -810,6 +811,9 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
         }
         // Why: re-spawning a Kill-All'd session throws TerminalKilledError; swallow it (pane still shows "Process exited"), don't toast (src/main/daemon/daemon-pty-adapter.ts).
         if (msg.includes('was explicitly killed')) {
+          // Why: mark the dead session so orphan tab cleanup can drop the tab on
+          // the next createTab instead of reviving it from a stale ptyId (#10342).
+          markTerminalSessionRetired(options.sessionId)
           return undefined
         }
         // Why: on cold start the SSH provider isn't registered yet, so pty:spawn throws a raw IPC error; replace with a friendly message.

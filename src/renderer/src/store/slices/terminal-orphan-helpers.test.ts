@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { TerminalTab } from '../../../../shared/types'
 import { getOrphanTerminalIds } from './terminal-orphan-helpers'
 import { buildTerminalTabRetirementPlan } from './terminal-tab-retirement'
+import {
+  _resetTerminalRetiredSessionIdsForTest,
+  markTerminalSessionRetired
+} from './terminal-retired-session-ids'
 
 // Regression coverage for #9911 ("Terminal window auto-closing. Unable to
 // recover."). After hydration / SSH-relay disconnect the tab row's ptyId and
@@ -111,5 +115,34 @@ describe('getOrphanTerminalIds reconnect-map liveness', () => {
     })
 
     expect(getOrphanTerminalIds(state, 'wt-1')).toContain('stale-layout')
+  })
+
+  // #10342: killed serve-* sessions leave tab.ptyId set; without retirement
+  // marking they look reconnectable and survive every createTab orphan sweep.
+  it('orphans a tab whose only ptyId is an explicitly retired killed session', () => {
+    _resetTerminalRetiredSessionIdsForTest()
+    markTerminalSessionRetired('serve-dead-uuid')
+    const state = makeState({
+      tabsByWorktree: {
+        'wt-1': [makeTab({ id: 'phantom', ptyId: 'serve-dead-uuid' })]
+      },
+      ptyIdsByTabId: { phantom: [] },
+      unifiedTabsByWorktree: { 'wt-1': [] }
+    })
+
+    expect(getOrphanTerminalIds(state, 'wt-1')).toContain('phantom')
+  })
+
+  it('does not orphan a tab whose ptyId is a non-retired wake hint', () => {
+    _resetTerminalRetiredSessionIdsForTest()
+    const state = makeState({
+      tabsByWorktree: {
+        'wt-1': [makeTab({ id: 'sleeping', ptyId: 'serve-alive-uuid' })]
+      },
+      ptyIdsByTabId: { sleeping: [] },
+      unifiedTabsByWorktree: { 'wt-1': [] }
+    })
+
+    expect(getOrphanTerminalIds(state, 'wt-1')).not.toContain('sleeping')
   })
 })

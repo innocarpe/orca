@@ -54,6 +54,7 @@ import { pushClosedTerminalTabSnapshot, pushRecentlyClosedTabKind } from './rece
 import { isClaudeAgent } from '@/lib/agent-status'
 import { classifyTitleActivity } from '@/lib/pane-agent-evidence'
 import { buildOrphanTerminalCleanupPatch, getOrphanTerminalIds } from './terminal-orphan-helpers'
+import { markTerminalSessionsRetired } from './terminal-retired-session-ids'
 import {
   dedupeTabOrder,
   ensureGroup,
@@ -1162,6 +1163,18 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         ? opts.precomputedRetirementPlan
         : buildTerminalTabRetirementPlan(get(), tabId)
     let closingWorktreeId: string | null = null
+
+    // Why: durable close for dead SSH/daemon sessions — mark every session id
+    // this tab owned so createTab orphan sweep and rehydration cannot revive it (#10342).
+    if (retiresSession) {
+      const retiredIds = [
+        ...retirementPlan.localOrSshPtyIds,
+        ...retirementPlan.runtimeTerminals.map((terminal) => terminal.ptyId),
+        ...retirementPlan.cleanupOnlyPtyIds,
+        get().lastKnownRelayPtyIdByTabId[tabId]
+      ].filter((id): id is string => Boolean(id))
+      markTerminalSessionsRetired(retiredIds)
+    }
 
     // Why: a parked tab has no mounted TerminalPane cleanup, so revoke its observer/candidate state before provider exit races.
     retireParkedTerminalTab(tabId)
