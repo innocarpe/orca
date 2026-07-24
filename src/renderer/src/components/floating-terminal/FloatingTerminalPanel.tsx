@@ -35,6 +35,7 @@ import { isOrcaCliAvailableOnPath } from '@/lib/agent-skill-cli-prerequisite'
 import {
   isFloatingWorkspacePanelShortcut,
   isFloatingWorkspaceTerminalInputTarget,
+  shouldDeferFloatingWorkspaceTabCloseToPane,
   switchFloatingWorkspaceTab
 } from '@/lib/floating-workspace-terminal-actions'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
@@ -156,6 +157,14 @@ function setFloatingTerminalInputFocusedInMain(focused: boolean): void {
     return
   }
   setInputFocused(focused)
+}
+
+function setFloatingPanelFocusedInMain(focused: boolean): void {
+  const setPanelFocused = window.api.ui.setFloatingPanelFocused
+  if (typeof setPanelFocused !== 'function') {
+    return
+  }
+  setPanelFocused(focused)
 }
 
 export function FloatingTerminalPanel({
@@ -1024,6 +1033,18 @@ export function FloatingTerminalPanel({
         return true
       }
       if (matches('tab.close')) {
+        // Why: split terminals close one pane via TerminalPane; closing the whole tab here would skip that path.
+        if (
+          shouldDeferFloatingWorkspaceTabCloseToPane({
+            contentType: activeClosableTab?.contentType,
+            isFloatingTerminalInput,
+            layoutRootType: activeClosableTab
+              ? state.terminalLayoutsByTabId?.[activeClosableTab.entityId]?.root?.type
+              : null
+          })
+        ) {
+          return false
+        }
         consume()
         if (activeClosableTab) {
           closeFloatingItem(activeClosableTab.id)
@@ -1040,6 +1061,23 @@ export function FloatingTerminalPanel({
       if (matchesFloatingChrome('tab.rename') && activeTab) {
         consume()
         state.setRenamingTabId(activeTab.id)
+        return true
+      }
+      // Why: main process usually owns workspace.selectByIndex as sidebar jumps; remap while this panel has focus.
+      const worktreeIndex = matchKeybindingDigitIndex(
+        'workspace.selectByIndex',
+        input,
+        platform,
+        state.keybindings,
+        floatingChromeMatchOptions
+      )
+      if (worktreeIndex !== null) {
+        const visibleId = visibleFloatingTabOrder[worktreeIndex]
+        if (!visibleId) {
+          return false
+        }
+        consume()
+        activateFloatingItem(visibleId)
         return true
       }
       const selectedTabIndex = matchKeybindingDigitIndex(
@@ -1123,6 +1161,13 @@ export function FloatingTerminalPanel({
           state.keybindings,
           floatingChromeMatchOptions
         ) ||
+        matchKeybindingDigitIndex(
+          'workspace.selectByIndex',
+          nativeEvent,
+          platform,
+          state.keybindings,
+          floatingChromeMatchOptions
+        ) !== null ||
         matchKeybindingDigitIndex(
           'tab.selectByIndex',
           nativeEvent,
@@ -1297,8 +1342,12 @@ export function FloatingTerminalPanel({
   useEffect(() => {
     if (!open) {
       setFloatingTerminalInputFocusedInMain(false)
+      setFloatingPanelFocusedInMain(false)
     }
-    return () => setFloatingTerminalInputFocusedInMain(false)
+    return () => {
+      setFloatingTerminalInputFocusedInMain(false)
+      setFloatingPanelFocusedInMain(false)
+    }
   }, [open])
 
   useEffect(() => {
@@ -1312,6 +1361,7 @@ export function FloatingTerminalPanel({
         return
       }
       setFloatingTerminalInputFocusedInMain(false)
+      setFloatingPanelFocusedInMain(false)
       const active = document.activeElement
       if (active instanceof HTMLElement && panel.contains(active)) {
         // Why: regular tab strip items are non-focusable, so clicking them can
@@ -1329,6 +1379,7 @@ export function FloatingTerminalPanel({
       // Why: browser webviews focus out-of-process and do not emit renderer
       // pointerdown events, so release floating ownership on renderer blur too.
       setFloatingTerminalInputFocusedInMain(false)
+      setFloatingPanelFocusedInMain(false)
       if (isFloatingWorkspaceTerminalInputTarget(active)) {
         // Why: the terminal focus lifecycle preserves this exact helper across
         // app blur so macOS can rebuild its native input context on return.
@@ -1479,12 +1530,23 @@ export function FloatingTerminalPanel({
         const rect = event.currentTarget.getBoundingClientRect()
         commitUserBounds({ ...stagedBoundsRef.current, width: rect.width, height: rect.height })
       }}
-      onFocusCapture={(event) => setFloatingTerminalInputFocused(event.target)}
+      onFocusCapture={(event) => {
+        setFloatingTerminalInputFocused(event.target)
+        setFloatingPanelFocusedInMain(true)
+      }}
       onBlurCapture={(event) => {
         // Why: keep terminal-first shortcut ownership latched during the
         // synchronous macOS IME refresh blur; refocus or its skip callback settles it.
         if (!isTerminalImeInputContextRefreshing(event.target)) {
           setFloatingTerminalInputFocused(event.relatedTarget)
+        }
+        const panel = panelRef.current
+        if (
+          !event.relatedTarget ||
+          !(event.relatedTarget instanceof Node) ||
+          !panel?.contains(event.relatedTarget)
+        ) {
+          setFloatingPanelFocusedInMain(false)
         }
       }}
       onKeyDownCapture={handleShortcutSurfaceKeyDown}

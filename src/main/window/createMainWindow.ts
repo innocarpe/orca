@@ -468,6 +468,8 @@ export function createMainWindow(
   let markdownEditorFocused = false
   let terminalInputFocused = false
   let floatingTerminalInputFocused = false
+  // Why: panel chrome (tab bar) can hold focus without xterm; digit shortcuts still need to skip main interception.
+  let floatingPanelFocused = false
   let shortcutRecorderFocused = false
 
   const markdownFocusChannel = 'ui:setMarkdownEditorFocused'
@@ -497,6 +499,14 @@ export function createMainWindow(
     floatingTerminalInputFocused = focused === true
   }
   ipcMain.on(floatingTerminalInputFocusChannel, onFloatingTerminalInputFocused)
+  const floatingPanelFocusChannel = 'ui:setFloatingPanelFocused'
+  const onFloatingPanelFocused = (event: Electron.IpcMainEvent, focused: unknown): void => {
+    if (event.sender !== mainWindow.webContents) {
+      return
+    }
+    floatingPanelFocused = focused === true
+  }
+  ipcMain.on(floatingPanelFocusChannel, onFloatingPanelFocused)
   const shortcutRecorderFocusChannel = 'ui:setShortcutRecorderFocused'
   // Why: the Settings recorder must receive app shortcuts to rebind them; before-input-event would otherwise consume the key first.
   const onShortcutRecorderFocused = (event: Electron.IpcMainEvent, focused: unknown): void => {
@@ -526,6 +536,9 @@ export function createMainWindow(
   }
   const resetFloatingTerminalInputFocus = (): void => {
     floatingTerminalInputFocused = false
+  }
+  const resetFloatingPanelFocus = (): void => {
+    floatingPanelFocused = false
   }
   const resetShortcutRecorderFocus = (): void => {
     shortcutRecorderFocused = false
@@ -586,6 +599,7 @@ export function createMainWindow(
     resetMarkdownEditorFocus()
     resetTerminalInputFocus()
     resetFloatingTerminalInputFocus()
+    resetFloatingPanelFocus()
     resetShortcutRecorderFocus()
     // Why: macOS reports BrowserWindow teardown as renderer killed/SIGKILL after close — window noise, not a crash.
     if (!windowClosing) {
@@ -601,6 +615,7 @@ export function createMainWindow(
     resetMarkdownEditorFocus()
     resetTerminalInputFocus()
     resetFloatingTerminalInputFocus()
+    resetFloatingPanelFocus()
     resetShortcutRecorderFocus()
   })
   mainWindow.webContents.on('did-start-navigation', (_e, _url, _isInPlace, isMainFrame) => {
@@ -608,6 +623,7 @@ export function createMainWindow(
       resetMarkdownEditorFocus()
       resetTerminalInputFocus()
       resetFloatingTerminalInputFocus()
+      resetFloatingPanelFocus()
       resetShortcutRecorderFocus()
     }
   })
@@ -691,6 +707,13 @@ export function createMainWindow(
     if (
       floatingTerminalInputFocused &&
       (action.type === 'toggleLeftSidebar' || action.type === 'toggleRightSidebar')
+    ) {
+      return false
+    }
+    // Why: leave digit jumps for the floating panel's capture handler; main IPC would switch the workspace behind it.
+    if (
+      (floatingTerminalInputFocused || floatingPanelFocused) &&
+      (action.type === 'jumpToWorktreeIndex' || action.type === 'jumpToTabIndex')
     ) {
       return false
     }
@@ -1070,6 +1093,7 @@ export function createMainWindow(
     markdownEditorFocused = false
     terminalInputFocused = false
     floatingTerminalInputFocused = false
+    floatingPanelFocused = false
     shortcutRecorderFocused = false
     clearRendererRecoveryTimer()
     ipcMain.removeListener(trafficLightChannel, onSyncTrafficLights)
@@ -1084,6 +1108,7 @@ export function createMainWindow(
     ipcMain.removeListener(markdownFocusChannel, onMarkdownEditorFocused)
     ipcMain.removeListener(terminalInputFocusChannel, onTerminalInputFocused)
     ipcMain.removeListener(floatingTerminalInputFocusChannel, onFloatingTerminalInputFocused)
+    ipcMain.removeListener(floatingPanelFocusChannel, onFloatingPanelFocused)
     ipcMain.removeListener(shortcutRecorderFocusChannel, onShortcutRecorderFocused)
     // Why: powerMonitor is app-global; without this the resume relay leaks and fires against a destroyed webContents.
     powerMonitor.removeListener('resume', onSystemResume)

@@ -12,6 +12,7 @@ import {
   isFloatingWorkspacePanelShortcutTarget,
   isFloatingWorkspaceTerminalInputTarget,
   isFloatingWorkspacePanelVisible,
+  shouldDeferFloatingWorkspaceTabCloseToPane,
   shouldMinimizeFloatingWorkspacePanelOnCloseShortcut,
   switchFloatingWorkspaceTab
 } from './floating-workspace-terminal-actions'
@@ -328,6 +329,39 @@ describe('isFloatingWorkspacePanelShortcut', () => {
         false,
         panelRoot
       )
+    ).toBe(false)
+  })
+})
+
+describe('shouldDeferFloatingWorkspaceTabCloseToPane', () => {
+  it('defers close only for split terminal tabs while floating xterm owns focus', () => {
+    expect(
+      shouldDeferFloatingWorkspaceTabCloseToPane({
+        contentType: 'terminal',
+        isFloatingTerminalInput: true,
+        layoutRootType: 'split'
+      })
+    ).toBe(true)
+    expect(
+      shouldDeferFloatingWorkspaceTabCloseToPane({
+        contentType: 'terminal',
+        isFloatingTerminalInput: true,
+        layoutRootType: 'leaf'
+      })
+    ).toBe(false)
+    expect(
+      shouldDeferFloatingWorkspaceTabCloseToPane({
+        contentType: 'terminal',
+        isFloatingTerminalInput: false,
+        layoutRootType: 'split'
+      })
+    ).toBe(false)
+    expect(
+      shouldDeferFloatingWorkspaceTabCloseToPane({
+        contentType: 'browser',
+        isFloatingTerminalInput: true,
+        layoutRootType: 'split'
+      })
     ).toBe(false)
   })
 })

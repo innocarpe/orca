@@ -2569,6 +2569,7 @@ function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
     setMarkdownEditorFocused: () => {},
     setTerminalInputFocused: () => {},
     setFloatingTerminalInputFocused: () => {},
+    setFloatingPanelFocused: () => {},
     setShortcutRecorderFocused: () => {},
     onRichMarkdownContextCommand: () => noopUnsubscribe,
     onFullscreenChanged: () => noopUnsubscribe,
