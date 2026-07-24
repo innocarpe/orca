@@ -14,8 +14,10 @@ import { registerDotenvLanguage } from './monaco-languages/register-dotenv'
 import { registerGlimmerLanguages } from './monaco-languages/register-glimmer'
 import { registerGroovyLanguage } from './monaco-languages/register-groovy'
 import { registerJsonlLanguage } from './monaco-languages/register-jsonl'
+import { registerLatexLanguage } from './monaco-languages/register-latex'
 import { registerLeanLanguage } from './monaco-languages/register-lean'
 import { registerMarkdownLanguage } from './monaco-languages/register-markdown'
+import { registerMatlabLanguage } from './monaco-languages/register-matlab'
 import { registerNimLanguage } from './monaco-languages/register-nim'
 import { registerQuartoLanguage } from './monaco-languages/register-quarto'
 import { registerShellMarkdownAliases } from './monaco-languages/register-shell-markdown-aliases'
@@ -78,6 +80,8 @@ runMonacoSetupSteps([
   ['Glimmer language registration', () => registerGlimmerLanguages(monaco)],
   ['CUDA language registration', () => registerCudaLanguage(monaco)],
   ['Nim language registration', () => registerNimLanguage(monaco)],
+  ['MATLAB language registration', () => registerMatlabLanguage(monaco)],
+  ['LaTeX language registration', () => registerLatexLanguage(monaco)],
   ['Lean language registration', () => registerLeanLanguage(monaco)],
   ['Typst language registration', () => registerTypstLanguage(monaco)],
   ['Zig language registration', () => registerZigLanguage(monaco)],

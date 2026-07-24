@@ -122,6 +122,12 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   '.nim': 'nim',
   '.nims': 'nim',
   '.nimble': 'nim',
+  // Why: #10363 — Monaco lists .m as objective-c, and that id has no tokenizer here.
+  '.m': 'matlab',
+  '.tex': 'latex',
+  '.ltx': 'latex',
+  '.latex': 'latex',
+  '.sty': 'latex',
   '.lean': 'lean',
   '.typ': 'typst',
   '.tf': 'hcl',
