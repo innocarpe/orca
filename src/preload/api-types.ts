@@ -2179,6 +2179,11 @@ export type PreloadApi = {
       runtime?: 'host' | 'wsl'
       wslDistro?: string | null
     }) => Promise<CodexRateLimitAccountsState>
+    importExistingHome: (args: {
+      sourceHomePath: string
+      runtime?: 'host' | 'wsl'
+      wslDistro?: string | null
+    }) => Promise<CodexRateLimitAccountsState>
     reauthenticate: (args: { accountId: string }) => Promise<CodexRateLimitAccountsState>
     remove: (args: { accountId: string }) => Promise<CodexRateLimitAccountsState>
     select: (args: {

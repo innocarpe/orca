@@ -7,6 +7,11 @@ export function registerCodexAccountHandlers(codexAccounts: CodexAccountService)
   ipcMain.handle('codexAccounts:add', (_event, args?: CodexAccountAddTarget) =>
     codexAccounts.addAccount(args)
   )
+  ipcMain.handle(
+    'codexAccounts:importExistingHome',
+    (_event, args: { sourceHomePath: string } & CodexAccountAddTarget) =>
+      codexAccounts.importAccountFromExistingHome(args.sourceHomePath, args)
+  )
   ipcMain.handle('codexAccounts:reauthenticate', (_event, args: { accountId: string }) =>
     codexAccounts.reauthenticateAccount(args.accountId)
   )
