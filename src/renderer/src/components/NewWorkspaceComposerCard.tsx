@@ -43,6 +43,7 @@ import {
   shouldHandleTextControlPaste
 } from '@/lib/text-control-paste'
 import { getScreenSubmitModifierLabel } from '@/lib/screen-submit-shortcut'
+import { autosizeTextareaHeight } from '@/lib/autosize-textarea-height'
 import { useContextualTour } from '@/components/contextual-tours/use-contextual-tour'
 import { filterEnabledTuiAgents } from '../../../shared/tui-agent-selection'
 import type {
@@ -958,8 +959,17 @@ export default function NewWorkspaceComposerCard({
   const disabledTuiAgents = useAppStore((s) => s.settings?.disabledTuiAgents ?? [])
   const updateSettings = useAppStore((s) => s.updateSettings)
   const nameInputFocusFrameRef = React.useRef<number | null>(null)
+  const noteTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const branchNameInputId = React.useId()
   const submitShortcutModifierLabel = getScreenSubmitModifierLabel()
+  // Why (#10575): PR/MR prefill writes note via setState without firing onInput,
+  // so grow the box whenever the value changes (typed, pasted, or programmatic).
+  React.useLayoutEffect(() => {
+    const textarea = noteTextareaRef.current
+    if (textarea) {
+      autosizeTextareaHeight(textarea)
+    }
+  }, [note])
   const selectedRepoName = React.useMemo(() => {
     const repo = eligibleRepos.find((candidate) => candidate.id === repoId)
     return repo?.displayName ?? repo?.path ?? 'This project'
@@ -1553,21 +1563,21 @@ export default function NewWorkspaceComposerCard({
                   {translate('auto.components.NewWorkspaceComposerCard.f8728aa4f9', 'Note')}
                 </label>
                 <textarea
+                  ref={noteTextareaRef}
                   value={note}
                   onChange={(event) => onNoteChange(event.target.value)}
                   onPaste={handleNotePaste}
                   onInput={(event) => {
-                    // Why: reset then size to content so short notes stay compact and long ones grow without a scrollbar until max-h clamps.
-                    const ta = event.currentTarget
-                    ta.style.height = 'auto'
-                    ta.style.height = `${ta.scrollHeight}px`
+                    // Why: keep live typing responsive; layout effect covers programmatic prefills.
+                    autosizeTextareaHeight(event.currentTarget)
                   }}
                   placeholder={translate(
                     'auto.components.NewWorkspaceComposerCard.090cfedeb4',
                     'Write a note'
                   )}
                   rows={1}
-                  className="w-full min-w-0 resize-none overflow-hidden rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 max-h-40"
+                  // Why: overflow-y-auto so max-h clamp still lets the user read a long PR title.
+                  className="w-full min-w-0 resize-none overflow-y-auto rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 max-h-40"
                 />
               </div>
 
