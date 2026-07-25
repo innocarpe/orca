@@ -10,6 +10,7 @@ import type {
   WorkspaceSessionState,
   AgentActivityDisplayMode
 } from './types'
+import { EMPTY_CODEX_RESET_CREDIT_ATTEMPT_LEDGER } from './codex-reset-credit-attempt-ledger'
 import { DEFAULT_STATUS_BAR_ITEMS } from './status-bar-defaults'
 import { DEFAULT_TERMINAL_FONT_WEIGHT } from './terminal-fonts'
 import { getDefaultTerminalQuickCommands } from './terminal-quick-commands'
@@ -298,6 +299,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     terminalHiddenDeliveryGate: true,
     terminalModelQueryAuthority: true,
     defaultTuiAgent: null,
+    // Why: preserve #1814 reopen-with-creation-agent; users can opt out in Agents settings (#10578).
+    reopenWorkspacesWithCreatedAgent: true,
     disabledTuiAgents: [...DEFAULT_DISABLED_TUI_AGENTS],
     claudeAgentTeamsDefaultDisabledMigrated: true,
     skipDeleteWorktreeConfirm: false,
@@ -339,6 +342,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     experimentalPet: false,
     experimentalActivity: false,
     experimentalAgentDashboardPopout: false,
+    // Why: in-window screen popover is the default surface; users opt into a separate pop-out window.
+    experimentalAgentDashboardMode: 'in-window',
     experimentalActivityDefaultedOffForAllUsers: true,
     experimentalTerminalAttention: false,
     experimentalAgentHibernation: false,
@@ -423,7 +428,8 @@ export function getDefaultPersistedState(homedir: string): PersistedState {
     automations: [],
     automationRuns: [],
     onboarding: getDefaultOnboardingState(),
-    featureInteractionTelemetryBuckets: {}
+    featureInteractionTelemetryBuckets: {},
+    codexResetCreditAttemptLedger: structuredClone(EMPTY_CODEX_RESET_CREDIT_ATTEMPT_LEDGER)
   }
 }
 
