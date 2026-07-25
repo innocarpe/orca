@@ -292,7 +292,7 @@ export class CodexAccountService {
     try {
       const canonicalConfig = this.readCanonicalConfigForManagedHome(managedHomePath)
       this.assertOAuthAccountAddAllowed(canonicalConfig)
-      copyExistingCodexHomeIntoManaged({
+      await copyExistingCodexHomeIntoManaged({
         sourceHomePath: resolvedSource,
         managedHomePath,
         accountId
