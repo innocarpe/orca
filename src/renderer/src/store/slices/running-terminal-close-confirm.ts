@@ -13,7 +13,7 @@ export type RunningTerminalCloseConfirmRequest = {
 export type RunningTerminalCloseConfirmSlice = {
   runningTerminalCloseConfirm: RunningTerminalCloseConfirmRequest | null
   requestRunningTerminalCloseConfirm: (request: RunningTerminalCloseConfirmRequest) => void
-  confirmRunningTerminalClose: () => void
+  confirmRunningTerminalClose: (options?: { drainQueue?: boolean }) => void
   dismissRunningTerminalClose: () => void
 }
 
@@ -46,12 +46,22 @@ export const createRunningTerminalCloseConfirmSlice: StateCreator<
       set({ runningTerminalCloseConfirm: request })
     },
 
-    confirmRunningTerminalClose: () => {
+    confirmRunningTerminalClose: (options) => {
       if (Date.now() < nextRequestActionAllowedAt) {
         return
       }
       const request = get().runningTerminalCloseConfirm
       if (!request) {
+        return
+      }
+      if (options?.drainQueue) {
+        // Why: "Don't ask again" already passed the settings guard for queued
+        // requests — finish them all without showing more dialogs (#10167).
+        set({ runningTerminalCloseConfirm: null })
+        const drained = [request, ...queuedRequests.splice(0, queuedRequests.length)]
+        for (const entry of drained) {
+          entry.onConfirm()
+        }
         return
       }
       // Why: advance before onConfirm so re-entrant closes queue behind the next
