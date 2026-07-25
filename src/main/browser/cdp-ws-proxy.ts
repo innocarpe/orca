@@ -6,6 +6,7 @@ import { captureScreenshot } from './cdp-screenshot'
 import { buildPrintToPdfOptions, CdpPdfStreamStore } from './cdp-print-to-pdf'
 import { ANTI_DETECTION_SCRIPT } from './anti-detection'
 import { acquireElectronDebugger, type ElectronDebuggerLease } from './electron-debugger-lease'
+import { enableCdpFocusEmulation } from './cdp-focus-emulation'
 
 const LIFECYCLE_PRIMING_TIMEOUT_MS = 1_000
 
@@ -231,6 +232,34 @@ export class CdpWsProxy {
       })
     } catch {
       /* best-effort — page domain may not be ready yet */
+    }
+
+    // Why: Electron 43+ tracks WebContentsView focus correctly, so embedded
+    // tabs can report document.hasFocus()===false even when Orca is frontmost.
+    // Rich editors (Draft.js) then drop Input.insertText / execCommand (#10375).
+    try {
+      // Why: bound stalled debugger commands so attach does not hang agent-browser (30s CDP default).
+      const FOCUS_EMULATION_COMMAND_TIMEOUT_MS = 5_000
+      await enableCdpFocusEmulation(async (method, params) => {
+        let timer: ReturnType<typeof setTimeout> | null = null
+        try {
+          return await Promise.race([
+            this.webContents.debugger.sendCommand(method, params ?? {}),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`CDP focus emulation timed out: ${method}`)),
+                FOCUS_EMULATION_COMMAND_TIMEOUT_MS
+              )
+            })
+          ])
+        } finally {
+          if (timer) {
+            clearTimeout(timer)
+          }
+        }
+      })
+    } catch {
+      /* best-effort — older CDP stacks may lack the method */
     }
 
     this.debuggerMessageHandler = (_event: unknown, ...rest: unknown[]) => {
