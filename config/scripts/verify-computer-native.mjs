@@ -185,6 +185,16 @@ function verifyNativeArgumentGuardrails() {
   )
   const windows = readFileSync(join(repoRoot, 'native/computer-use-windows/runtime.ps1'), 'utf8')
   const failures = []
+  // Why: GI bindings do not expose the C-only editable-text predicate; looking
+  // it up as an attribute raises before attempt() can catch it (#10569).
+  if (linux.includes('node.is_editable_text') || linux.includes('is_editable_text,')) {
+    failures.push(
+      'Linux set_value must not look up node.is_editable_text (use get_editable_text_iface)'
+    )
+  }
+  if (!linux.includes('get_editable_text_iface')) {
+    failures.push('Linux set_value must probe editability via get_editable_text_iface')
+  }
   if (linux.includes('count or 1') || linux.includes('pages or 1')) {
     failures.push('Linux provider must not coerce explicit zero action values to defaults')
   }
