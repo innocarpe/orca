@@ -25,7 +25,10 @@ const createMainWindowSource = readFileSync(join(__dirname, 'createMainWindow.ts
 
 describe('#8797 macOS window blur + background opacity', () => {
   it('wires createMainWindow through resolveMainWindowChromeOptions', () => {
-    expect(createMainWindowSource).toMatch(/resolveMainWindowChromeOptions/)
+    expect(createMainWindowSource).toMatch(
+      /const\s+\{\s*backgroundColor,\s*platformBlurOptions\s*\}\s*=\s*resolveMainWindowChromeOptions\s*\(/
+    )
+    expect(createMainWindowSource).toMatch(/\.\.\.platformBlurOptions/)
     expect(createMainWindowSource).toMatch(/only applies at creation/)
     expect(createMainWindowSource).toMatch(/requires a restart/)
     // No longer hard-codes an always-opaque fill next to the constructor.
