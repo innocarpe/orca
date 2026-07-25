@@ -1034,7 +1034,11 @@ export default function AutomationsPage(): React.JSX.Element {
         : []
       setAutomations(nextAutomations)
       setRuns(nextRuns)
-      setAutomationHostTargetKey(getAutomationHostTargetKey(automationHostTarget))
+      // Why: pending navigation only temporarily targets a host for the deep-link
+      // refresh — do not overwrite the user's explicit selector choice (#10347).
+      if (!pendingNavigation) {
+        setAutomationHostTargetKey(getAutomationHostTargetKey(automationHostTarget))
+      }
       setSelectedAutomationRuns({
         automationId: nextSelectedId,
         runs: nextSelectedRuns
