@@ -126,13 +126,15 @@ export function buildWindowsGrokHookScript(): string {
     ...buildWindowsHookEnvironmentGuardLines(),
     // Why: default installs leave GROK_HOME unset; only expand substrings when defined.
     'set "ORCA_GROK_HOME="',
-    'if defined GROK_HOME (',
-    '  set "ORCA_GROK_HOME=%GROK_HOME%"',
-    `  if not "%ORCA_GROK_HOME:~${GROK_HOME_ENVELOPE_MAX_LENGTH},1%"=="" set "ORCA_GROK_HOME="`,
+    // Why: cmd expands %VAR% for a whole parenthesized block before any set runs,
+    // so length/trailing checks must be outside the `if defined` compound form.
+    'if not defined GROK_HOME goto :orca_grok_home_ready',
+    'set "ORCA_GROK_HOME=%GROK_HOME%"',
+    `if not "%ORCA_GROK_HOME:~${GROK_HOME_ENVELOPE_MAX_LENGTH},1%"=="" set "ORCA_GROK_HOME="`,
     // Why: a trailing backslash escapes curl's closing argv quote on Windows,
     // merging the payload option into grokHome and dropping the hook body.
-    '  if defined ORCA_GROK_HOME if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."',
-    ')',
+    'if defined ORCA_GROK_HOME if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."',
+    ':orca_grok_home_ready',
     WINDOWS_GROK_HOOK_POST_COMMAND,
     'exit /b 0',
     ...buildWindowsHookStdinDrainEpilogue(),
