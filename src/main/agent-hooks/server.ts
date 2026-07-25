@@ -79,6 +79,8 @@ type EnrichedAgentHookEventPayload = AgentHookEventPayload & {
 }
 
 export type AgentHookStatusChangeEntry = {
+  /** Stable pane identity for per-agent consumers (stats, awake). */
+  paneKey: string
   state: AgentStatusState
   receivedAt: number
   observedInCurrentRuntime: boolean
@@ -166,7 +168,7 @@ function dropHydratedIdleClaudeSubagents(
     return payload
   }
   const activeSubagents = payload.subagents.filter((subagent) => subagent.state !== 'idle')
-  // Why: older builds persisted finished Claude children as idle rows; prune them so restart can't resurrect the pile.
+  // Why: an idle teammate's liveness can't be proven across a restart (its TeammateIdle confirmation is in-memory); prune so a dead pile can't resurrect — a live teammate re-earns its row via SubagentStart.
   return {
     ...payload,
     subagents: activeSubagents.length > 0 ? activeSubagents : undefined
@@ -658,6 +660,7 @@ export class AgentHookServer {
         ? []
         : [
             {
+              paneKey,
               state: enriched.payload.state,
               receivedAt: enriched.receivedAt,
               observedInCurrentRuntime: this.runtimeObservedStatusPaneKeys.has(paneKey)
