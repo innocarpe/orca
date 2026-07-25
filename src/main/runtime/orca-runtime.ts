@@ -83,6 +83,8 @@ import { buildOrchestrationTaskDisplayMetadata } from '../../shared/orchestratio
 import {
   isTerminalInputTooLargeWithYield,
   TERMINAL_INPUT_TOO_LARGE_ERROR,
+  getTerminalInputChunkGapMs,
+  getTerminalInputChunkMaxBytes,
   iterateTerminalInputChunks
 } from '../../shared/terminal-input'
 import {
@@ -16978,7 +16980,9 @@ export class OrcaRuntimeService {
       afterWrite?: (ptyId: string) => void | Promise<void>
     } = {}
   ): Promise<void> {
-    const chunks = iterateTerminalInputChunks(text)
+    const chunkMaxBytes = getTerminalInputChunkMaxBytes()
+    const chunkGapMs = getTerminalInputChunkGapMs()
+    const chunks = iterateTerminalInputChunks(text, chunkMaxBytes)
     let chunk = chunks.next()
     while (!chunk.done) {
       await options.beforeWrite?.(ptyId)
@@ -16990,7 +16994,9 @@ export class OrcaRuntimeService {
       await options.afterWrite?.(ptyId)
       chunk = chunks.next()
       if (!chunk.done) {
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        // Why: Windows ConPTY needs a real gap, not just setTimeout(0), or long
+        // injects are silently truncated to a tail fragment (#10416).
+        await new Promise((resolve) => setTimeout(resolve, chunkGapMs))
       }
     }
   }
@@ -17006,7 +17012,9 @@ export class OrcaRuntimeService {
     let wrotePasteBytes = false
     let completedPaste = false
     try {
-      const chunks = iterateTerminalInputChunks(pastePayload)
+      const chunkMaxBytes = getTerminalInputChunkMaxBytes()
+      const chunkGapMs = getTerminalInputChunkGapMs()
+      const chunks = iterateTerminalInputChunks(pastePayload, chunkMaxBytes)
       let chunk = chunks.next()
       while (!chunk.done) {
         await options.beforeWrite?.(ptyId)
@@ -17017,7 +17025,7 @@ export class OrcaRuntimeService {
         wrotePasteBytes = true
         chunk = chunks.next()
         if (!chunk.done) {
-          await new Promise((resolve) => setTimeout(resolve, 0))
+          await new Promise((resolve) => setTimeout(resolve, chunkGapMs))
         }
       }
       completedPaste = true
