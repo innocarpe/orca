@@ -79,6 +79,7 @@ export type InlineInput = {
   depth: number
   existingName?: string
   existingPath?: string
+  operationOwner?: TreeNode['operationOwner']
 }
 
 // ─── Inline Input Row ────────────────────────────────────────────
@@ -294,7 +295,7 @@ type FileExplorerRowProps = {
   onFindInFolder: () => void
   onMoveDrop: (sourcePath: string, destDir: string) => void
   onDragTargetChange: (dir: string | null) => void
-  onDragSourceChange: (path: string | null) => void
+  onDragSourceChange: (path: string | null, isDirectory?: boolean) => void
   onDragExpandDir: (dirPath: string) => void
   onNativeDragTargetChange: (dir: string | null) => void
   onNativeDragExpandDir: (dirPath: string) => void
@@ -553,7 +554,7 @@ export function FileExplorerRow({
               event.dataTransfer.setData(WORKSPACE_FILE_PATHS_MIME, encodeWorkspaceFilePaths(paths))
             }
             event.dataTransfer.effectAllowed = 'copyMove'
-            onDragSourceChange(node.path)
+            onDragSourceChange(node.path, node.isDirectory)
 
             if (paths.length > 1) {
               const MAX_SHOWN = 5
@@ -637,7 +638,10 @@ export function FileExplorerRow({
             className={cn(
               'truncate',
               isSelected && !nodeStatus && !isIgnored && 'text-accent-foreground',
-              isIgnored && 'italic'
+              // Why: italic glyphs overhang their advance width; truncate's
+              // overflow:hidden clips it, shaving the last char (".md" → ".ma").
+              // pr-0.5 reserves room for the slant so the final letter survives.
+              isIgnored && 'italic pr-0.5'
             )}
             style={
               nodeStatus
