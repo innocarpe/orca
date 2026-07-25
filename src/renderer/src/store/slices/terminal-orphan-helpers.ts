@@ -26,7 +26,9 @@ export function terminalTabHasReconnectablePty(
   tabId: string,
   rowPtyId: string | null | undefined
 ): boolean {
-  if ((state.ptyIdsByTabId[tabId]?.length ?? 0) > 0) {
+  // Why: cold reattach can leave a retired serve-* id in ptyIdsByTabId before spawn;
+  // only a non-retired live map entry should keep the tab off the orphan sweep.
+  if ((state.ptyIdsByTabId[tabId] ?? []).some((id) => !isTerminalSessionRetired(id))) {
     return true
   }
   const deferred = state.deferredSshSessionIdsByTabId[tabId]
