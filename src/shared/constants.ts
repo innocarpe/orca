@@ -304,6 +304,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     terminalHiddenDeliveryGate: true,
     terminalModelQueryAuthority: true,
     defaultTuiAgent: null,
+    // Why: preserve #1814 reopen-with-creation-agent; users can opt out in Agents settings (#10578).
+    reopenWorkspacesWithCreatedAgent: true,
     disabledTuiAgents: [...DEFAULT_DISABLED_TUI_AGENTS],
     pluginSystemEnabled: false,
     disabledPlugins: [],

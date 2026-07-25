@@ -71,7 +71,7 @@ describe('activateAndRevealWorktree', () => {
     expect(recordWorktreeVisit).toHaveBeenCalledWith(worktree.id)
   })
 
-  it('does not relaunch the creation-time agent when reopening an empty worktree', () => {
+  it('reopens an empty worktree with the agent selected at creation time', () => {
     const worktree = makeWorktree()
     const { revealWorktreeInSidebar } = seedEmptyActivatableWorktree(worktree)
 
@@ -79,45 +79,110 @@ describe('activateAndRevealWorktree', () => {
     const state = useAppStore.getState()
     const reopenedTab = state.tabsByWorktree[worktree.id]?.[0]
 
-    // A focusable surface still appears — it is just a plain shell, with no queued agent launch.
     expect(result).toEqual({ primaryTabId: reopenedTab?.id })
     expect(reopenedTab).toBeDefined()
+    expect(state.pendingStartupByTabId[reopenedTab!.id]).toEqual({
+      command: "codex '--dangerously-bypass-approvals-and-sandbox'",
+      env: {},
+      launchAgent: 'codex',
+      launchConfig: {
+        agentCommand: "codex '--dangerously-bypass-approvals-and-sandbox'",
+        agentArgs: '--dangerously-bypass-approvals-and-sandbox',
+        agentEnv: {}
+      },
+      launchToken: expect.any(String),
+      sessionOptions: undefined,
+      telemetry: {
+        agent_kind: 'codex',
+        launch_source: 'sidebar',
+        request_kind: 'new'
+      }
+    })
+    expect(revealWorktreeInSidebar).toHaveBeenCalledWith(worktree.id)
+  })
+
+  it('does not relaunch the creation agent when the reopen setting is off', () => {
+    const worktree = makeWorktree()
+    const { revealWorktreeInSidebar } = seedEmptyActivatableWorktree(worktree)
+    useAppStore.setState({
+      settings: {
+        ...useAppStore.getState().settings,
+        reopenWorkspacesWithCreatedAgent: false
+      } as ReturnType<typeof useAppStore.getState>['settings']
+    })
+
+    const result = activateAndRevealWorktree(worktree.id)
+    const state = useAppStore.getState()
+    const reopenedTab = state.tabsByWorktree[worktree.id]?.[0]
+
+    expect(result).toEqual({ primaryTabId: reopenedTab?.id })
+    expect(reopenedTab).toBeDefined()
+    // Blank shell — no agent startup payload from createdWithAgent.
     expect(state.pendingStartupByTabId[reopenedTab!.id]).toBeUndefined()
     expect(revealWorktreeInSidebar).toHaveBeenCalledWith(worktree.id)
   })
 
-  it('does not relaunch on repeated activate/close cycles', () => {
-    const worktree = makeWorktree()
-    seedEmptyActivatableWorktree(worktree)
-
-    for (let cycle = 0; cycle < 3; cycle += 1) {
-      activateAndExpectNoRelaunch(worktree.id)
-
-      // Return to zero tabs, the state that used to re-arm the relaunch. Sets state
-      // directly rather than via closeTab — the sleeping-record purge is covered in
-      // worktree-reactivation-tab-forkbomb.test.ts.
-      useAppStore.setState({ tabsByWorktree: {}, activeTabIdByWorktree: {} })
+  it('uses WSL launch quoting when reopening a Windows-path WSL project agent', () => {
+    const worktree = {
+      ...makeWorktree(),
+      path: 'C:\\Users\\jinwo\\repo\\feature'
     }
-  })
 
-  it('does not relaunch when activating a sibling worktree the user never opened', () => {
-    const sibling = makeWorktree()
-    const target = { ...makeWorktree(), id: 'wt-handoff', displayName: 'handoff' }
-    seedEmptyActivatableWorktree(target, { extraWorktrees: [sibling] })
+    useAppStore.setState({
+      projects: [
+        {
+          id: 'repo-1',
+          displayName: 'repo',
+          badgeColor: '#000000',
+          sourceRepoIds: ['repo-1'],
+          createdAt: 0,
+          updatedAt: 0,
+          localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+        }
+      ],
+      repos: [
+        {
+          id: 'repo-1',
+          path: 'C:\\Users\\jinwo\\repo',
+          displayName: 'repo',
+          badgeColor: '#000000',
+          addedAt: 0
+        }
+      ],
+      worktreesByRepo: { 'repo-1': [worktree] },
+      activeRepoId: 'repo-1',
+      activeView: 'terminal',
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {},
+      groupsByWorktree: {},
+      layoutByWorktree: {},
+      activeGroupIdByWorktree: {},
+      openFiles: [],
+      browserTabsByWorktree: {},
+      activeFileIdByWorktree: {},
+      activeBrowserTabIdByWorktree: {},
+      activeTabTypeByWorktree: {},
+      activeTabIdByWorktree: {},
+      tabBarOrderByWorktree: {},
+      pendingStartupByTabId: {},
+      settings: {
+        agentCmdOverrides: {},
+        agentDefaultArgs: { codex: '--profile "don\'t"' },
+        setupScriptLaunchMode: 'new-tab'
+      } as unknown as ReturnType<typeof useAppStore.getState>['settings'],
+      markWorktreeVisited: vi.fn(),
+      recordWorktreeVisit: vi.fn(),
+      refreshGitHubForWorktreeIfStale: vi.fn(),
+      revealWorktreeInSidebar: vi.fn()
+    })
 
-    // The shape post-delete focus handoff produces. That caller passes no opts at all —
-    // asserted directly in active-worktree-focus-after-delete.test.ts.
-    activateAndExpectNoRelaunch(target.id)
-  })
+    const result = activateAndRevealWorktree(worktree.id)
+    const state = useAppStore.getState()
+    const reopenedTab = state.tabsByWorktree[worktree.id]?.[0]
 
-  it('does not relaunch when activation opts carry no startup payload', () => {
-    const worktree = makeWorktree()
-    seedEmptyActivatableWorktree(worktree)
-
-    // The opts shape CLI/relay navigation and notification clicks arrive with; those
-    // callers are asserted in useIpcEvents.test.ts. The host's `didSpawnStartup` leg is
-    // a main-process concern and is not reachable from here.
-    activateAndExpectNoRelaunch(worktree.id, { notifyHostRuntime: false })
+    expect(result).toEqual({ primaryTabId: reopenedTab?.id })
+    expect(state.pendingStartupByTabId[reopenedTab!.id]?.command).toContain("'don'\\''t'")
+    expect(state.pendingStartupByTabId[reopenedTab!.id]?.command).not.toContain("'don''t'")
   })
 
   it('still queues an explicit startup supplied by the caller', () => {
@@ -134,6 +199,24 @@ describe('activateAndRevealWorktree', () => {
     expect(state.pendingStartupByTabId[tabId!]).toEqual(
       expect.objectContaining({ command: 'codex' })
     )
+  })
+
+  it('does not relaunch when the reopen setting is off across activate/close cycles', () => {
+    const worktree = makeWorktree()
+    seedEmptyActivatableWorktree(worktree)
+    useAppStore.setState({
+      settings: {
+        ...useAppStore.getState().settings,
+        reopenWorkspacesWithCreatedAgent: false
+      } as ReturnType<typeof useAppStore.getState>['settings']
+    })
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      activateAndExpectNoRelaunch(worktree.id)
+
+      // Return to zero tabs — opt-out must stay blank even after repeated empty reopens.
+      useAppStore.setState({ tabsByWorktree: {}, activeTabIdByWorktree: {} })
+    }
   })
 
   it('does not duplicate a sleeping agent session owned by a preserved slept pane', () => {

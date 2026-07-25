@@ -5,6 +5,11 @@ import {
   getAgentAwakeTitle
 } from './agent-awake-copy'
 import {
+  getCreatedAgentReopenDescription,
+  getCreatedAgentReopenSearchKeywords,
+  getCreatedAgentReopenTitle
+} from './created-agent-reopen-copy'
+import {
   getAgentGeneratedTabTitlesDescription,
   getAgentGeneratedTabTitlesSearchKeywords,
   getAgentGeneratedTabTitlesTitle
@@ -115,6 +120,11 @@ const getAllAgentsPaneSearchEntries = createLocalizedCatalog(() => [
     title: getAgentAwakeTitle(),
     description: getAgentAwakeDescription(),
     keywords: getAgentAwakeSearchKeywords()
+  },
+  {
+    title: getCreatedAgentReopenTitle(),
+    description: getCreatedAgentReopenDescription(),
+    keywords: getCreatedAgentReopenSearchKeywords()
   },
   {
     title: translate(
