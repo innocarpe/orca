@@ -1672,7 +1672,8 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
         extractClosedTerminalAgentResume({
           tabId: closedTab.id,
           agentStatusByPaneKey: s.agentStatusByPaneKey,
-          sleepingAgentSessionsByPaneKey: s.sleepingAgentSessionsByPaneKey
+          sleepingAgentSessionsByPaneKey: s.sleepingAgentSessionsByPaneKey,
+          agentLaunchConfigByPaneKey: s.agentLaunchConfigByPaneKey
         })
       const capturedSnapshot =
         closeReason === 'user' &&
