@@ -33,6 +33,7 @@ import { removeStaleLocalWorktreeRegistration } from '../../local-worktree-remov
 import { cleanupUnusedWorktreePushTargetRemote } from '../../ipc/worktree-remote'
 import { removeRuntimeRegisteredLocalWorktree } from '../runtime-registered-local-worktree-removal'
 import { removeOrphanOrFolderWorktree } from './workspace-registration-removal'
+import { maybePruneReviewHeadRefsAfterWorktreeDelete } from '../../worktree-review-head-prune'
 import {
   assertWslMoveWorkspaceWritable,
   isWslMoveSourceHost
@@ -204,7 +205,15 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
               this.stopPtysForDestructiveWorktreeRemoval(worktreeId, {
                 allowUnverifiedStop: allowUnverifiedPtyStop
               }),
-            finishRemoval: () => {
+            finishRemoval: async () => {
+              await maybePruneReviewHeadRefsAfterWorktreeDelete({
+                store,
+                repoPath: repo!.path,
+                repoId: removalTarget.repoId,
+                worktreeId: removalTarget.id,
+                meta: removedMeta,
+                localGitOptions: localWorktreeGitOptions
+              })
               this.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
               purgeRemovedWorktree()
               this.notifyWorktreesChanged(repo!.id)
@@ -242,6 +251,14 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
             registeredWorktree.head,
             removedPushTarget
           )
+          await maybePruneReviewHeadRefsAfterWorktreeDelete({
+            store,
+            repoPath: repo!.path,
+            repoId: removalTarget.repoId,
+            worktreeId: removalTarget.id,
+            meta: removedMeta,
+            localGitOptions: localWorktreeGitOptions
+          })
           purgeRemovedWorktree()
           this.notifyWorktreesChanged(repo!.id)
           return removalResult ?? {}
@@ -267,7 +284,7 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
           closeWatchers: (path) => this.closeFileWatchersForRemoval(path),
           preserveBranchHead: (result, fallbackHead) =>
             this.preservedBranchCleanup.preserveHead(result, fallbackHead),
-          finishRemoval: (result, rememberBranch, fallbackHead) => {
+          finishRemoval: async (result, rememberBranch, fallbackHead) => {
             if (rememberBranch) {
               this.preservedBranchCleanup.remember(
                 removalTarget.id,
@@ -279,6 +296,14 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
             } else {
               this.preservedBranchCleanup.delete(removalTarget.id, cleanupHostId)
             }
+            await maybePruneReviewHeadRefsAfterWorktreeDelete({
+              store,
+              repoPath: repo!.path,
+              repoId: removalTarget.repoId,
+              worktreeId: removalTarget.id,
+              meta: removedMeta,
+              localGitOptions: localWorktreeGitOptions
+            })
             purgeRemovedWorktree()
           },
           onRemoved: emitRemoved,
