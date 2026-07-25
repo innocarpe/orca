@@ -240,12 +240,16 @@ async function maybePruneReviewHeadRefsAfterWorktreeDelete(params: {
     const gitExec = params.sshGitProvider
       ? (args: string[]) => params.sshGitProvider!.exec(args, params.repo.path)
       : undefined
+    // Why: drop this worktree from the sibling snapshot before the lock-held
+    // re-check so concurrent deletes for the same PR cannot both skip prune.
+    const remainingMeta = { ...params.store.getAllWorktreeMeta() }
+    delete remainingMeta[params.worktreeId]
     await pruneReviewHeadLocalRefsAfterWorktreeDelete({
       repoPath: params.repo.path,
       repoId: params.repoId,
       deletedWorktreeId: params.worktreeId,
       meta: params.meta,
-      worktreeMetaById: params.store.getAllWorktreeMeta(),
+      worktreeMetaById: remainingMeta,
       ...(gitExec ? { gitExec } : {}),
       ...(params.sshGitProvider
         ? {}
@@ -1571,6 +1575,15 @@ export function registerWorktreeHandlers(
               invalidateAuthorizedRootsCache()
             }
             runtime.clearOptimisticReconcileToken(args.worktreeId)
+            await maybePruneReviewHeadRefsAfterWorktreeDelete({
+              store,
+              repo,
+              repoId,
+              worktreeId: args.worktreeId,
+              meta: removedMeta,
+              localGitOptions: localWorktreeGitOptions,
+              sshGitProvider: provider
+            })
             removeWorktreeMetadataAndTransientState(store, args.worktreeId)
             preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
             notifyWorktreesChanged(mainWindow, repoId)
@@ -1614,6 +1627,15 @@ export function registerWorktreeHandlers(
                 localWorktreeGitOptions
               )
               runtime.clearOptimisticReconcileToken(args.worktreeId)
+              await maybePruneReviewHeadRefsAfterWorktreeDelete({
+                store,
+                repo,
+                repoId,
+                worktreeId: args.worktreeId,
+                meta: removedMeta,
+                localGitOptions: localWorktreeGitOptions,
+                sshGitProvider: provider
+              })
               removeWorktreeMetadataAndTransientState(store, args.worktreeId)
               preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
               invalidateAuthorizedRootsCache()
@@ -1646,6 +1668,15 @@ export function registerWorktreeHandlers(
               invalidateAuthorizedRootsCache()
             }
             runtime.clearOptimisticReconcileToken(args.worktreeId)
+            await maybePruneReviewHeadRefsAfterWorktreeDelete({
+              store,
+              repo,
+              repoId,
+              worktreeId: args.worktreeId,
+              meta: removedMeta,
+              localGitOptions: localWorktreeGitOptions,
+              sshGitProvider: provider
+            })
             removeWorktreeMetadataAndTransientState(store, args.worktreeId)
             preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
             notifyWorktreesChanged(mainWindow, repoId)
@@ -1696,6 +1727,15 @@ export function registerWorktreeHandlers(
             removedPushTarget
           )
           runtime.clearOptimisticReconcileToken(args.worktreeId)
+          await maybePruneReviewHeadRefsAfterWorktreeDelete({
+            store,
+            repo,
+            repoId,
+            worktreeId: args.worktreeId,
+            meta: removedMeta,
+            localGitOptions: localWorktreeGitOptions,
+            sshGitProvider: provider
+          })
           removeWorktreeMetadataAndTransientState(store, args.worktreeId)
           invalidateAuthorizedRootsCache()
           notifyWorktreesChanged(mainWindow, repoId)
@@ -1908,6 +1948,15 @@ export function registerWorktreeHandlers(
                 localWorktreeGitOptions
               )
               runtime.clearOptimisticReconcileToken(args.worktreeId)
+              await maybePruneReviewHeadRefsAfterWorktreeDelete({
+                store,
+                repo,
+                repoId,
+                worktreeId: args.worktreeId,
+                meta: removedMeta,
+                localGitOptions: localWorktreeGitOptions,
+                sshGitProvider: provider
+              })
               removeWorktreeMetadataAndTransientState(store, args.worktreeId)
               preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
               invalidateAuthorizedRootsCache()

@@ -76,6 +76,37 @@ export async function deleteReviewHeadLocalRefs(
   return deleted
 }
 
+// Why: concurrent deletes for the same PR/MR can both observe a sibling and
+// both skip prune; serialize by review key so the last delete re-checks meta.
+const reviewHeadPruneChains = new Map<string, Promise<unknown>>()
+
+function reviewHeadPruneLockKey(
+  repoId: string,
+  githubPrNumber: number | null,
+  gitlabMrIid: number | null
+): string {
+  return `${repoId}:pr=${githubPrNumber ?? ''}:mr=${gitlabMrIid ?? ''}`
+}
+
+async function withReviewHeadPruneLock<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const previous = reviewHeadPruneChains.get(key) ?? Promise.resolve()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const chain = previous.then(() => gate)
+  reviewHeadPruneChains.set(key, chain)
+  await previous.catch(() => undefined)
+  try {
+    return await run()
+  } finally {
+    release()
+    if (reviewHeadPruneChains.get(key) === chain) {
+      reviewHeadPruneChains.delete(key)
+    }
+  }
+}
+
 /**
  * After a successful worktree delete, drop durable refs/orca/** pins for that
  * PR/MR when no sibling worktree still links them (#10431).
@@ -85,6 +116,7 @@ export async function pruneReviewHeadLocalRefsAfterWorktreeDelete(params: {
   repoId: string
   deletedWorktreeId: string
   meta: Pick<WorktreeMeta, 'linkedPR' | 'linkedGitLabMR'> | null | undefined
+  /** Prefer a fresh snapshot (post-delete metadata) so concurrent deletes cannot both skip. */
   worktreeMetaById: Record<string, WorktreeMeta | undefined>
   gitExec?: GitExec
   localGitOptions?: GitExecOptions
@@ -95,32 +127,35 @@ export async function pruneReviewHeadLocalRefsAfterWorktreeDelete(params: {
     return []
   }
 
-  if (
-    otherWorktreesStillLinkReview(params.worktreeMetaById, {
-      excludeWorktreeId: params.deletedWorktreeId,
-      repoId: params.repoId,
+  const lockKey = reviewHeadPruneLockKey(params.repoId, githubPrNumber, gitlabMrIid)
+  return withReviewHeadPruneLock(lockKey, async () => {
+    if (
+      otherWorktreesStillLinkReview(params.worktreeMetaById, {
+        excludeWorktreeId: params.deletedWorktreeId,
+        repoId: params.repoId,
+        githubPrNumber,
+        gitlabMrIid
+      })
+    ) {
+      return []
+    }
+
+    const gitExec: GitExec =
+      params.gitExec ??
+      ((args) =>
+        gitExecFileAsync(args, {
+          cwd: params.repoPath,
+          ...params.localGitOptions
+        }))
+
+    const refs = await listOrcaReviewHeadLocalRefs(gitExec)
+    const toDelete = selectReviewHeadLocalRefsToPrune(refs, {
       githubPrNumber,
       gitlabMrIid
     })
-  ) {
-    return []
-  }
-
-  const gitExec: GitExec =
-    params.gitExec ??
-    ((args) =>
-      gitExecFileAsync(args, {
-        cwd: params.repoPath,
-        ...params.localGitOptions
-      }))
-
-  const refs = await listOrcaReviewHeadLocalRefs(gitExec)
-  const toDelete = selectReviewHeadLocalRefsToPrune(refs, {
-    githubPrNumber,
-    gitlabMrIid
+    if (toDelete.length === 0) {
+      return []
+    }
+    return deleteReviewHeadLocalRefs(gitExec, toDelete)
   })
-  if (toDelete.length === 0) {
-    return []
-  }
-  return deleteReviewHeadLocalRefs(gitExec, toDelete)
 }
