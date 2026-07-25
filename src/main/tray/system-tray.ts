@@ -273,7 +273,13 @@ export function createSystemTray(opts: SystemTrayOptions): Tray | null {
             click: safeMenuAction(() => opts.onOpenSettings())
           },
           {
-            label: translateMain('menu.checkForUpdates', 'Check for Updates...'),
+            // Why: tray menus cannot show tooltips; surface RC/perf modifiers
+            // in the label so channels stay discoverable (#10590).
+            label: `${translateMain('menu.checkForUpdates', 'Check for Updates...')} (${
+              process.platform === 'darwin'
+                ? translateMain('menu.checkForUpdatesChannelsMac', '⇧ RC · ⌘ Perf')
+                : translateMain('menu.checkForUpdatesChannels', 'Shift RC · Ctrl Perf')
+            })`,
             click: safeMenuAction(() => opts.onCheckForUpdates())
           },
           { type: 'separator' }
