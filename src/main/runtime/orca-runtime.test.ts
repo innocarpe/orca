@@ -12357,15 +12357,19 @@ describe('OrcaRuntimeService', () => {
       getForegroundProcess: async () => null
     })
     const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+    // Why: seed active background work, then clear — proves Tasks 1 → Tasks 0 releases waiters.
+    runtime.onPtyData('pty-bg', 'Tasks 1\nwatching · 1 command\n> ', Date.now())
+    const waitPromise = runtime.waitForTerminal(handle, {
+      condition: 'tui-idle',
+      timeoutMs: 1_000
+    })
     runtime.onPtyData(
       'pty-bg',
       ['\x1b]0;grok\x07', 'Tasks 0\n', 'No background tasks\n', '> '].join(''),
       Date.now()
     )
 
-    await expect(
-      runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 1_000 })
-    ).resolves.toMatchObject({
+    await expect(waitPromise).resolves.toMatchObject({
       handle,
       condition: 'tui-idle',
       status: 'running'
