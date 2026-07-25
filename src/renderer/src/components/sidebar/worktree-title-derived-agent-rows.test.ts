@@ -255,14 +255,51 @@ describe('buildTitleDerivedAgentRows', () => {
     expect(rows).toHaveLength(0)
   })
 
-  it('does not turn generic Codex-launched task titles into Claude Code rows', () => {
+  it('treats Claude idle-prefix titles as Claude even without the word "claude" (#10398)', () => {
+    // Why: bare `✳` / `✳ task` is Claude Code's idle protocol; previously the
+    // Claude token gate dropped those rows, so never-prompted sessions vanished
+    // from the sidebar after relaunch once hooks had nothing to hydrate.
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'claude', title: '\u2733' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: '\u2733' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-claude-idle'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state, row.entry.prompt])).toEqual([
+      ['claude', 'idle', 'Claude Code']
+    ])
+  })
+
+  it('restores an idle launchAgent row when a live PTY only has a shell title after relaunch (#10398)', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'claude', title: 'zsh' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: {
+        'tab-1': { 1: 'zsh' }
+      },
+      ptyIdsByTabId: { 'tab-1': ['pty-claude-shell'] },
+      terminalLayoutsByTabId: { 'tab-1': makeSingleLayout(LEAF_ID_1) },
+      now: 2000
+    })
+
+    expect(rows.map((row) => [row.agentType, row.state])).toEqual([['claude', 'idle']])
+  })
+
+  it('does not invent a launchAgent row for ordinary task titles', () => {
     const launchAgent: TuiAgent = 'codex'
     const rows = buildWorktreeAgentRows({
       tabs: [makeTab('tab-1', { launchAgent })],
       entries: [],
       retained: [],
       runtimePaneTitlesByTabId: {
-        'tab-1': { 1: '✳ refactor split-pane status' }
+        'tab-1': { 1: 'refactor split-pane status' }
       },
       ptyIdsByTabId: { 'tab-1': ['pty-codex'] },
       terminalLayoutsByTabId: { 'tab-1': makeSplitLayout() },

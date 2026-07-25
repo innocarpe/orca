@@ -1,7 +1,9 @@
 import type { DashboardAgentRow } from '@/components/dashboard/useDashboardData'
 import { formatAgentTypeLabel, isClaudeManagementTitle } from '@/lib/agent-status'
 import { containsBrailleSpinner } from '../../../../shared/agent-title-core'
+import { CLAUDE_IDLE } from '../../../../shared/terminal-title-agent-type'
 import { classifyTitleActivity, resolveTitleActivityLabel } from '@/lib/pane-agent-evidence'
+import { isShellProcess } from '../../../../shared/shell-process-detection'
 import { tabHasLivePty } from '@/lib/tab-has-live-pty'
 import type {
   AgentStatusEntry,
@@ -133,8 +135,17 @@ function buildTitleDerivedAgentRow(args: {
   // Why: `claude agents` is a live Claude Code Agent Teams surface, but the
   // shared detector keeps it neutral so runtime liveness probes do not treat
   // the management/list screen as active work.
-  const status = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
-  const label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
+  let status = isClaudeAgentsTitle ? 'idle' : classifyTitleActivity(title)
+  let label = isClaudeAgentsTitle ? 'Claude Code' : resolveTitleActivityLabel(title)
+  // Why: after quit/relaunch with no prompt, Claude often keeps a live PTY while
+  // the OSC title falls back to a shell name until the next status paint — the
+  // tab still owns launchAgent, so restore an idle row instead of vanishing (#10398).
+  const useLaunchAgentShellFallback =
+    Boolean(args.tab.launchAgent) && (!status || !label) && isShellLikeAgentPaneTitle(title)
+  if (useLaunchAgentShellFallback && args.tab.launchAgent) {
+    status = 'idle'
+    label = formatAgentTypeLabel(args.tab.launchAgent)
+  }
   if (!status || !label) {
     return null
   }
@@ -143,7 +154,13 @@ function buildTitleDerivedAgentRow(args: {
   }
   const paneKey = makePaneKey(args.tab.id, args.leafId)
   const orchestration = args.runtimeAgentOrchestrationByPaneKey?.[paneKey]
-  const titleAgentType = isClaudeAgentsTitle ? 'claude' : resolveTitleDerivedAgentType(title, label)
+  // Why: shell-fallback labels are formatAgentTypeLabel("claude") → "Claude", which
+  // is not in TITLE_AGENT_LABEL_TO_TYPE; skip title typing and use launchAgent.
+  const titleAgentType = useLaunchAgentShellFallback
+    ? null
+    : isClaudeAgentsTitle
+      ? 'claude'
+      : resolveTitleDerivedAgentType(title, label)
   // Why: a braille spinner proves activity, not identity, so the resolver drops
   // it. Hook-less agents over SSH (Codex, #8711) surface only spinner+cwd titles;
   // fall back to the tab's launch identity instead of hiding the pane. Gated on
@@ -152,7 +169,10 @@ function buildTitleDerivedAgentRow(args: {
   // title alone, so a non-agent title must never become a row. Residual: a split
   // pane whose own title carries a braille glyph is still attributed to launchAgent.
   const agentType =
-    titleAgentType ?? (containsBrailleSpinner(title) ? (args.tab.launchAgent ?? null) : null)
+    titleAgentType ??
+    (containsBrailleSpinner(title) || useLaunchAgentShellFallback
+      ? (args.tab.launchAgent ?? null)
+      : null)
   if (!agentType) {
     return null
   }
@@ -189,10 +209,40 @@ export function resolveTitleDerivedAgentType(title: string, label: string): Agen
   if (agentType !== 'claude') {
     return agentType
   }
+  // Why: Claude's bare idle/working prefixes (`✳`, `. `, `* `) are the product's
+  // own title protocol and prove Claude identity even before task text includes
+  // the word "claude" — common for idle sessions that never sent a prompt (#10398).
+  if (isClaudeCodeStatusPrefixTitle(title)) {
+    return 'claude'
+  }
   // Why: Claude's task-title spinner heuristic has no provider identity. In
   // split panes it can match arbitrary terminal spinners, so sidebar rows only
   // accept Claude when the title itself names Claude.
   return CLAUDE_AGENT_TOKEN_RE.test(title) ? agentType : null
+}
+
+function isClaudeCodeStatusPrefixTitle(title: string): boolean {
+  return (
+    title === CLAUDE_IDLE ||
+    title.startsWith(`${CLAUDE_IDLE} `) ||
+    title.startsWith('. ') ||
+    title.startsWith('* ')
+  )
+}
+
+/** Shell / empty titles that no longer identify the agent after a cold restore. */
+function isShellLikeAgentPaneTitle(title: string): boolean {
+  const trimmed = title.trim()
+  if (!trimmed) {
+    return true
+  }
+  if (isShellProcess(trimmed)) {
+    return true
+  }
+  // Why: some hosts restore "zsh — folder" / "bash" style titles; only trust the
+  // first token so task text never becomes a launchAgent row.
+  const firstToken = trimmed.split(/[\s—–-]+/)[0] ?? ''
+  return isShellProcess(firstToken)
 }
 
 /**
