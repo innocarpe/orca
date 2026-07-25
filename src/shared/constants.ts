@@ -249,6 +249,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     terminalClipboardOnSelect: false,
     // Why: default on so Zellij/tmux/nvim copy works out of the box. Query
     // replies stay disabled and payload size is capped in the OSC 52 handler.
+    // This default only covers new profiles; existing ones persisted `false`
+    // and are flipped once by the stamp below (see persistence.ts).
     terminalAllowOsc52Clipboard: true,
     terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true,
     claudeAgentTeamsMode: 'off',
