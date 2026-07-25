@@ -1,7 +1,8 @@
 import type { PointerEvent } from 'react'
 
 import type { ProjectHeaderDragBucketKey, ProjectHeaderDragRect } from './project-header-drop'
-import type { Repo } from '../../../../shared/types'
+import type { SidebarRootSlot, SidebarRootSlotDragRect } from './sidebar-root-slot-order'
+import type { ProjectGroup, Repo } from '../../../../shared/types'
 
 export type RepoDragState = {
   draggingRepoId: string | null
@@ -18,10 +19,13 @@ export const INITIAL_REPO_DRAG_STATE: RepoDragState = {
 export type UseRepoHeaderDragArgs = {
   orderedRepoIds: string[]
   sidebarRepoHeaderIdsByBucket: ReadonlyMap<ProjectHeaderDragBucketKey, readonly string[]>
+  sidebarRootSlots: readonly SidebarRootSlot[]
   repoById: ReadonlyMap<string, Repo>
+  projectGroupById: ReadonlyMap<string, ProjectGroup>
   usesProjectGroupOrdering: boolean
   onCommitRepoOrder: (orderedIds: string[]) => void
   onCommitProjectGroupOrder: (repoId: string, projectGroupId: string | null, order: number) => void
+  onCommitProjectGroupTabOrder: (groupId: string, tabOrder: number) => void
   getScrollContainer: () => HTMLElement | null
 }
 
@@ -34,8 +38,10 @@ export type ProjectHeaderDragSession = {
   repoId: string
   bucketKey: ProjectHeaderDragBucketKey
   sidebarRepoHeaderIds: readonly string[]
+  /** When set, ungrouped root drop renumbers groups + projects as one list. */
+  orderedRootSlots: readonly SidebarRootSlot[] | null
   pointerId: number
-  headerRects: ProjectHeaderDragRect[]
+  headerRects: (ProjectHeaderDragRect | SidebarRootSlotDragRect)[]
   handleEl: HTMLElement
   startX: number
   startY: number
@@ -54,7 +60,10 @@ export function isProjectHeaderDragHandleTarget(
   target: EventTarget | null,
   currentTarget: HTMLElement
 ): boolean {
-  if (!(target instanceof HTMLElement)) {
+  // Why: the project icon renders as an <svg>, so pressing it makes the event
+  // target an SVGElement (not an HTMLElement). Match Element so dragging by the
+  // icon still arms the drag; closest/contains work on any Element.
+  if (!(target instanceof Element)) {
     return false
   }
   const dragHandle = target.closest(REPO_HEADER_DRAG_HANDLE_SELECTOR)
@@ -65,7 +74,9 @@ export function isRepoHeaderActionTarget(
   target: EventTarget | null,
   currentTarget: HTMLElement
 ): boolean {
-  if (!(target instanceof HTMLElement) || target === currentTarget) {
+  // Why: an <svg> icon inside an action button is an SVGElement, so match
+  // Element to still treat it as an action target and not arm a drag.
+  if (!(target instanceof Element) || target === currentTarget) {
     return false
   }
   return currentTarget.contains(target) && target.closest(REPO_HEADER_ACTION_SELECTOR) !== null

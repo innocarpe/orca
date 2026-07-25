@@ -122,6 +122,10 @@ import {
   setVisibleWorktreeIds,
   sidebarHasActiveFilters
 } from './visible-worktrees'
+import {
+  getCyclicProjectedWorktreeLineageIds,
+  getWorktreeLineageAncestors
+} from './worktree-lineage-projection'
 import { getWorktreeIdsWithLiveAgent } from '@/lib/worktree-activity-state'
 import { getEmptyProjectPlaceholderRepoIds } from './empty-project-placeholder-repos'
 import {
@@ -152,6 +156,7 @@ import {
 } from './project-header-drop'
 import { useProjectGroupHeaderDrag } from './project-group-header-drag'
 import { getSidebarOrderedProjectGroupHeaderIdsByBucket } from './project-group-header-drop'
+import { encodeSidebarRootSlotKey, getSidebarOrderedRootSlots } from './sidebar-root-slot-order'
 import {
   buildManualOrderUpdatesForGroupDrop,
   buildManualOrderUpdatesForVisibleGroups,
@@ -249,7 +254,7 @@ import {
   suppressNewExternalWorktreeInbox,
   type NewExternalWorktreesInboxActionState
 } from './new-external-worktrees-inbox-actions'
-import { getEligibleWorktreeParents } from './worktree-parent-candidates'
+import { isEligibleWorktreeParent } from './worktree-parent-candidates'
 import {
   buildImportedWorktreesCardCandidates,
   getHiddenImportedWorktrees
@@ -1395,6 +1400,10 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   const setRenamingWorktreeId = useAppStore((s) => s.setRenamingWorktreeId)
   const assignWorktreeParent = useAppStore((s) => s.assignWorktreeParent)
   const updateWorktreeLineage = useAppStore((s) => s.updateWorktreeLineage)
+  const cyclicLineageIds = useMemo(
+    () => getCyclicProjectedWorktreeLineageIds(worktreeLineageById, worktreeMap),
+    [worktreeLineageById, worktreeMap]
+  )
   const worktreeDragSessionRef = useRef<WorktreeSidebarDragSession | null>(null)
   const worktreePointerDragRef = useRef<WorktreePointerDrag | null>(null)
   const worktreePointerAutoscrollFrameIdRef = useRef<number | null>(null)
@@ -1662,6 +1671,20 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
       ),
     [projectGroupByIdForHeaderDrag, rows]
   )
+  const sidebarRootSlots = useMemo(
+    () =>
+      hasProjectGroups
+        ? getSidebarOrderedRootSlots(rows.filter((row): row is Row => row.type !== 'host-header'))
+        : [],
+    [hasProjectGroups, rows]
+  )
+  const rootSlotIndexByKey = useMemo(() => {
+    const map = new Map<string, number>()
+    sidebarRootSlots.forEach((slot, index) => {
+      map.set(encodeSidebarRootSlotKey(slot), index)
+    })
+    return map
+  }, [sidebarRootSlots])
   const repoHeaderIndexByRepoId = useMemo(() => {
     const map = new Map<string, number>()
     for (const repoIds of sidebarRepoHeaderIdsByBucket.values()) {
@@ -1669,8 +1692,14 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
         map.set(repoId, index)
       })
     }
+    // Why: root ungrouped projects share indices with root groups for one drop list.
+    for (const slot of sidebarRootSlots) {
+      if (slot.kind === 'repo') {
+        map.set(slot.id, rootSlotIndexByKey.get(encodeSidebarRootSlotKey(slot)) ?? 0)
+      }
+    }
     return map
-  }, [sidebarRepoHeaderIdsByBucket])
+  }, [rootSlotIndexByKey, sidebarRepoHeaderIdsByBucket, sidebarRootSlots])
   const repoHeaderBucketByRepoId = useMemo(() => {
     const map = new Map<string, string>()
     for (const [bucketKey, repoIds] of sidebarRepoHeaderIdsByBucket) {
@@ -1687,8 +1716,13 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
         map.set(groupId, index)
       })
     }
+    for (const slot of sidebarRootSlots) {
+      if (slot.kind === 'project-group') {
+        map.set(slot.id, rootSlotIndexByKey.get(encodeSidebarRootSlotKey(slot)) ?? 0)
+      }
+    }
     return map
-  }, [sidebarProjectGroupHeaderIdsByBucket])
+  }, [rootSlotIndexByKey, sidebarProjectGroupHeaderIdsByBucket, sidebarRootSlots])
   const projectGroupHeaderBucketByGroupId = useMemo(() => {
     const map = new Map<string, string>()
     for (const [bucketKey, groupIds] of sidebarProjectGroupHeaderIdsByBucket) {
@@ -1721,16 +1755,22 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
   const repoDrag = useRepoHeaderDrag({
     orderedRepoIds: allRepoIds,
     sidebarRepoHeaderIdsByBucket,
+    sidebarRootSlots,
     repoById: repoMap,
+    projectGroupById: projectGroupByIdForHeaderDrag,
     usesProjectGroupOrdering: hasProjectGroups,
     onCommitRepoOrder: commitRepoReorder,
     onCommitProjectGroupOrder: commitProjectGroupOrder,
+    onCommitProjectGroupTabOrder: commitProjectGroupHeaderOrder,
     getScrollContainer: () => scrollRef.current
   })
   const projectGroupDrag = useProjectGroupHeaderDrag({
     sidebarProjectGroupHeaderIdsByBucket,
+    sidebarRootSlots,
     projectGroupById: projectGroupByIdForHeaderDrag,
+    repoById: repoMap,
     onCommitProjectGroupTabOrder: commitProjectGroupHeaderOrder,
+    onCommitProjectGroupOrder: commitProjectGroupOrder,
     getScrollContainer: () => scrollRef.current
   })
   const [primaryActiveWorktreeRow, setPrimaryActiveWorktreeRow] = useState<{
@@ -1788,9 +1828,16 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
         rows: renderRows,
         firstHeaderIndex,
         sidebarRepoHeaderIdsByBucket,
-        repoHeaderBucketByRepoId
+        repoHeaderBucketByRepoId,
+        sidebarRootSlots
       }),
-    [firstHeaderIndex, renderRows, repoHeaderBucketByRepoId, sidebarRepoHeaderIdsByBucket]
+    [
+      firstHeaderIndex,
+      renderRows,
+      repoHeaderBucketByRepoId,
+      sidebarRepoHeaderIdsByBucket,
+      sidebarRootSlots
+    ]
   )
   const projectGroupHeaderSectionEndByGroupId = useMemo(
     () =>
@@ -1798,13 +1845,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
         rows: renderRows,
         firstHeaderIndex,
         sidebarProjectGroupHeaderIdsByBucket,
-        projectGroupHeaderBucketByGroupId
+        projectGroupHeaderBucketByGroupId,
+        sidebarRootSlots
       }),
     [
       firstHeaderIndex,
       projectGroupHeaderBucketByGroupId,
       renderRows,
-      sidebarProjectGroupHeaderIdsByBucket
+      sidebarProjectGroupHeaderIdsByBucket,
+      sidebarRootSlots
     ]
   )
   const firstHeaderIndexRef = useRef(firstHeaderIndex)
@@ -2085,25 +2134,15 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
             toggleGroup(hostGroupKey)
           }
 
-          const seen = new Set<string>()
-          let current: Worktree | undefined = targetWorktree
-          while (current && !seen.has(current.id)) {
-            seen.add(current.id)
-            const lineage = worktreeLineageById[current.id]
-            const parent = lineage ? worktreeMap.get(lineage.parentWorktreeId) : undefined
-            if (
-              !lineage ||
-              !parent ||
-              current.instanceId !== lineage.worktreeInstanceId ||
-              parent.instanceId !== lineage.parentWorktreeInstanceId
-            ) {
-              break
-            }
+          for (const parent of getWorktreeLineageAncestors(
+            targetWorktree,
+            worktreeLineageById,
+            worktreeMap
+          )) {
             const lineageGroupKey = getLineageGroupKey(parent.id)
             if (collapsedGroups.has(lineageGroupKey)) {
               toggleGroup(lineageGroupKey)
             }
-            current = parent
           }
 
           const groupKeys =
@@ -2695,17 +2734,22 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
         if (!child) {
           return false
         }
-        return getEligibleWorktreeParents({
-          child,
-          worktrees,
-          lineageById: worktreeLineageById,
-          worktreeMap,
-          repoMap
-        }).some((candidate) => candidate.id === parentId)
+        const candidateParent = worktreeMap.get(parentId)
+        return Boolean(
+          candidateParent &&
+          isEligibleWorktreeParent({
+            child,
+            candidateParent,
+            lineageById: worktreeLineageById,
+            worktreeMap,
+            repoMap,
+            cyclicLineageIds
+          })
+        )
       })
       return canAssignAll ? target : { ...target, lineageParentId: null }
     },
-    [repoMap, worktreeLineageById, worktreeMap, worktrees]
+    [cyclicLineageIds, repoMap, worktreeLineageById, worktreeMap]
   )
 
   const commitWorktreeLineageParentDrop = useCallback(
@@ -2742,7 +2786,9 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
       const ids = getReorderedWorktreeIdsToUnnest({
         draggedIds: args.draggedIds,
         sourceGroupIds: sourceGroup.worktreeIds,
-        lineageById: worktreeLineageById
+        lineageById: worktreeLineageById,
+        worktreeMap,
+        cyclicLineageIds
       })
       if (ids.length === 0) {
         return
@@ -2760,7 +2806,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
         }
       )
     },
-    [updateWorktreeLineage, worktreeDragGroups, worktreeLineageById]
+    [cyclicLineageIds, updateWorktreeLineage, worktreeDragGroups, worktreeLineageById, worktreeMap]
   )
 
   const flushWorktreePointerDrag = useCallback(() => {
@@ -4146,14 +4192,16 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 isRepoHeader &&
                 projectIdForHeader &&
                 repoHeaderBucketKey &&
-                (sidebarRepoHeaderIdsByBucket.get(repoHeaderBucketKey)?.length ?? 0) > 1
+                ((repoHeaderBucketKey === 'ungrouped' && sidebarRootSlots.length > 1) ||
+                  (sidebarRepoHeaderIdsByBucket.get(repoHeaderBucketKey)?.length ?? 0) > 1)
               )
               const isDraggableProjectGroupHeader = Boolean(
                 canReorderProjectGroupHeaders &&
                 projectGroupIdForHeader &&
                 projectGroupHeaderBucketKey &&
-                (sidebarProjectGroupHeaderIdsByBucket.get(projectGroupHeaderBucketKey)?.length ??
-                  0) > 1
+                ((projectGroupHeaderBucketKey === 'root' && sidebarRootSlots.length > 1) ||
+                  (sidebarProjectGroupHeaderIdsByBucket.get(projectGroupHeaderBucketKey)?.length ??
+                    0) > 1)
               )
               const isDraggingThis =
                 canReorderRepoHeaders &&
@@ -5496,16 +5544,9 @@ const WorktreeList = React.memo(function WorktreeList({
       workspaceHostScope,
       visibleWorkspaceHostIds,
       defaultHostId: getSettingsFocusedExecutionHostId(settings),
-      worktreeLineageById
+      worktreeLineageById,
+      forcedVisibleWorktreeIds: agentSendTargetWorktreeId ? [agentSendTargetWorktreeId] : undefined
     })
-    if (
-      agentSendTargetWorktreeId &&
-      !ids.includes(agentSendTargetWorktreeId) &&
-      worktreeMap.has(agentSendTargetWorktreeId)
-    ) {
-      // Why: send-target mode is a temporary picker; surface the target card without rewriting the user's filters.
-      ids.push(agentSendTargetWorktreeId)
-    }
     return ids.map((id) => worktreeMap.get(id)).filter((w): w is Worktree => w != null)
   }, [
     agentSendTargetWorktreeId,
@@ -5573,22 +5614,12 @@ const WorktreeList = React.memo(function WorktreeList({
       }
     }
 
-    const seen = new Set<string>()
-    let current: Worktree | undefined = targetWorktree
-    while (current && !seen.has(current.id)) {
-      seen.add(current.id)
-      const lineage = worktreeLineageById[current.id]
-      const parent = lineage ? worktreeMap.get(lineage.parentWorktreeId) : undefined
-      if (
-        !lineage ||
-        !parent ||
-        current.instanceId !== lineage.worktreeInstanceId ||
-        parent.instanceId !== lineage.parentWorktreeInstanceId
-      ) {
-        break
-      }
+    for (const parent of getWorktreeLineageAncestors(
+      targetWorktree,
+      worktreeLineageById,
+      worktreeMap
+    )) {
       next.delete(getLineageGroupKey(parent.id))
-      current = parent
     }
     return next
   }, [
