@@ -51,7 +51,10 @@ import {
   type TerminalContextMenuLinkTarget
 } from './terminal-context-menu-link-target'
 import { openDetectedFilePath } from './terminal-file-open-routing'
-import { openTerminalHttpLink } from './terminal-url-link-hit-testing'
+import {
+  openTerminalHttpLink,
+  type TerminalLinkRoutingPreferenceRequester
+} from './terminal-url-link-hit-testing'
 
 const CLOSE_ALL_CONTEXT_MENUS_EVENT = 'orca-close-all-context-menus'
 
@@ -84,6 +87,7 @@ type UseTerminalPaneContextMenuDeps = {
   onAgentSessionContinuationReady: (request: AgentSessionContinuationRequest) => void
   forceBracketedMultilineTextPaste: boolean
   rightClickToPaste: boolean
+  requestOpenLinksInAppPreference?: TerminalLinkRoutingPreferenceRequester
 }
 
 type TerminalMenuState = {
@@ -136,7 +140,8 @@ export function useTerminalPaneContextMenu({
   onAgentSessionForkReady,
   onAgentSessionContinuationReady,
   forceBracketedMultilineTextPaste,
-  rightClickToPaste
+  rightClickToPaste,
+  requestOpenLinksInAppPreference
 }: UseTerminalPaneContextMenuDeps): TerminalMenuState {
   const contextPaneIdRef = useRef<number | null>(null)
   const menuOpenedAtRef = useRef(0)
@@ -627,7 +632,10 @@ export function useTerminalPaneContextMenu({
       return
     }
     if (linkTarget.kind === 'http') {
-      openTerminalHttpLink(linkTarget.url, { worktreeId })
+      openTerminalHttpLink(linkTarget.url, {
+        worktreeId,
+        requestOpenLinksInAppPreference
+      })
       return
     }
     const state = useAppStore.getState()
@@ -641,7 +649,7 @@ export function useTerminalPaneContextMenu({
       worktreePath: worktreePath || fallbackCwd,
       runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
     })
-  }, [fallbackCwd, linkTarget, worktreeId])
+  }, [fallbackCwd, linkTarget, requestOpenLinksInAppPreference, worktreeId])
 
   const onCopyLinkTarget = useCallback(async (): Promise<void> => {
     if (!linkTarget) {
