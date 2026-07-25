@@ -122,9 +122,10 @@ describe('buildDispatchPreamble', () => {
 
     expect(section).toContain('=== AFTER YOU SEND worker_done ===')
     expect(section).toContain('worker_done ends your turn for this task')
-    expect(section).toContain(
+    const wakeLine =
       'orca terminal send --terminal term_coord --text "[wake] task task_abc123 done — check inbox" --enter'
-    )
+    // Why: enforce exactly one wake (split → [before, after] length 2).
+    expect(section.split(wakeLine)).toHaveLength(2)
     expect(section).toContain('exactly one wake line')
     expect(section).toContain('return to an idle prompt')
     expect(section).toContain('Do not exit the shell')
@@ -142,9 +143,9 @@ describe('buildDispatchPreamble', () => {
     const result = buildDispatchPreamble(baseParams({ workerKind: 'bare-shell' }))
     const section = afterWorkerDoneSection(result)
 
-    expect(section).toContain(
+    const wakeLine =
       'orca terminal send --terminal term_coord --text "[wake] task task_abc123 done — check inbox" --enter'
-    )
+    expect(section.split(wakeLine)).toHaveLength(2)
     expect(section).toContain('Exit the shell after that single wake')
     expect(section).toContain('Bare-shell workers have no idle agent')
     expect(section).toContain('do NOT run a sleep/poll loop')
