@@ -4943,6 +4943,18 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       return
     }
     set((s) => buildWorktreePurgeState(s, purgeableWorktreeIds))
+    // Why: bulk/hydrate purge used to drop UI maps only. External
+    // `git worktree remove` then left daemon/relay PTYs alive with no surface
+    // to kill them — sweep best-effort when maps are purged (#10562).
+    // Callers that already killed (explicit remove) tolerate a second no-op sweep.
+    const sweep = window.api?.worktrees?.sweepOrphanProcesses
+    if (typeof sweep === 'function') {
+      for (const worktreeId of purgeableWorktreeIds) {
+        void sweep({ worktreeId }).catch((err: unknown) => {
+          console.warn(`[worktree-teardown] orphan sweep failed for ${worktreeId}:`, err)
+        })
+      }
+    }
   },
 
   purgeStaleRuntimeHostState: (removedEnvironmentIds) => {

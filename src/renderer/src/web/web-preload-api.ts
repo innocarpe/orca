@@ -1608,6 +1608,14 @@ function createWorktreesApi(): NonNullable<Partial<PreloadApi>['worktrees']> {
     forgetLocal: () => {
       throw new Error('Forgetting a workspace is unavailable in paired web clients.')
     },
+    // Why: authoritative external worktree loss still needs a process sweep on
+    // the host runtime so orphan PTYs don't linger (#10562).
+    sweepOrphanProcesses: async ({ worktreeId }) => {
+      await callRuntimeResult('terminal.stop', {
+        worktree: toRuntimeWorktreeSelector(worktreeId)
+      }).catch(() => undefined)
+      return { ok: true as const }
+    },
     forceDeletePreservedBranch: ({ worktreeId, branchName, expectedHead }) =>
       callRuntimeResult<ForceDeleteWorktreeBranchResult>('worktree.forceDeleteBranch', {
         worktree: toRuntimeWorktreeSelector(worktreeId),

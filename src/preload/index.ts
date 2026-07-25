@@ -680,6 +680,8 @@ const api = {
 
     forgetLocal: (args) => ipcRenderer.invoke('worktrees:forgetLocal', args),
 
+    sweepOrphanProcesses: (args) => ipcRenderer.invoke('worktrees:sweepOrphanProcesses', args),
+
     forceDeletePreservedBranch: (args) =>
       ipcRenderer.invoke('worktrees:forceDeletePreservedBranch', args),
 

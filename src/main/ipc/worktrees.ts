@@ -4,6 +4,7 @@ import { ipcMain } from 'electron'
 import { readFile, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import type { Store } from '../persistence'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { isFolderRepo } from '../../shared/repo-kind'
 import { readBranchRenameFailureOutputForDisplay } from '../agent-hooks/branch-rename-failure-output'
 import {
@@ -995,6 +996,7 @@ export function registerWorktreeHandlers(
   ipcMain.removeHandler('worktrees:resolveMrBase')
   ipcMain.removeHandler('worktrees:remove')
   ipcMain.removeHandler('worktrees:forgetLocal')
+  ipcMain.removeHandler('worktrees:sweepOrphanProcesses')
   ipcMain.removeHandler('worktrees:forceDeletePreservedBranch')
   ipcMain.removeHandler('worktrees:updateMeta')
   ipcMain.removeHandler('worktrees:listLineage')
@@ -1902,6 +1904,30 @@ export function registerWorktreeHandlers(
           worktreeRemovalsInFlight.delete(inFlightKey)
         }
       }
+    }
+  )
+
+  // Why: authoritative bulk/hydrate purge drops UI maps but used to leave PTYs
+  // alive after external `git worktree remove` (#10562). Best-effort process
+  // sweep only — never requirePhysicalStop (no filesystem phase follows).
+  ipcMain.handle(
+    'worktrees:sweepOrphanProcesses',
+    async (
+      _event,
+      args: { worktreeId: string }
+    ): Promise<{ ok: true }> => {
+      if (!args.worktreeId || args.worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
+        return { ok: true }
+      }
+      await killAllProcessesForWorktree(args.worktreeId, {
+        runtime,
+        localProvider: getLocalPtyProvider(),
+        onPtyStopped: clearProviderPtyState,
+        requirePhysicalStop: false
+      }).catch((err) => {
+        console.warn(`[worktree-teardown] orphan sweep failed for ${args.worktreeId}:`, err)
+      })
+      return { ok: true }
     }
   )
 

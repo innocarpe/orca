@@ -1241,6 +1241,8 @@ export type PreloadApi = {
       worktreeId: string
       hostId?: ExecutionHostId
     }) => Promise<RemoveWorktreeResult>
+    /** Best-effort PTY/agent sweep after authoritative external worktree loss (#10562). */
+    sweepOrphanProcesses: (args: { worktreeId: string }) => Promise<{ ok: true }>
     forceDeletePreservedBranch: (args: {
       worktreeId: string
       branchName: string
