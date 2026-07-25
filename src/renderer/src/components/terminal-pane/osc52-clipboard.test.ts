@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  createOsc52OscHandler,
   handleOsc52ClipboardRequest,
   parseOsc52,
   resolveOsc52ClipboardGate
@@ -145,6 +146,65 @@ describe('handleOsc52ClipboardRequest', () => {
     })
 
     expect(onBlockedWrite).not.toHaveBeenCalled()
+  })
+})
+
+describe('createOsc52OscHandler', () => {
+  function setup(overrides: { settingEnabled?: boolean | null; replaying?: boolean } = {}) {
+    const settingEnabled = 'settingEnabled' in overrides ? overrides.settingEnabled : true
+    const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    const showBlockedWriteToast = vi.fn()
+    const handler = createOsc52OscHandler({
+      getSettingEnabled: () => settingEnabled,
+      getReplaying: () => overrides.replaying ?? false,
+      writeClipboardText,
+      showBlockedWriteToast
+    })
+    return { handler, writeClipboardText, showBlockedWriteToast }
+  }
+
+  it('writes through to the clipboard for a live pane', () => {
+    const { handler, writeClipboardText } = setup()
+    expect(handler(`c;${b64('live copy')}`)).toBe(true)
+    expect(writeClipboardText).toHaveBeenCalledWith('live copy')
+  })
+
+  it('reads the gate inputs at fire time so a mid-session toggle applies', () => {
+    // Why getters, not values: settings hydrate and toggle after the handler is registered.
+    let enabled = false
+    const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    const handler = createOsc52OscHandler({
+      getSettingEnabled: () => enabled,
+      getReplaying: () => false,
+      writeClipboardText,
+      showBlockedWriteToast: vi.fn()
+    })
+
+    handler(`c;${b64('before')}`)
+    expect(writeClipboardText).not.toHaveBeenCalled()
+
+    enabled = true
+    handler(`c;${b64('after')}`)
+    expect(writeClipboardText).toHaveBeenCalledExactlyOnceWith('after')
+  })
+
+  it('drops a replayed write and stays silent about it', () => {
+    // Revert-proof for the wiring: dropping the replay getter makes this fail.
+    const { handler, writeClipboardText, showBlockedWriteToast } = setup({ replaying: true })
+    expect(handler(`c;${b64('stale scrollback copy')}`)).toBe(true)
+    expect(writeClipboardText).not.toHaveBeenCalled()
+    expect(showBlockedWriteToast).not.toHaveBeenCalled()
+  })
+
+  it('toasts only for a real opt-out, never for unhydrated settings', () => {
+    const optedOut = setup({ settingEnabled: false })
+    optedOut.handler(`c;${b64('blocked')}`)
+    expect(optedOut.showBlockedWriteToast).toHaveBeenCalledTimes(1)
+
+    const unhydrated = setup({ settingEnabled: null })
+    unhydrated.handler(`c;${b64('blocked')}`)
+    expect(unhydrated.writeClipboardText).not.toHaveBeenCalled()
+    expect(unhydrated.showBlockedWriteToast).not.toHaveBeenCalled()
   })
 })
 

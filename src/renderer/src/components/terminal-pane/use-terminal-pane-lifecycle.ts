@@ -67,7 +67,7 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { applyExpandedLayoutTo, restoreExpandedLayoutFrom } from './expand-collapse'
 import { applyTerminalAppearance, installMode2031Handlers } from './terminal-appearance'
 import { pushMode2031SeedReply } from './terminal-mode-2031-replies'
-import { handleOsc52ClipboardRequest, resolveOsc52ClipboardGate } from './osc52-clipboard'
+import { createOsc52OscHandler } from './osc52-clipboard'
 import { showOsc52ClipboardBlockedToast } from './osc52-clipboard-blocked-toast'
 import { parseOsc7 } from './parse-osc7'
 import { guardParserHandler } from './terminal-parser-handler-guard'
@@ -806,19 +806,15 @@ export function useTerminalPaneLifecycle({
         // Why: read settingsRef at fire time so mid-session gate toggles apply; return true in both paths so xterm doesn't fall through.
         const osc52Disposable = pane.terminal.parser.registerOscHandler(
           52,
-          guardParserHandler('osc-52-clipboard', (data) => {
-            const gate = resolveOsc52ClipboardGate({
-              settingEnabled: settingsRef.current?.terminalAllowOsc52Clipboard,
-              replaying: isPaneReplaying(replayingPanesRef, pane.id)
+          guardParserHandler(
+            'osc-52-clipboard',
+            createOsc52OscHandler({
+              getSettingEnabled: () => settingsRef.current?.terminalAllowOsc52Clipboard,
+              getReplaying: () => isPaneReplaying(replayingPanesRef, pane.id),
+              writeClipboardText: (text) => window.api.ui.writeClipboardText(text),
+              showBlockedWriteToast: showOsc52ClipboardBlockedToast
             })
-            return handleOsc52ClipboardRequest(data, {
-              allowClipboardWrite: gate.allowClipboardWrite,
-              writeClipboardText: window.api.ui.writeClipboardText,
-              onBlockedWrite: gate.shouldSurfaceBlockedWrite
-                ? showOsc52ClipboardBlockedToast
-                : undefined
-            })
-          })
+          )
         )
         osc52DisposablesRef.current.set(pane.id, osc52Disposable)
 

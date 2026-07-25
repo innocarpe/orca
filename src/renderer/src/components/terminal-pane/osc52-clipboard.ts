@@ -57,6 +57,27 @@ export function resolveOsc52ClipboardGate(input: {
   }
 }
 
+/** Composes the gate with the request handler into an xterm OSC handler.
+ *  Extracted so the wiring is covered too, not just the gate in isolation. */
+export function createOsc52OscHandler(deps: {
+  getSettingEnabled: () => boolean | null | undefined
+  getReplaying: () => boolean
+  writeClipboardText: (text: string) => Promise<void>
+  showBlockedWriteToast: () => void
+}): (data: string) => boolean {
+  return (data) => {
+    const gate = resolveOsc52ClipboardGate({
+      settingEnabled: deps.getSettingEnabled(),
+      replaying: deps.getReplaying()
+    })
+    return handleOsc52ClipboardRequest(data, {
+      allowClipboardWrite: gate.allowClipboardWrite,
+      writeClipboardText: deps.writeClipboardText,
+      onBlockedWrite: gate.shouldSurfaceBlockedWrite ? deps.showBlockedWriteToast : undefined
+    })
+  }
+}
+
 export function handleOsc52ClipboardRequest(
   data: string,
   options: Osc52ClipboardRequestOptions
