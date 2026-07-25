@@ -5245,7 +5245,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                 data-workspace-status={itemWorkspaceStatus ?? undefined}
                 className={cn(
                   'absolute left-0 right-0 top-0',
-                  (worktreeDragState.draggingWorktreeId !== null || isProjectHeaderDragActive) &&
+                  (worktreeDragState.draggingWorktreeId !== null ||
+                    shouldAnimateProjectHeaderDragRow(vItem.index)) &&
                     PROJECT_HEADER_DRAG_TRANSITION_CLASS
                 )}
                 style={{
