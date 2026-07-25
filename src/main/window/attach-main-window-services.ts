@@ -87,7 +87,9 @@ export function attachMainWindowServices(
   }
 ): void {
   registerAppReloadHandler(mainWindow, options?.onBeforeRendererReload)
-  registerRepoHandlers(mainWindow, store)
+  registerRepoHandlers(mainWindow, store, {
+    fetchRemoteWithCache: (repoPath, remote) => runtime.fetchRemoteWithCache(repoPath, remote)
+  })
   registerWorktreeHandlers(mainWindow, store, runtime)
   // Why: repo/settings mutations resync watchers through this attached main-window context.
   setWorktreeBaseDirectoryWatcherSyncContext(store, mainWindow)
