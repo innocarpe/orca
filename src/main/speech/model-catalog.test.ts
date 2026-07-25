@@ -28,11 +28,20 @@ describe('SPEECH_MODEL_CATALOG', () => {
     const streaming = getCatalogModel('zipformer-streaming-korean-2024-06-16')
     expect(streaming).toMatchObject({
       language: 'ko',
+      provider: 'local',
       type: 'transducer',
       streaming: true,
+      sampleRate: 16000,
+      archiveFormat: 'tar.bz2',
       sizeBytes: 418_218_652,
       archiveSha256: 'e346a5882a409650472be17326237e24df7bf409db6b4a8a52e1a61422bf2500'
     })
+    expect(streaming?.files).toEqual([
+      'encoder-epoch-99-avg-1.int8.onnx',
+      'decoder-epoch-99-avg-1.int8.onnx',
+      'joiner-epoch-99-avg-1.int8.onnx',
+      'tokens.txt'
+    ])
     expect(streaming?.downloadUrl).toContain(
       'sherpa-onnx-streaming-zipformer-korean-2024-06-16.tar.bz2'
     )
