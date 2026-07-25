@@ -1918,6 +1918,9 @@ app.whenReady().then(async () => {
   // they never collide with residual OSC ptyId sessions.
   {
     const bridge = createHookStatusStatsBridge(stats)
+    // Why: subscribeStatusChanges does not replay existing rows; seed so panes already
+    // working at startup still open a stats session without waiting for another event.
+    bridge.apply(agentHookServer.getStatusChangeSnapshot())
     unsubscribeHookStatusStatsBridge = agentHookServer.subscribeStatusChanges((statuses) => {
       bridge.apply(statuses)
     })
