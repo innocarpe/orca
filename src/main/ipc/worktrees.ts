@@ -3189,6 +3189,17 @@ export function registerWorktreeHandlers(
       if (isFolderRepo(repo)) {
         return { status: 'ok', setup: null, reason: 'folder-repo' }
       }
+      // Why: getEffectiveHooks/createSetupRunnerScript are local-FS only today;
+      // SSH worktrees need the remote setup path (CodeRabbit / #10077).
+      if (repo.connectionId) {
+        return {
+          status: 'error',
+          setup: null,
+          reason: 'runner-failed',
+          message:
+            'Run setup script is not yet supported for remote/SSH worktrees. Create a new worktree to run setup on that host, or open a local clone.'
+        }
+      }
 
       let setupScript: string | undefined
       try {
