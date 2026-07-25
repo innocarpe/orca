@@ -70,7 +70,12 @@ describe('SPEECH_MODEL_CATALOG', () => {
     expect(streaming?.language).toBe('ko')
     expect(streaming?.type).toBe('transducer')
     expect(streaming?.streaming).toBe(true)
-    expect(streaming?.files?.length).toBeGreaterThan(0)
+    expect(streaming?.files).toEqual([
+      'encoder-epoch-99-avg-1.int8.onnx',
+      'decoder-epoch-99-avg-1.int8.onnx',
+      'joiner-epoch-99-avg-1.int8.onnx',
+      'tokens.txt'
+    ])
   })
 
 })
