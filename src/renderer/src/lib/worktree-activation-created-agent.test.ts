@@ -117,9 +117,61 @@ describe('activateAndRevealWorktree created agent reopen', () => {
       telemetry: {
         agent_kind: 'codex',
         launch_source: 'sidebar',
-        request_kind: 'resume'
+        request_kind: 'new'
       }
     })
+    expect(revealWorktreeInSidebar).toHaveBeenCalledWith(worktree.id)
+  })
+
+  it('does not relaunch the creation agent when the reopen setting is off', () => {
+    const worktree = makeWorktree()
+    const revealWorktreeInSidebar = vi.fn()
+
+    useAppStore.setState({
+      repos: [
+        {
+          id: 'repo-1',
+          path: '/workspace/repo',
+          displayName: 'repo',
+          badgeColor: '#000000',
+          addedAt: 0
+        }
+      ],
+      worktreesByRepo: { 'repo-1': [worktree] },
+      activeRepoId: 'repo-1',
+      activeView: 'terminal',
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {},
+      groupsByWorktree: {},
+      layoutByWorktree: {},
+      activeGroupIdByWorktree: {},
+      openFiles: [],
+      browserTabsByWorktree: {},
+      activeFileIdByWorktree: {},
+      activeBrowserTabIdByWorktree: {},
+      activeTabTypeByWorktree: {},
+      activeTabIdByWorktree: {},
+      tabBarOrderByWorktree: {},
+      pendingStartupByTabId: {},
+      settings: {
+        agentCmdOverrides: {},
+        setupScriptLaunchMode: 'new-tab',
+        reopenWorkspacesWithCreatedAgent: false
+      } as unknown as ReturnType<typeof useAppStore.getState>['settings'],
+      markWorktreeVisited: vi.fn(),
+      recordWorktreeVisit: vi.fn(),
+      refreshGitHubForWorktreeIfStale: vi.fn(),
+      revealWorktreeInSidebar
+    })
+
+    const result = activateAndRevealWorktree(worktree.id)
+    const state = useAppStore.getState()
+    const reopenedTab = state.tabsByWorktree[worktree.id]?.[0]
+
+    expect(result).toEqual({ primaryTabId: reopenedTab?.id })
+    expect(reopenedTab).toBeDefined()
+    // Blank shell — no agent startup payload from createdWithAgent.
+    expect(state.pendingStartupByTabId[reopenedTab!.id]).toBeUndefined()
     expect(revealWorktreeInSidebar).toHaveBeenCalledWith(worktree.id)
   })
 

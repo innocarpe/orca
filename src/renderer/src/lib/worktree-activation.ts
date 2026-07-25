@@ -235,6 +235,11 @@ function buildCreatedAgentReopenStartup(worktree: Worktree): WorktreeStartupPayl
   }
 
   const state = useAppStore.getState()
+  // Why: creation agent is remembered for reopen, but users can opt out when a
+  // deliberate exit should not resurrect a fresh empty-prompt session (#10578).
+  if (state.settings?.reopenWorkspacesWithCreatedAgent === false) {
+    return undefined
+  }
   const repo = state.repos.find((entry) => entry.id === worktree.repoId)
   const launchPlatform = repo
     ? getAgentLaunchPlatformForRepo(
@@ -273,7 +278,9 @@ function buildCreatedAgentReopenStartup(worktree: Worktree): WorktreeStartupPayl
     telemetry: {
       agent_kind: tuiAgentToAgentKind(agent),
       launch_source: 'sidebar',
-      request_kind: 'resume'
+      // Why: this path launches a brand-new empty-prompt session from
+      // createdWithAgent — it is not provider resume (#10578).
+      request_kind: 'new'
     }
   }
 }

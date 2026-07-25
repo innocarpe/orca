@@ -2824,6 +2824,12 @@ export type GlobalSettings = {
    *  - 'blank': blank terminal (no agent launched)
    *  - TuiAgent: a specific agent id */
   defaultTuiAgent: TuiAgent | 'blank' | null
+  /**
+   * When true (default), reopening an empty workspace relaunches the agent
+   * selected at create time (`Worktree.createdWithAgent`). When false, reopen
+   * falls back to a blank terminal instead (#10578).
+   */
+  reopenWorkspacesWithCreatedAgent: boolean
   /** Agents hidden from picker/auto-launch; detection stays a raw PATH snapshot. */
   disabledTuiAgents: TuiAgent[]
   /** One-shot guard: start Claude Agent Teams hidden for existing profiles without overriding later opt-ins. */
