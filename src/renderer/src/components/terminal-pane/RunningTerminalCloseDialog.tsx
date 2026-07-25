@@ -17,6 +17,8 @@ export default function RunningTerminalCloseDialog(): React.JSX.Element {
       onConfirm={(dontAskAgain) => {
         if (dontAskAgain) {
           void updateSettings({ skipCloseTerminalWithRunningProcessConfirm: true })
+          confirmRunningTerminalClose({ drainQueue: true })
+          return
         }
         confirmRunningTerminalClose()
       }}
