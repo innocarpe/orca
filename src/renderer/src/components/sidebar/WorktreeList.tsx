@@ -1750,6 +1750,16 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
     getScrollContainer: () => scrollRef.current
   })
   const isProjectHeaderDragActive = repoDrag.state.draggingRepoId !== null
+  const shouldAnimateProjectHeaderDragRow = (rowIndex: number): boolean => {
+    if (repoDrag.state.draggingRepoId === null) {
+      return false
+    }
+    // Why: source section follows pointer via pointerOffsetY — transition would lag it.
+    if (repoDrag.state.settling) {
+      return true
+    }
+    return repoSectionRepoIdByRowIndex[rowIndex] !== repoDrag.state.draggingRepoId
+  }
   const getRepoSectionDragOffsetY = (rowIndex: number): number =>
     getRepoSectionPreviewOffsetY({
       repoSectionRepoIdByRowIndex,
@@ -4285,15 +4295,11 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                       PROJECT_HEADER_DRAG_TRANSITION_CLASS,
                     isDraggingThis && 'z-30 will-change-transform'
                   )}
-                  style={
-                    isActiveStickyHeader
-                      ? undefined
-                      : {
-                          transform: getVirtualRowTransform(
-                            getHeaderRowTransformStart(headerRowPosition)
-                          )
-                        }
-                  }
+                  style={{
+                    transform: getVirtualRowTransform(
+                      getHeaderRowTransformStart(headerRowPosition)
+                    )
+                  }}
                 >
                   <div
                     id={getWorktreeOptionId(row.key)}
@@ -5002,7 +5008,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   ref={measureVirtualRowElement}
                   className={cn(
                     'absolute left-0 right-0 top-0',
-                    (worktreeDragState.draggingWorktreeId !== null || isProjectHeaderDragActive) &&
+                    (worktreeDragState.draggingWorktreeId !== null ||
+                      shouldAnimateProjectHeaderDragRow(vItem.index)) &&
                       PROJECT_HEADER_DRAG_TRANSITION_CLASS
                   )}
                   style={{
@@ -5039,7 +5046,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   ref={measureVirtualRowElement}
                   className={cn(
                     'absolute left-0 right-0 top-0',
-                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                    shouldAnimateProjectHeaderDragRow(vItem.index) &&
+                      PROJECT_HEADER_DRAG_TRANSITION_CLASS
                   )}
                   style={{
                     transform: getVirtualRowTransform(
@@ -5077,7 +5085,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   ref={measureVirtualRowElement}
                   className={cn(
                     'absolute left-0 right-0 top-0',
-                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                    shouldAnimateProjectHeaderDragRow(vItem.index) &&
+                      PROJECT_HEADER_DRAG_TRANSITION_CLASS
                   )}
                   style={{
                     transform: getVirtualRowTransform(
@@ -5113,7 +5122,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   ref={measureVirtualRowElement}
                   className={cn(
                     'absolute left-0 right-0 top-0 px-2 pb-1.5',
-                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                    shouldAnimateProjectHeaderDragRow(vItem.index) &&
+                      PROJECT_HEADER_DRAG_TRANSITION_CLASS
                   )}
                   style={{
                     transform: getVirtualRowTransform(
@@ -5172,7 +5182,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                   ref={measureVirtualRowElement}
                   className={cn(
                     'absolute left-0 right-0 top-0',
-                    isProjectHeaderDragActive && PROJECT_HEADER_DRAG_TRANSITION_CLASS
+                    shouldAnimateProjectHeaderDragRow(vItem.index) &&
+                      PROJECT_HEADER_DRAG_TRANSITION_CLASS
                   )}
                   style={{
                     transform: getVirtualRowTransform(
