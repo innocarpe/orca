@@ -140,8 +140,14 @@ function buildTitleDerivedAgentRow(args: {
   // Why: after quit/relaunch with no prompt, Claude often keeps a live PTY while
   // the OSC title falls back to a shell name until the next status paint — the
   // tab still owns launchAgent, so restore an idle row instead of vanishing (#10398).
+  // Restrict to single-leaf tabs: launchAgent is tab-scoped and must not brand
+  // every shell split pane as the agent (CodeRabbit / #10502).
+  const singleLeafTab = (args.tab.leafOrder?.length ?? 1) <= 1
   const useLaunchAgentShellFallback =
-    Boolean(args.tab.launchAgent) && (!status || !label) && isShellLikeAgentPaneTitle(title)
+    Boolean(args.tab.launchAgent) &&
+    singleLeafTab &&
+    (!status || !label) &&
+    isShellLikeAgentPaneTitle(title)
   if (useLaunchAgentShellFallback && args.tab.launchAgent) {
     status = 'idle'
     label = formatAgentTypeLabel(args.tab.launchAgent)
