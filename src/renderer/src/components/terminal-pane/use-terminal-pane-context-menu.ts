@@ -36,6 +36,7 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { resolvePaneAgentSessionId } from './pane-agent-session-id'
 import { resetTerminalInputModes } from './terminal-input-mode-reset'
 import { equalizeTerminalPanes } from './terminal-pane-layout-owner-commands'
+import type { TerminalLinkRoutingPreferenceRequester } from './terminal-url-link-hit-testing'
 
 type UseTerminalPaneContextMenuDeps = {
   managerRef: React.RefObject<PaneManager | null>
@@ -56,6 +57,7 @@ type UseTerminalPaneContextMenuDeps = {
   onAgentSessionContinuationReady: (request: AgentSessionContinuationRequest) => void
   forceBracketedMultilineTextPaste: boolean
   rightClickToPaste: boolean
+  requestOpenLinksInAppPreference?: TerminalLinkRoutingPreferenceRequester
 }
 
 type TerminalMenuState = {
@@ -112,7 +114,8 @@ export function useTerminalPaneContextMenu({
   onAgentSessionForkReady,
   onAgentSessionContinuationReady,
   forceBracketedMultilineTextPaste,
-  rightClickToPaste
+  rightClickToPaste,
+  requestOpenLinksInAppPreference
 }: UseTerminalPaneContextMenuDeps): TerminalMenuState {
   const contextPaneIdRef = useRef<number | null>(null)
   const [linkTarget, setLinkTarget] = useState<TerminalContextMenuLinkTarget | null>(null)
@@ -200,7 +203,7 @@ export function useTerminalPaneContextMenu({
       return
     }
     if (linkTarget.kind === 'http') {
-      openRoutedHttpLink(linkTarget.url, { worktreeId })
+      openRoutedHttpLink(linkTarget.url, { worktreeId, requestOpenLinksInAppPreference })
       return
     }
     const state = useAppStore.getState()
@@ -214,7 +217,7 @@ export function useTerminalPaneContextMenu({
       worktreePath: worktreePath || fallbackCwd,
       runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
     })
-  }, [fallbackCwd, linkTarget, worktreeId])
+  }, [fallbackCwd, linkTarget, requestOpenLinksInAppPreference, worktreeId])
 
   const onCopyLinkTarget = useCallback(async (): Promise<void> => {
     if (!linkTarget) {
