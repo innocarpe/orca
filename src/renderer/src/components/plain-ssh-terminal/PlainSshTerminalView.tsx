@@ -73,7 +73,8 @@ function resolveThemeColors(
   return {
     theme: composeActiveTerminalTheme(
       appearance.theme ?? getBuiltinTheme(appearance.themeName),
-      settings
+      settings,
+      appearance.mode
     ),
     mode: appearance.mode
   }

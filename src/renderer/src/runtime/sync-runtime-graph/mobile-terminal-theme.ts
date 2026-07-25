@@ -2,6 +2,7 @@ import { getSystemPrefersDark, resolveEffectiveTerminalAppearance } from '@/lib/
 import type { AppState } from '@/store/types'
 import type { RuntimeMobileTerminalTheme } from '../../../../shared/runtime-types'
 import { normalizeTerminalMinimumContrastRatio } from '../../../../shared/terminal-contrast-correction'
+import { resolveTerminalColorOverridesForMode } from '../../../../shared/terminal-color-overrides'
 
 function hexToRgba(hex: string, alpha: number): string {
   let clean = hex.replace('#', '')
@@ -30,9 +31,8 @@ export function resolveMobileTerminalTheme(
     return undefined
   }
   const appearance = resolveEffectiveTerminalAppearance(settings, systemPrefersDark)
-  const resolvedTheme = appearance.theme
-    ? { ...appearance.theme, ...settings.terminalColorOverrides }
-    : undefined
+  const colorOverrides = resolveTerminalColorOverridesForMode(settings, appearance.mode)
+  const resolvedTheme = appearance.theme ? { ...appearance.theme, ...colorOverrides } : undefined
   if (!resolvedTheme) {
     return undefined
   }

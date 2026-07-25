@@ -96,11 +96,14 @@ export function TerminalSettingsPreview({
 
   // List only theme-composition inputs so font/cursor changes cannot rewrite the sample buffer.
   const composedTheme = useMemo(
-    () => composeActiveTerminalTheme(appearance.theme, settings),
+    () => composeActiveTerminalTheme(appearance.theme, settings, appearance.mode),
     // oxlint-disable-next-line react-hooks/exhaustive-deps
     [
       appearance,
       settings.terminalColorOverrides,
+      settings.terminalColorOverridesDark,
+      settings.terminalColorOverridesLight,
+      settings.terminalUseSeparateLightTheme,
       settings.terminalBackgroundOpacity,
       settings.terminalCursorOpacity
     ]

@@ -8,6 +8,7 @@ import { useMountedRef } from '@/hooks/useMountedRef'
 import { GhosttyDiscoveryRow } from './GhosttyDiscoveryRow'
 import type { GhosttyImportPreview, GlobalSettings } from '../../../../shared/global-settings-types'
 import type { DiscoveryStatusEmitted } from '../../../../shared/onboarding-state-types'
+import { mergeImportedTerminalColorOverrides } from '../../../../shared/terminal-color-overrides'
 import { i18n, translate } from '@/i18n/i18n'
 import { ChromePreview } from './theme-chrome-preview'
 
@@ -128,15 +129,11 @@ export function ThemeStep({ theme, onThemeChange, settings, updateSettings }: Th
         track('onboarding_ghostty_import_failed', { reason: 'empty_diff' })
         return
       }
+      const { terminalColorOverrides, ...diffWithoutColorOverrides } = resolved.diff
       await updateSettings({
-        ...resolved.diff,
-        ...(resolved.diff.terminalColorOverrides
-          ? {
-              terminalColorOverrides: {
-                ...settings.terminalColorOverrides,
-                ...resolved.diff.terminalColorOverrides
-              }
-            }
+        ...diffWithoutColorOverrides,
+        ...(terminalColorOverrides
+          ? mergeImportedTerminalColorOverrides(settings, terminalColorOverrides)
           : {})
       })
       // Sync the controller’s local theme so Continue cannot overwrite the imported theme.

@@ -135,7 +135,16 @@ export type GlobalSettings = GlobalSettingsBase & {
    *  background-luminance-gated floor (3 dark / 4.5 light); 1 disables contrast correction so TUIs
    *  that rely on deliberately low contrast (Powerline seams, dimmed secondary text) render as sent. */
   terminalMinimumContrastRatio?: number
+  /**
+   * Legacy single-bag color overrides applied to both light and dark until the
+   * user edits a mode-specific bag (`terminalColorOverridesDark` /
+   * `terminalColorOverridesLight`). Prefer the mode-specific fields for new writes.
+   */
   terminalColorOverrides?: TerminalColorOverrides
+  /** Color overrides applied only in dark terminal appearance mode. */
+  terminalColorOverridesDark?: TerminalColorOverrides
+  /** Color overrides applied only in light terminal appearance mode (when separate). */
+  terminalColorOverridesLight?: TerminalColorOverrides
   terminalPaddingX?: number
   terminalPaddingY?: number
   terminalMouseHideWhileTyping?: boolean

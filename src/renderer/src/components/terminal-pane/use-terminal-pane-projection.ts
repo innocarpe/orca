@@ -21,6 +21,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { resolvePaneAgentSessionId } from './pane-agent-session-id'
+import { resolveTerminalColorOverridesForMode } from '../../../../shared/terminal-color-overrides'
 import { canPaneOfferResumeInNewChat } from '../tab-bar/tab-session-history-switch'
 
 export function useTerminalPaneProjection(controller: TerminalPaneMobileController) {
@@ -59,8 +60,11 @@ export function useTerminalPaneProjection(controller: TerminalPaneMobileControll
   const effectiveAppearance = settings
     ? resolveEffectiveTerminalAppearance(settings, systemPrefersDark)
     : null
+  const terminalColorOverrides = settings
+    ? resolveTerminalColorOverridesForMode(settings, effectiveAppearance?.mode ?? 'dark')
+    : undefined
   const terminalBackground =
-    settings?.terminalColorOverrides?.background ?? effectiveAppearance?.theme?.background
+    terminalColorOverrides?.background ?? effectiveAppearance?.theme?.background
   const titleUsesLightSurface = isTerminalBackgroundLight(terminalBackground, {
     appSurface: effectiveAppearance?.mode,
     backgroundOpacity: settings?.terminalBackgroundOpacity
