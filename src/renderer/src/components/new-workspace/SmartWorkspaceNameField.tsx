@@ -1385,7 +1385,7 @@ export default function SmartWorkspaceNameField({
               ))}
             </TabsList>
           </Tabs>
-          {selectedRepo && issueSourceCandidates ? (
+          {!repoBackedSourcesDisabled && selectedRepo && issueSourceCandidates ? (
             <div className={cn(issueSourceChipClass, 'shrink-0')} data-composer-issue-source="true">
               <IssueSourceSelector
                 preference={selectedRepo.issueSourcePreference}
