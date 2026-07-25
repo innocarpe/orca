@@ -14,6 +14,7 @@ import {
   normalizeTerminalScrollSensitivity,
   resolveTerminalCursorInactiveStyle
 } from '@/lib/pane-manager/pane-terminal-options'
+import { readPrefersReducedMotion, resolveTerminalCursorBlink } from '@/lib/terminal-cursor-blink'
 import { normalizeDesktopTerminalScrollbackRows } from '../../../../shared/terminal-scrollback-policy'
 import {
   configureTerminalOutputBacklogCap,
@@ -1373,7 +1374,10 @@ export function useTerminalPaneLifecycle({
           ),
           cursorStyle,
           cursorInactiveStyle: resolveTerminalCursorInactiveStyle(cursorStyle),
-          cursorBlink: currentSettings?.terminalCursorBlink ?? true,
+          cursorBlink: resolveTerminalCursorBlink({
+            settingEnabled: currentSettings?.terminalCursorBlink,
+            prefersReducedMotion: readPrefersReducedMotion()
+          }),
           scrollSensitivity: normalizeTerminalScrollSensitivity(
             currentSettings?.terminalScrollSensitivity
           ),
