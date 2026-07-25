@@ -2746,6 +2746,26 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         isPreview: isPreview || undefined,
         runtimeEnvironmentId
       }
+      // Why: match openDiff/openBranchDiff — preview mode replaces a replaceable preview tab.
+      if (isPreview) {
+        const replaceablePreviewId = getReplaceablePreviewFileId(s, worktreeId, targetGroupId)
+        const replaceablePreviewIndex =
+          replaceablePreviewId !== null
+            ? s.openFiles.findIndex((f) => f.id === replaceablePreviewId)
+            : -1
+        if (replaceablePreviewIndex !== -1) {
+          return {
+            openFiles: s.openFiles.map((file, index) =>
+              index === replaceablePreviewIndex ? newFile : file
+            ),
+            ...removeEditorStateForReplacedPreview(s, s.openFiles[replaceablePreviewIndex], id),
+            activeFileId: id,
+            activeTabType: 'editor',
+            activeFileIdByWorktree: { ...s.activeFileIdByWorktree, [worktreeId]: id },
+            activeTabTypeByWorktree: { ...s.activeTabTypeByWorktree, [worktreeId]: 'editor' }
+          }
+        }
+      }
       return {
         openFiles: [...s.openFiles, newFile],
         activeFileId: id,
