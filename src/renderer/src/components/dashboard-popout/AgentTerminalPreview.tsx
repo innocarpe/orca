@@ -61,7 +61,8 @@ export function AgentTerminalPreview({ ptyId }: { ptyId: string }): React.JSX.El
     const appearance = resolveEffectiveTerminalAppearance(settings, systemPrefersDark)
     const theme = composeActiveTerminalTheme(
       appearance.theme ?? getBuiltinTheme(appearance.themeName),
-      settings
+      settings,
+      appearance.mode
     )
     return { terminalTheme: theme, terminalMode: appearance.mode }
   }, [settings, systemPrefersDark])
