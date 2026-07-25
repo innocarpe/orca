@@ -98,7 +98,7 @@ export function NativeChatComposerField({
   sessionOptionsSnapshot
 }: NativeChatComposerFieldProps): React.JSX.Element {
   return (
-    <div className="shrink-0 bg-background">
+    <div className="shrink-0 bg-background [contain:paint]">
       {/* Extra bottom padding keeps the input box off the window rim. */}
       <div className="px-3 pt-2 pb-4 sm:px-4">
         <div className="relative mx-auto w-full max-w-4xl">
@@ -127,7 +127,11 @@ export function NativeChatComposerField({
               // no focus/click border flash. The box is a container, not a
               // focus target.
               'rounded-lg border border-border p-1.5 shadow-xs',
-              'bg-muted/50 dark:bg-input/40'
+              'bg-muted/50 dark:bg-input/40',
+              // Why (#10481): native caret blink invalidates ancestors up to a
+              // paint-containment boundary. Keep re-raster work inside this box
+              // so the message list / full agent pane stay idle.
+              '[contain:paint] isolate'
             )}
           >
             {imageAttachments.length > 0 ? (
