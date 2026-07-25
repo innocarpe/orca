@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- Why: browser slice behavior shares one mocked store harness; splitting only the tests would duplicate more setup than it saves. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { create } from 'zustand'
-import { createBrowserSlice } from './browser'
+import { createBrowserSlice, isLocalBrowserPageOwner } from './browser'
 import type { AppState } from '../types'
 import {
   createCompatibleRuntimeStatusResponseIfNeeded,
@@ -52,7 +52,22 @@ function createTestStore() {
         activeTabType: 'terminal',
         activeTabTypeByWorktree: {},
         worktreesByRepo: {},
+        groupsByWorktree: {},
+        activeGroupIdByWorktree: {},
+        agentStatusByPaneKey: {},
         createUnifiedTab: vi.fn(),
+        createUnifiedTabInSplit: vi.fn().mockReturnValue({
+          id: 'unified-browser-split',
+          entityId: 'workspace-split',
+          groupId: 'group-split',
+          worktreeId: 'wt-1',
+          contentType: 'browser',
+          label: 'split',
+          customLabel: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }),
         closeUnifiedTab: vi.fn(),
         activateTab: vi.fn(),
         setTabLabel: vi.fn(),
@@ -223,8 +238,75 @@ describe('createBrowserSlice annotations', () => {
       'browser',
       expect.objectContaining({ activate: false })
     )
+    expect(store.getState().createUnifiedTabInSplit).not.toHaveBeenCalled()
     expect(store.getState().activeTabType).toBe('terminal')
     expect(store.getState().activeBrowserTabIdByWorktree['wt-1']).toBeNull()
+  })
+
+  it('opens an activated browser beside a live agent instead of replacing it', () => {
+    const store = createTestStore()
+    store.setState({
+      activeTabType: 'terminal',
+      tabsByWorktree: { 'wt-1': [{ id: 'agent-tab' }] as AppState['tabsByWorktree'][string] },
+      activeGroupIdByWorktree: { 'wt-1': 'group-agent' },
+      groupsByWorktree: {
+        'wt-1': [
+          {
+            id: 'group-agent',
+            worktreeId: 'wt-1',
+            activeTabId: 'unified-agent',
+            tabOrder: ['unified-agent']
+          }
+        ]
+      },
+      agentStatusByPaneKey: {
+        'agent-tab:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee': {
+          state: 'working',
+          prompt: 'review UI',
+          updatedAt: 1,
+          stateStartedAt: 1,
+          stateHistory: [],
+          paneKey: 'agent-tab:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+          tabId: 'agent-tab',
+          worktreeId: 'wt-1'
+        }
+      }
+    })
+
+    const tab = store.getState().createBrowserTab('wt-1', 'https://example.com', {
+      activate: true,
+      title: 'Review target'
+    })
+
+    expect(store.getState().createUnifiedTabInSplit).toHaveBeenCalledWith(
+      'wt-1',
+      'browser',
+      { sourceGroupId: 'group-agent', splitDirection: 'right' },
+      expect.objectContaining({
+        entityId: tab.id,
+        label: 'Review target',
+        activate: true
+      })
+    )
+    expect(store.getState().createUnifiedTab).not.toHaveBeenCalled()
+  })
+
+  it('does not surface a browser tab from a background worktree as the global active surface', () => {
+    const store = createTestStore()
+    store.setState({
+      activeWorktreeId: 'wt-active',
+      activeTabType: 'terminal'
+    })
+    const backgroundTab = store.getState().createBrowserTab('wt-bg', 'https://example.com', {
+      activate: false,
+      title: 'Background'
+    })
+
+    store.getState().setActiveBrowserTab(backgroundTab.id)
+
+    expect(store.getState().activeBrowserTabIdByWorktree['wt-bg']).toBe(backgroundTab.id)
+    expect(store.getState().activeTabType).toBe('terminal')
+    expect(store.getState().activeBrowserTabId).not.toBe(backgroundTab.id)
   })
 
   it('uses local browser profile defaults for client-local fallback pages', () => {
@@ -602,6 +684,159 @@ describe('createBrowserSlice runtime guard', () => {
     expect(store.getState().browserSessionProfiles[0]?.id).toBe('local-default')
   })
 
+  it('routes browser settings per client without changing the durable Active Server', async () => {
+    runtimeEnvironmentCall.mockImplementation((request: RuntimeEnvironmentCallRequest) => {
+      const { selector, method } = request as RuntimeEnvironmentCallRequest & { selector: string }
+      return Promise.resolve({
+        id: `${selector}-${method}`,
+        ok: true,
+        result:
+          method === 'browser.profileList'
+            ? {
+                profiles: [
+                  {
+                    id: `${selector}-default`,
+                    scope: 'default',
+                    partition: `persist:${selector}`,
+                    label: `${selector} Default`,
+                    source: null
+                  }
+                ]
+              }
+            : { browsers: [] },
+        _meta: { runtimeId: `runtime-${selector}` }
+      })
+    })
+    const firstClient = createTestStore()
+    const secondClient = createTestStore()
+
+    void firstClient.getState().setBrowserSessionHostId('runtime:windows-2')
+    void secondClient.getState().setBrowserSessionHostId('runtime:linux-3')
+
+    await vi.waitFor(() => {
+      expect(firstClient.getState().browserSessionProfiles[0]?.id).toBe('windows-2-default')
+      expect(secondClient.getState().browserSessionProfiles[0]?.id).toBe('linux-3-default')
+    })
+    expect(firstClient.getState().settings?.activeRuntimeEnvironmentId).toBeNull()
+    expect(secondClient.getState().settings?.activeRuntimeEnvironmentId).toBeNull()
+
+    const restartedClient = createTestStore()
+    expect(restartedClient.getState().browserSessionHostIdOverride).toBeNull()
+    expect(restartedClient.getState().settings?.activeRuntimeEnvironmentId).toBeNull()
+  })
+
+  it('does not let a slower server response overwrite the newly selected host', async () => {
+    let resolveWindowsProfiles: ((value: unknown) => void) | undefined
+    runtimeEnvironmentCall.mockImplementation((request: RuntimeEnvironmentCallRequest) => {
+      const { selector, method } = request as RuntimeEnvironmentCallRequest & {
+        selector: string
+      }
+      if (method !== 'browser.profileList') {
+        return Promise.resolve({
+          id: `${selector}-${method}`,
+          ok: true,
+          result: { browsers: [] },
+          _meta: { runtimeId: `runtime-${selector}` }
+        })
+      }
+      if (selector === 'windows-2') {
+        return new Promise((resolve) => {
+          resolveWindowsProfiles = resolve
+        })
+      }
+      return Promise.resolve({
+        id: 'linux-profiles',
+        ok: true,
+        result: {
+          profiles: [
+            {
+              id: 'linux-default',
+              scope: 'default',
+              partition: 'persist:linux',
+              label: 'Linux Default',
+              source: null
+            }
+          ]
+        },
+        _meta: { runtimeId: 'runtime-linux' }
+      })
+    })
+    const store = createTestStore()
+
+    void store.getState().setBrowserSessionHostId('runtime:windows-2')
+    void store.getState().setBrowserSessionHostId('runtime:linux-3')
+    await vi.waitFor(() =>
+      expect(store.getState().browserSessionProfiles[0]?.id).toBe('linux-default')
+    )
+    resolveWindowsProfiles?.({
+      id: 'windows-profiles',
+      ok: true,
+      result: {
+        profiles: [
+          {
+            id: 'windows-default',
+            scope: 'default',
+            partition: 'persist:windows',
+            label: 'Windows Default',
+            source: null
+          }
+        ]
+      },
+      _meta: { runtimeId: 'runtime-windows' }
+    })
+    await vi.waitFor(() =>
+      expect(store.getState().browserSessionProfilesByHostId['runtime:windows-2']?.[0]?.id).toBe(
+        'windows-default'
+      )
+    )
+
+    expect(store.getState().browserSessionHostIdOverride).toBe('runtime:linux-3')
+    expect(store.getState().browserSessionProfiles[0]?.id).toBe('linux-default')
+    expect(store.getState().settings?.activeRuntimeEnvironmentId).toBeNull()
+  })
+
+  it('does not let an import completion refresh or overwrite a newly selected host', async () => {
+    let resolveImport: ((value: unknown) => void) | undefined
+    runtimeEnvironmentCall.mockImplementation((request: RuntimeEnvironmentCallRequest) => {
+      const { selector, method } = request as RuntimeEnvironmentCallRequest & { selector: string }
+      if (selector === 'windows-2' && method === 'browser.profileImportFromBrowser') {
+        return new Promise((resolve) => {
+          resolveImport = resolve
+        })
+      }
+      return Promise.resolve({
+        id: `${selector}-${method}`,
+        ok: true,
+        result: method === 'browser.profileList' ? { profiles: [] } : { browsers: [] },
+        _meta: { runtimeId: `runtime-${selector}` }
+      })
+    })
+    const store = createTestStore()
+    store.setState({ browserSessionHostIdOverride: 'runtime:windows-2' })
+
+    const importing = store
+      .getState()
+      .importCookiesFromBrowser('windows-profile', 'chrome', 'Default')
+    await vi.waitFor(() => expect(resolveImport).toBeDefined())
+    await store.getState().setBrowserSessionHostId('runtime:linux-3')
+    const callsBeforeCompletion = runtimeEnvironmentCall.mock.calls.length
+    resolveImport?.({
+      id: 'windows-import',
+      ok: true,
+      result: {
+        ok: true,
+        profileId: 'windows-profile',
+        summary: { totalCookies: 2, importedCookies: 2, skippedCookies: 0, domains: [] }
+      },
+      _meta: { runtimeId: 'runtime-windows' }
+    })
+
+    await expect(importing).resolves.toMatchObject({ ok: true, profileId: 'windows-profile' })
+    expect(store.getState().browserSessionHostIdOverride).toBe('runtime:linux-3')
+    expect(store.getState().browserSessionImportState).toBeNull()
+    expect(runtimeEnvironmentCall.mock.calls).toHaveLength(callsBeforeCompletion)
+  })
+
   it('uses the target worktree host default profile when creating a browser tab', () => {
     const store = createTestStore()
     store.setState({
@@ -650,6 +885,42 @@ describe('createBrowserSlice runtime guard', () => {
     const tab = store.getState().createBrowserTab('wt-remote', 'https://example.com')
 
     expect(tab.sessionProfileId).toBe('remote-default')
+  })
+
+  it('routes browser bridge ownership from the workspace instead of Active Server', () => {
+    const store = createTestStore()
+    store.setState({
+      settings: { activeRuntimeEnvironmentId: 'windows-2' } as AppState['settings'],
+      repos: [
+        {
+          id: 'local-repo',
+          path: '/local',
+          displayName: 'Local',
+          badgeColor: '#000000',
+          addedAt: 1,
+          connectionId: null,
+          executionHostId: 'local'
+        },
+        {
+          id: 'remote-repo',
+          path: '/remote',
+          displayName: 'Remote',
+          badgeColor: '#000000',
+          addedAt: 2,
+          connectionId: null,
+          executionHostId: 'runtime:windows-2'
+        }
+      ],
+      worktreesByRepo: {
+        'local-repo': [{ id: 'local-wt', repoId: 'local-repo' }] as never,
+        'remote-repo': [{ id: 'remote-wt', repoId: 'remote-repo' }] as never
+      }
+    })
+
+    expect(isLocalBrowserPageOwner(store.getState(), 'local-wt', undefined)).toBe(true)
+    expect(isLocalBrowserPageOwner(store.getState(), 'remote-wt', undefined)).toBe(false)
+    expect(isLocalBrowserPageOwner(store.getState(), 'local-wt', 'windows-2')).toBe(false)
+    expect(isLocalBrowserPageOwner(store.getState(), 'remote-wt', null)).toBe(true)
   })
 
   it('stores a runtime-resolved browser partition without a renderer profile mirror', () => {
@@ -754,7 +1025,17 @@ describe('createBrowserSlice runtime guard', () => {
     createWebRuntimeSessionBrowserTabMock.mockResolvedValueOnce(false)
     store.setState({
       activeWorktreeId: 'wt-remote',
-      settings: { activeRuntimeEnvironmentId: 'env-1' } as AppState['settings']
+      settings: { activeRuntimeEnvironmentId: 'env-1' } as AppState['settings'],
+      worktreesByRepo: {
+        'repo-1': [
+          {
+            id: 'wt-remote',
+            repoId: 'repo-1',
+            hostId: 'local',
+            runtimeOwnerEnvironmentId: 'env-1'
+          } as never
+        ]
+      }
     })
 
     await store.getState().openNewBrowserTabInActiveWorkspace('group-1')
@@ -778,7 +1059,17 @@ describe('createBrowserSlice runtime guard', () => {
     createWebRuntimeSessionBrowserTabMock.mockRejectedValueOnce(new Error('remote down'))
     store.setState({
       activeWorktreeId: 'wt-remote',
-      settings: { activeRuntimeEnvironmentId: 'env-1' } as AppState['settings']
+      settings: { activeRuntimeEnvironmentId: 'env-1' } as AppState['settings'],
+      worktreesByRepo: {
+        'repo-1': [
+          {
+            id: 'wt-remote',
+            repoId: 'repo-1',
+            hostId: 'local',
+            runtimeOwnerEnvironmentId: 'env-1'
+          } as never
+        ]
+      }
     })
 
     await store.getState().openNewBrowserTabInActiveWorkspace('group-1')
