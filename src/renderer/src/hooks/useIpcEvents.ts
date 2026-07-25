@@ -1361,7 +1361,9 @@ export function useIpcEvents(): void {
                 }
               )
             }
-          })()
+          })().catch((error) => {
+            console.warn('[os-open-markdown] Failed to open floating markdown documents:', error)
+          })
         })
       )
     }

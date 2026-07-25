@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path'
+import { isAbsolute, normalize } from 'node:path'
 import { isMarkdownDocumentName } from '../ipc/markdown-documents'
 
 /** True for Electron/Chromium switches that must never be treated as file paths. */
@@ -36,12 +36,14 @@ export function extractMarkdownPathsFromArgv(
     if (!isMarkdownDocumentName(raw)) {
       continue
     }
-    const key = platform === 'win32' ? raw.toLowerCase() : raw
+    // Why: argv may carry equivalent paths with `..` segments; normalize before dedupe.
+    const normalized = normalize(raw)
+    const key = platform === 'win32' ? normalized.toLowerCase() : normalized
     if (seen.has(key)) {
       continue
     }
     seen.add(key)
-    paths.push(raw)
+    paths.push(normalized)
   }
   return paths
 }
