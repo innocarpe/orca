@@ -13,6 +13,7 @@ import {
 } from '../../shared/workspace-scope'
 import { inspectSetupScriptImportCandidates } from '../../shared/setup-script-imports'
 import { getProjectHostSetupWorktreeMeta } from '../../shared/project-host-setup-projection'
+import { projectResolvedWorktreeLineage } from '../../shared/resolved-worktree-lineage'
 import { deleteWorktreeHistoryDir } from '../terminal-history'
 import type {
   AutomationWorkspaceProvenance,
@@ -46,11 +47,15 @@ import {
   removeWorktree
 } from '../git/worktree'
 import { gitExecFileAsync } from '../git/runner'
+import { pruneReviewHeadLocalRefsAfterWorktreeDelete } from '../git/review-head-ref-prune'
 import { withWorktreeSpan } from '../observability/instrumentation'
 import { resolveGitHubPrStartPoint } from '../github/pr-start-point'
-import { fetchPrHeadTrackingRef } from '../github/pr-head-tracking-ref'
+import {
+  fetchGitHubPullRequestHeadRef,
+  fetchPrHeadTrackingRef
+} from '../github/pr-head-tracking-ref'
 import { pruneWorktreePRRefreshAliases } from '../github/pr-refresh-coordinator'
-import { getDefaultRemote } from '../git/repo'
+import { resolveGitHubReviewHeadRemote } from '../github/review-head-remote'
 import { listRepoWorktrees } from '../repo-worktrees'
 import { getSshGitProvider, requireSshGitProvider } from '../providers/ssh-git-dispatch'
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
@@ -217,6 +222,50 @@ async function mapWithConcurrency<T, R>(
     })
   )
   return results
+}
+
+/** Best-effort: drop durable refs/orca/** pins when the last linked worktree is gone (#10431). */
+async function maybePruneReviewHeadRefsAfterWorktreeDelete(params: {
+  store: Store
+  repo: Repo
+  repoId: string
+  worktreeId: string
+  meta: WorktreeMeta | undefined
+  localGitOptions: { cwd?: string; wslDistro?: string }
+  sshGitProvider: {
+    exec: (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>
+  } | null
+}): Promise<void> {
+  try {
+    const gitExec = params.sshGitProvider
+      ? (args: string[]) => params.sshGitProvider!.exec(args, params.repo.path)
+      : undefined
+    // Why: drop this worktree from the sibling snapshot before the lock-held
+    // re-check so concurrent deletes for the same PR cannot both skip prune.
+    const remainingMeta = { ...params.store.getAllWorktreeMeta() }
+    delete remainingMeta[params.worktreeId]
+    await pruneReviewHeadLocalRefsAfterWorktreeDelete({
+      repoPath: params.repo.path,
+      repoId: params.repoId,
+      deletedWorktreeId: params.worktreeId,
+      meta: params.meta,
+      worktreeMetaById: remainingMeta,
+      ...(gitExec ? { gitExec } : {}),
+      ...(params.sshGitProvider
+        ? {}
+        : {
+            localGitOptions: {
+              cwd: params.repo.path,
+              ...params.localGitOptions
+            }
+          })
+    })
+  } catch (error) {
+    console.warn(
+      `[worktrees] Failed to prune durable review-head refs after deleting ${params.worktreeId}:`,
+      error
+    )
+  }
 }
 
 function removeWorktreeMetadataAndTransientState(store: Store, worktreeId: string): void {
@@ -738,7 +787,7 @@ function buildDetectedGitWorktrees(
     repo.path,
     ...liveWorktrees.map((worktree) => worktree.path)
   ])
-  return liveWorktrees.map((gitWorktree) => {
+  const detected = liveWorktrees.map((gitWorktree) => {
     const worktreeId = `${repo.id}::${gitWorktree.path}`
     let meta = store.getWorktreeMeta(worktreeId)
     const worktree = mergeWorktree(repo.id, gitWorktree, meta, repo.displayName)
@@ -766,6 +815,7 @@ function buildDetectedGitWorktrees(
       agentScratchWorktreePathMatcher
     })
   })
+  return projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
 }
 
 function stampAndMergeVisibleDetectedWorktree(
@@ -959,7 +1009,7 @@ function buildDisconnectedDetectedWorktrees(
     repo.path,
     ...worktrees.map((worktree) => worktree.path)
   ])
-  return worktrees.map((worktree) => {
+  const detected = worktrees.map((worktree) => {
     const meta = store.getWorktreeMeta(worktree.id)
     const detected = toDetectedWorktree({
       repo,
@@ -972,6 +1022,7 @@ function buildDisconnectedDetectedWorktrees(
     })
     return applyMetadataFallbackVisibility(detected)
   })
+  return projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
 }
 
 export function registerWorktreeHandlers(
@@ -1149,7 +1200,10 @@ export function registerWorktreeHandlers(
             repoId: repo.id,
             authoritative: true,
             source: 'git',
-            worktrees: buildFolderDetectedWorktrees(store, repo)
+            worktrees: projectResolvedWorktreeLineage(
+              buildFolderDetectedWorktrees(store, repo),
+              store.getAllWorktreeLineage?.() ?? {}
+            )
           }
         } else if (repo.connectionId) {
           const provider = getSshGitProvider(repo.connectionId)
@@ -1308,13 +1362,21 @@ export function registerWorktreeHandlers(
         }
         return provider.exec(args, repo.path)
       }
-      // Why: SSH repos can't fetch over the relay's read-only git.exec channel; route the PR-head fetch through the write-capable helper.
+      // Why: SSH review-head fetches require narrow write-capable RPCs.
       const fetchRemoteTrackingRef = (remote: string, branch: string): Promise<void> =>
         fetchPrHeadTrackingRef(
           repo,
           repo.connectionId ? getSshGitProvider(repo.connectionId) : undefined,
           remote,
           branch,
+          { localGitExecOptions: getLocalProjectGitExecOptions(store, repo) }
+        )
+      const fetchPullRequestHeadRef = (remote: string, prNumber: number): Promise<string> =>
+        fetchGitHubPullRequestHeadRef(
+          repo,
+          repo.connectionId ? getSshGitProvider(repo.connectionId) : undefined,
+          remote,
+          prNumber,
           { localGitExecOptions: getLocalProjectGitExecOptions(store, repo) }
         )
 
@@ -1328,18 +1390,16 @@ export function registerWorktreeHandlers(
         localGitOptions: getLocalProjectWorktreeGitOptions(store, repo),
         gitExec,
         fetchRemoteTrackingRef,
-        resolveRemote: async () => {
-          if (repo.connectionId) {
-            const { stdout } = await gitExec(['remote'])
-            return (
-              stdout
-                .split('\n')
-                .map((line) => line.trim())
-                .find(Boolean) ?? 'origin'
-            )
-          }
-          return getDefaultRemote(repo.path, getLocalProjectWorktreeGitOptions(store, repo))
-        }
+        fetchPullRequestHeadRef,
+        // Why: one shared resolver for local and SSH so origin-vs-upstream
+        // cannot diverge by surface; it prefers the remote hosting the PR's project.
+        resolveRemote: () =>
+          resolveGitHubReviewHeadRemote({
+            repoPath: repo.path,
+            connectionId: repo.connectionId ?? null,
+            localGitOptions: getLocalProjectWorktreeGitOptions(store, repo),
+            gitExec
+          })
       })
     }
   )
@@ -1515,6 +1575,15 @@ export function registerWorktreeHandlers(
               invalidateAuthorizedRootsCache()
             }
             runtime.clearOptimisticReconcileToken(args.worktreeId)
+            await maybePruneReviewHeadRefsAfterWorktreeDelete({
+              store,
+              repo,
+              repoId,
+              worktreeId: args.worktreeId,
+              meta: removedMeta,
+              localGitOptions: localWorktreeGitOptions,
+              sshGitProvider: provider
+            })
             removeWorktreeMetadataAndTransientState(store, args.worktreeId)
             preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
             notifyWorktreesChanged(mainWindow, repoId)
@@ -1558,6 +1627,15 @@ export function registerWorktreeHandlers(
                 localWorktreeGitOptions
               )
               runtime.clearOptimisticReconcileToken(args.worktreeId)
+              await maybePruneReviewHeadRefsAfterWorktreeDelete({
+                store,
+                repo,
+                repoId,
+                worktreeId: args.worktreeId,
+                meta: removedMeta,
+                localGitOptions: localWorktreeGitOptions,
+                sshGitProvider: provider
+              })
               removeWorktreeMetadataAndTransientState(store, args.worktreeId)
               preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
               invalidateAuthorizedRootsCache()
@@ -1590,6 +1668,15 @@ export function registerWorktreeHandlers(
               invalidateAuthorizedRootsCache()
             }
             runtime.clearOptimisticReconcileToken(args.worktreeId)
+            await maybePruneReviewHeadRefsAfterWorktreeDelete({
+              store,
+              repo,
+              repoId,
+              worktreeId: args.worktreeId,
+              meta: removedMeta,
+              localGitOptions: localWorktreeGitOptions,
+              sshGitProvider: provider
+            })
             removeWorktreeMetadataAndTransientState(store, args.worktreeId)
             preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
             notifyWorktreesChanged(mainWindow, repoId)
@@ -1640,6 +1727,15 @@ export function registerWorktreeHandlers(
             removedPushTarget
           )
           runtime.clearOptimisticReconcileToken(args.worktreeId)
+          await maybePruneReviewHeadRefsAfterWorktreeDelete({
+            store,
+            repo,
+            repoId,
+            worktreeId: args.worktreeId,
+            meta: removedMeta,
+            localGitOptions: localWorktreeGitOptions,
+            sshGitProvider: provider
+          })
           removeWorktreeMetadataAndTransientState(store, args.worktreeId)
           invalidateAuthorizedRootsCache()
           notifyWorktreesChanged(mainWindow, repoId)
@@ -1711,6 +1807,15 @@ export function registerWorktreeHandlers(
             removedPushTarget
           )
           runtime.clearOptimisticReconcileToken(args.worktreeId)
+          await maybePruneReviewHeadRefsAfterWorktreeDelete({
+            store,
+            repo,
+            repoId,
+            worktreeId: args.worktreeId,
+            meta: removedMeta,
+            localGitOptions: localWorktreeGitOptions,
+            sshGitProvider: provider
+          })
           removeWorktreeMetadataAndTransientState(store, args.worktreeId)
           notifyWorktreesChanged(mainWindow, repoId)
           return removalResult ?? {}
@@ -1843,6 +1948,15 @@ export function registerWorktreeHandlers(
                 localWorktreeGitOptions
               )
               runtime.clearOptimisticReconcileToken(args.worktreeId)
+              await maybePruneReviewHeadRefsAfterWorktreeDelete({
+                store,
+                repo,
+                repoId,
+                worktreeId: args.worktreeId,
+                meta: removedMeta,
+                localGitOptions: localWorktreeGitOptions,
+                sshGitProvider: provider
+              })
               removeWorktreeMetadataAndTransientState(store, args.worktreeId)
               preservedBranchCleanupByWorktreeId.delete(args.worktreeId)
               invalidateAuthorizedRootsCache()
@@ -1873,6 +1987,15 @@ export function registerWorktreeHandlers(
           removedPushTarget
         )
         runtime.clearOptimisticReconcileToken(args.worktreeId)
+        await maybePruneReviewHeadRefsAfterWorktreeDelete({
+          store,
+          repo,
+          repoId,
+          worktreeId: args.worktreeId,
+          meta: removedMeta,
+          localGitOptions: localWorktreeGitOptions,
+          sshGitProvider: null
+        })
         removeWorktreeMetadataAndTransientState(store, args.worktreeId)
         invalidateAuthorizedRootsCache()
 
@@ -2061,6 +2184,14 @@ export function registerWorktreeHandlers(
     }
     const now = Date.now()
     for (let i = 0; i < args.orderedIds.length; i++) {
+      // Why: a sidebar-order snapshot must only reorder worktrees that already
+      // exist — it must never create one. Without this guard a stale id the
+      // renderer still lists (e.g. a removed repo's `${repoId}::${path}`) gets a
+      // fresh worktreeMeta entry minted here, resurrecting an orphan/duplicate
+      // workspace on the next launch. setWorktreeMeta has no repo-existence check.
+      if (!store.getWorktreeMeta(args.orderedIds[i])) {
+        continue
+      }
       // Descending timestamps: first item gets highest sortOrder so b - a sorts first-wins on cold start.
       store.setWorktreeMeta(args.orderedIds[i], { sortOrder: now - i * 1000 })
     }
