@@ -117,11 +117,19 @@ export function useFileExplorerDragDrop({
   const [dropTargetDir, setDropTargetDir] = useState<string | null>(null)
   const [dragSourcePath, setDragSourcePathState] = useState<string | null>(null)
   const dragSourceIsDirectoryRef = useRef(false)
+  // Why: document-level capture `drop` clears live drag state before React
+  // onDrop runs handleMoveDrop; keep last primary-source metadata for that race.
+  const lastDragSourceMetaRef = useRef<{ path: string; isDirectory: boolean } | null>(null)
   const confirm = useConfirmationDialog()
 
   const setDragSourcePath = useCallback((path: string | null, isDirectory = false) => {
     setDragSourcePathState(path)
-    dragSourceIsDirectoryRef.current = path !== null && isDirectory
+    if (path !== null) {
+      dragSourceIsDirectoryRef.current = isDirectory
+      lastDragSourceMetaRef.current = { path, isDirectory }
+    } else {
+      dragSourceIsDirectoryRef.current = false
+    }
   }, [])
 
   // Native Files drag state — tracked separately from internal move state
@@ -225,9 +233,14 @@ export function useFileExplorerDragDrop({
       const newPath = joinPath(destDir, fileName)
       const operationOwner = getOperationOwnerForPath(sourcePath)
       // Why: multi-select may drop several paths; use primary drag-source isDirectory
-      // when this path is that source, else treat unknown multi-paths as files unless
-      // mode is `always` (only primary gets directory-only confirmation).
-      const isDirectory = sourcePath === dragSourcePath ? dragSourceIsDirectoryRef.current : false
+      // when this path is that source (or last-drag meta after capture-phase clear).
+      const meta = lastDragSourceMetaRef.current
+      const isDirectory =
+        sourcePath === dragSourcePath
+          ? dragSourceIsDirectoryRef.current
+          : meta?.path === sourcePath
+            ? meta.isDirectory
+            : false
 
       const run = async (): Promise<void> => {
         const mode = (useAppStore.getState().settings.confirmFileExplorerMove ??
