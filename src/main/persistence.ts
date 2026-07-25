@@ -2909,6 +2909,15 @@ export class Store {
         const migratedFloatingTerminalEnabled = floatingTerminalDefaultedForAllUsers
           ? (parsed.settings?.floatingTerminalEnabled ?? true)
           : true
+        const osc52ClipboardDefaultedOnForAllUsers =
+          parsed.settings?.terminalAllowOsc52ClipboardDefaultedOnForAllUsers === true
+        // Why: every profile saved under the old off default persisted `false`, so it can't be told apart from a real opt-out; flip unmigrated profiles once so #10567 reaches existing installs, and let a later opt-out survive reload.
+        const migratedTerminalAllowOsc52Clipboard = osc52ClipboardDefaultedOnForAllUsers
+          ? (parsed.settings?.terminalAllowOsc52Clipboard ?? true)
+          : true
+        if (!osc52ClipboardDefaultedOnForAllUsers) {
+          this.loadNeedsSave = true
+        }
         const floatingTerminalCwdMigrated =
           parsed.settings?.floatingTerminalCwdMigratedToAppWorkspace === true
         // Why: an earlier migration wrote '' for the notes dir; floating terminals still open at home, notes use a separate IPC.
@@ -3141,6 +3150,8 @@ export class Store {
             localWindowsRuntimeDefault: migratedWindowsRuntimeDefault,
             localAccountRuntime: migratedLocalAccountRuntime,
             localAccountRuntimeDefaultedToAutoForAllUsers: true,
+            terminalAllowOsc52Clipboard: migratedTerminalAllowOsc52Clipboard,
+            terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true,
             floatingTerminalEnabled: migratedFloatingTerminalEnabled,
             floatingTerminalDefaultedForAllUsers: true,
             floatingTerminalCwd: migratedFloatingTerminalCwd,

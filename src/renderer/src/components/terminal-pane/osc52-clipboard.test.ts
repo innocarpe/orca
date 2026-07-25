@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { handleOsc52ClipboardRequest, parseOsc52 } from './osc52-clipboard'
+import {
+  handleOsc52ClipboardRequest,
+  parseOsc52,
+  resolveOsc52ClipboardGate
+} from './osc52-clipboard'
 
 function b64(s: string): string {
   return Buffer.from(s, 'utf-8').toString('base64')
@@ -51,14 +55,26 @@ describe('parseOsc52', () => {
     expect(parseOsc52(b64('no-semicolon'))).toMatchObject({ kind: 'invalid' })
   })
 
-  it('treats empty selection list as clipboard (XTerm/Zellij default)', () => {
-    // Why: multiplexers may emit `\e]52;;base64` with empty Pc; the XTerm
-    // default is clipboard, so reject-empty broke Zellij copy (#10567).
-    expect(parseOsc52(`;${b64('from zellij')}`)).toEqual({
+  it('treats an empty selection list as clipboard, the way tmux emits it', () => {
+    // Why: tmux copies via `\e]52;;<base64>` with no selection letter, so
+    // rejecting empty Pc broke tmux copy. Zellij always sends an explicit 'c'.
+    expect(parseOsc52(`;${b64('from tmux')}`)).toEqual({
       kind: 'write',
       selections: 'c',
-      text: 'from zellij'
+      text: 'from tmux'
     })
+  })
+
+  it('still refuses to answer a query when Pc is empty', () => {
+    expect(parseOsc52(';?')).toEqual({ kind: 'query' })
+  })
+
+  it('rejects an empty payload instead of blanking the clipboard', () => {
+    // Why: a truncated sequence is the only realistic source, and the gate is
+    // now default-on — silently clearing the clipboard would be worse than a no-op.
+    expect(parseOsc52(';')).toMatchObject({ kind: 'invalid' })
+    expect(parseOsc52('c;')).toMatchObject({ kind: 'invalid' })
+    expect(parseOsc52('c;   ')).toMatchObject({ kind: 'invalid' })
   })
 
   it('rejects unknown selection letters', () => {
@@ -105,6 +121,20 @@ describe('handleOsc52ClipboardRequest', () => {
     expect(onBlockedWrite).toHaveBeenCalledTimes(1)
   })
 
+  it('never answers a clipboard query even with writes enabled', () => {
+    // Why: enabled is now the default, so the query block has to hold in the
+    // configuration nearly every user runs — not just the opted-out one.
+    const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+
+    for (const query of ['c;?', ';?']) {
+      expect(
+        handleOsc52ClipboardRequest(query, { allowClipboardWrite: true, writeClipboardText })
+      ).toBe(true)
+    }
+
+    expect(writeClipboardText).not.toHaveBeenCalled()
+  })
+
   it('does not surface blocked queries because Orca must not answer them', () => {
     const onBlockedWrite = vi.fn()
 
@@ -115,5 +145,41 @@ describe('handleOsc52ClipboardRequest', () => {
     })
 
     expect(onBlockedWrite).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveOsc52ClipboardGate', () => {
+  it('allows a live write once the setting is on', () => {
+    expect(resolveOsc52ClipboardGate({ settingEnabled: true, replaying: false })).toEqual({
+      allowClipboardWrite: true,
+      shouldSurfaceBlockedWrite: false
+    })
+  })
+
+  it('drops replayed writes so restore cannot clobber the clipboard', () => {
+    // Why: reattach re-writes recorded PTY bytes through the same parser, so an old
+    // copy would silently overwrite what the user has copied since (#10588 review).
+    expect(resolveOsc52ClipboardGate({ settingEnabled: true, replaying: true })).toEqual({
+      allowClipboardWrite: false,
+      shouldSurfaceBlockedWrite: false
+    })
+  })
+
+  it('surfaces the blocked toast only for a real opt-out', () => {
+    expect(resolveOsc52ClipboardGate({ settingEnabled: false, replaying: false })).toEqual({
+      allowClipboardWrite: false,
+      shouldSurfaceBlockedWrite: true
+    })
+  })
+
+  it('stays quiet when a write races settings hydration', () => {
+    // Why: the toast latches once per renderer session; an unhydrated read looks
+    // blocked even though the default is on, so burning it there hides the real one.
+    for (const settingEnabled of [null, undefined]) {
+      expect(resolveOsc52ClipboardGate({ settingEnabled, replaying: false })).toEqual({
+        allowClipboardWrite: false,
+        shouldSurfaceBlockedWrite: false
+      })
+    }
   })
 })
