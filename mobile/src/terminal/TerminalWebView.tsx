@@ -15,6 +15,10 @@ import { createTerminalWebViewPendingMessages } from './terminal-webview-pending
 import { dispatchTerminalWebViewNotification } from './terminal-webview-notification-dispatch'
 import { routeTerminalQueryReply } from './terminal-webview-query-reply-routing'
 import { createTerminalWriteCoalescer } from './terminal-write-coalescer'
+import {
+  loadTerminalDimDirListingSizes,
+  subscribeTerminalDimDirListingSizes
+} from '../storage/preferences'
 
 type Props = TerminalWebViewProps
 
@@ -229,6 +233,23 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   useEffect(() => {
     postMessage({ type: 'set-font-scale', fontScale: textScale })
   }, [postMessage, textScale])
+
+  // Why: settings toggle must dim already-mounted terminals without a reload.
+  useEffect(() => {
+    let cancelled = false
+    void loadTerminalDimDirListingSizes().then((enabled) => {
+      if (!cancelled) {
+        postMessage({ type: 'set-dim-dir-listing-sizes', enabled })
+      }
+    })
+    const unsubscribe = subscribeTerminalDimDirListingSizes((enabled) => {
+      postMessage({ type: 'set-dim-dir-listing-sizes', enabled })
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [postMessage])
 
   useImperativeHandle(
     ref,
