@@ -2,17 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AppState } from '@/store/types'
 import { planMobileTerminalTabMount } from './mobile-terminal-tab-mount'
 
-type PlannerState = Pick<AppState, 'tabsByWorktree' | 'terminalLayoutsByTabId'>
+type PlannerState = Pick<AppState, 'tabsByWorktree' | 'terminalLayoutsByTabId' | 'ptyIdsByTabId'>
 
 function state(tabCount = 1): PlannerState {
+  const tabs = Array.from({ length: tabCount }, (_, index) => ({
+    id: `tab-${index}`,
+    ptyId: `wt@@${index}`
+  }))
   return {
     tabsByWorktree: {
-      wt: Array.from({ length: tabCount }, (_, index) => ({
-        id: `tab-${index}`,
-        ptyId: `wt@@${index}`
-      }))
+      wt: tabs
     } as unknown as AppState['tabsByWorktree'],
-    terminalLayoutsByTabId: {}
+    terminalLayoutsByTabId: {},
+    ptyIdsByTabId: Object.fromEntries(tabs.map((tab) => [tab.id, tab.ptyId ? [tab.ptyId] : []]))
   }
 }
 

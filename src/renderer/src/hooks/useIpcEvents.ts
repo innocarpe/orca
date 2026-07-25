@@ -16,6 +16,7 @@ import { OPEN_WORKSPACE_BOARD_EVENT } from '@/components/sidebar/useWorkspaceBoa
 import { SPLIT_TERMINAL_PANE_EVENT, CLOSE_TERMINAL_PANE_EVENT } from '@/constants/terminal'
 import { requestBackgroundTerminalWorktreeMount } from '@/components/terminal/background-terminal-worktree-mount'
 import { planMobileTerminalTabMount } from '@/lib/mobile-terminal-tab-mount'
+import { resolveTerminalTabIdForPtyId } from '@/lib/terminal-tab-for-pty-id'
 import {
   hasRegisteredRuntimeTerminalTab,
   focusRuntimeTerminalSurface
@@ -1515,6 +1516,14 @@ export function useIpcEvents(): void {
                     (store.ptyIdsByTabId[candidate.id] ?? []).includes(ptyId)
                 )
               : undefined
+            // Why (#10486): mobile view/focus reveals a live host PTY; if we miss
+            // ownership only present in layout, createTab would open a second
+            // tab showing the same session on desktop.
+            const ownedTabId =
+              !existingTab && ptyId ? resolveTerminalTabIdForPtyId(store, worktreeId, ptyId) : null
+            const existingOwnedTab = ownedTabId
+              ? worktreeTabs.find((candidate) => candidate.id === ownedTabId)
+              : undefined
             const isSplitReveal = Boolean(ptyId && tabId && leafId && splitFromLeafId)
             const splitTargetTab = isSplitReveal
               ? worktreeTabs.find((candidate) => candidate.id === tabId)
@@ -1533,7 +1542,7 @@ export function useIpcEvents(): void {
                   })
                 : undefined
             // Why: runtime fallback reveals a PTY for a renderer-created pending tab; adopt only when the hinted tab has no PTY yet.
-            const reusedTab = existingTab ?? splitTargetTab ?? hintedPendingTab
+            const reusedTab = existingTab ?? existingOwnedTab ?? splitTargetTab ?? hintedPendingTab
             const tab =
               reusedTab ??
               (ptyId

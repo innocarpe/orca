@@ -14,7 +14,7 @@ type MobileTerminalTabMountOptions = {
 
 /** Why: exact-tab planning prevents a stale ptyId from mounting every saved xterm (#8597). */
 export function planMobileTerminalTabMount(
-  state: Pick<AppState, 'tabsByWorktree' | 'terminalLayoutsByTabId'>,
+  state: Pick<AppState, 'tabsByWorktree' | 'terminalLayoutsByTabId' | 'ptyIdsByTabId'>,
   request: MobileTerminalTabMountRequest,
   options: MobileTerminalTabMountOptions = {}
 ): BackgroundMountTerminalWorktreeDetail | null {
