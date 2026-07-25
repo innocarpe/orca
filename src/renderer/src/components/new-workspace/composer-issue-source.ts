@@ -11,9 +11,9 @@ export function cacheKeyLooksLikeRepo(key: string, repoId: string): boolean {
   if (key.startsWith(`${repoId}::`)) {
     return true
   }
-  // Host-scoped: `<hostId>::<repoId>::…`
+  // Host-scoped: `<hostId>::<repoId>::…` — match only host or repo segments, not query tails.
   const parts = key.split('::')
-  return parts.length >= 2 && parts.includes(repoId)
+  return parts[0] === repoId || parts[1] === repoId
 }
 
 /**
