@@ -3,7 +3,7 @@ import { networkInterfaces } from 'node:os'
 import QRCode from 'qrcode'
 import type { RuntimeAccessGrant } from '../../shared/runtime-access-grants'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
-import { isTailnetIPv4Address } from '../../shared/tailnet-address'
+import { isProxyFakeIpIPv4Address, isTailnetIPv4Address } from '../../shared/tailnet-address'
 import type { DeviceEntry } from '../runtime/device-registry'
 import type { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import type { RelayBrokerStatus } from '../runtime/relay/relay-session-broker'
@@ -45,6 +45,12 @@ function getNetworkInterfaces(): NetworkInterface[] {
         continue
       }
       if (addr.family === 'IPv4') {
+        // Why: Clash/mihomo TUN fake-ip (198.18.0.0/15) only exists inside the
+        // desktop proxy. Advertising it in a pairing QR makes the phone retry a
+        // dead endpoint forever (#10404).
+        if (isProxyFakeIpIPv4Address(addr.address)) {
+          continue
+        }
         result.push({ name, address: addr.address })
       } else if (addr.family === 'IPv6' && isUsableIPv6Address(addr.address)) {
         result.push({ name, address: addr.address })

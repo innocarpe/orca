@@ -59,6 +59,33 @@ describe('registerMobileHandlers', () => {
     })
   })
 
+  it('excludes proxy fake-ip addresses so pairing defaults to LAN (#10404)', async () => {
+    // Why: os.networkInterfaces() order can put Clash TUN (198.18.x.x) first;
+    // without filtering, getDefaultPairingAddress would embed an unroutable IP.
+    networkInterfacesMock.mockReturnValue({
+      utun4: [{ family: 'IPv4', internal: false, address: '198.18.9.1' }],
+      en0: [{ family: 'IPv4', internal: false, address: '192.168.50.238' }]
+    })
+    const createMobilePairingOffer = vi.fn().mockResolvedValue({
+      available: true,
+      pairingUrl: 'orca://pair#lan',
+      endpoint: 'ws://192.168.50.238:6768',
+      deviceId: 'mobile-lan',
+      connectionMode: 'automatic'
+    })
+
+    registerMobileHandlers({ createMobilePairingOffer } as never)
+
+    expect(handlers.get('mobile:listNetworkInterfaces')?.()).toEqual({
+      interfaces: [{ name: 'en0', address: '192.168.50.238' }]
+    })
+
+    await handlers.get('mobile:getPairingQR')?.(null, {})
+    expect(createMobilePairingOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ address: '192.168.50.238' })
+    )
+  })
+
   it('includes IPv6 addresses (ranked after IPv4) and excludes link-local IPv6', () => {
     networkInterfacesMock.mockReturnValue({
       en0: [
