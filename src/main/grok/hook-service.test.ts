@@ -42,14 +42,15 @@ describe('GrokHookService', () => {
     const script = buildWindowsGrokHookScript()
     // Why: empty GROK_HOME must never reach %VAR:~n,m% expansion at SessionStart.
     expect(script).toContain('set "ORCA_GROK_HOME="')
-    expect(script).toContain('if defined GROK_HOME (')
-    expect(script).toMatch(
-      /if defined GROK_HOME \([\s\S]*set "ORCA_GROK_HOME=%GROK_HOME%"[\s\S]*\)/
-    )
+    expect(script).toContain('if not defined GROK_HOME goto :orca_grok_home_ready')
+    expect(script).toContain('set "ORCA_GROK_HOME=%GROK_HOME%"')
+    expect(script).toContain(':orca_grok_home_ready')
     expect(script).toContain('%ORCA_GROK_HOME:~4096,1%')
     expect(script).toContain(
       'if defined ORCA_GROK_HOME if "%ORCA_GROK_HOME:~-1%"=="\\" set "ORCA_GROK_HOME=%ORCA_GROK_HOME%."'
     )
+    // Why: length checks must not sit inside a parenthesized if-block (parse-time expansion).
+    expect(script).not.toMatch(/if defined GROK_HOME \(/)
     // Substring ops only appear inside the defined block, not as bare top-level lines
     // of the form: if not "%GROK_HOME:~… without a prior if defined GROK_HOME.
     expect(script).not.toMatch(/^if not "%GROK_HOME:~/m)
@@ -110,7 +111,7 @@ describe('GrokHookService', () => {
     expect(script).toContain('/hook/grok')
     if (process.platform === 'win32') {
       expect(script).toContain('%SystemRoot%\\System32\\curl.exe')
-      expect(script).toContain('if defined GROK_HOME (')
+      expect(script).toContain('if not defined GROK_HOME goto :orca_grok_home_ready')
       expect(script).toContain('set "ORCA_GROK_HOME=%GROK_HOME%"')
       expect(script).toContain('%ORCA_GROK_HOME:~4096,1%')
       expect(script).toContain(
