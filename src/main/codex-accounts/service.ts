@@ -303,7 +303,7 @@ export class CodexAccountService {
     return this.serializeMutation(() => this.doAddAccountFromHome(sourceHome, target))
   }
 
-async importAccountFromExistingHome(
+  async importAccountFromExistingHome(
     sourceHomePath: string,
     target?: CodexAccountAddTarget
   ): Promise<CodexRateLimitAccountsState> {
@@ -801,7 +801,7 @@ async importAccountFromExistingHome(
     try {
       const canonicalConfig = this.readCanonicalConfigForManagedHome(managedHomePath)
       this.assertOAuthAccountAddAllowed(canonicalConfig)
-      copyExistingCodexHomeIntoManaged({
+      await copyExistingCodexHomeIntoManaged({
         sourceHomePath: resolvedSource,
         managedHomePath,
         accountId
