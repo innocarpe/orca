@@ -48,7 +48,11 @@ type UseFileExplorerDragDropResult = {
   dropTargetDir: string | null
   setDropTargetDir: (dir: string | null) => void
   dragSourcePath: string | null
-  setDragSourcePath: (path: string | null, isDirectory?: boolean) => void
+  setDragSourcePath: (
+    path: string | null,
+    isDirectory?: boolean,
+    selectionDirectoryFlags?: ReadonlyArray<readonly [string, boolean]>
+  ) => void
   isRootDragOver: boolean
   /** True when a native OS file drag (Files) is hovering over the explorer */
   isNativeDragOver: boolean
@@ -120,17 +124,31 @@ export function useFileExplorerDragDrop({
   // Why: document-level capture `drop` clears live drag state before React
   // onDrop runs handleMoveDrop; keep last primary-source metadata for that race.
   const lastDragSourceMetaRef = useRef<{ path: string; isDirectory: boolean } | null>(null)
+  // Why: multi-select must know isDirectory for every path, not only the primary (#10379).
+  const dragSourceDirectoryByPathRef = useRef(new Map<string, boolean>())
   const confirm = useConfirmationDialog()
 
-  const setDragSourcePath = useCallback((path: string | null, isDirectory = false) => {
-    setDragSourcePathState(path)
-    if (path !== null) {
-      dragSourceIsDirectoryRef.current = isDirectory
-      lastDragSourceMetaRef.current = { path, isDirectory }
-    } else {
-      dragSourceIsDirectoryRef.current = false
-    }
-  }, [])
+  const setDragSourcePath = useCallback(
+    (
+      path: string | null,
+      isDirectory = false,
+      selectionDirectoryFlags?: ReadonlyArray<readonly [string, boolean]>
+    ) => {
+      setDragSourcePathState(path)
+      if (path !== null) {
+        dragSourceIsDirectoryRef.current = isDirectory
+        lastDragSourceMetaRef.current = { path, isDirectory }
+        dragSourceDirectoryByPathRef.current = new Map(selectionDirectoryFlags ?? [[path, isDirectory]])
+        if (!dragSourceDirectoryByPathRef.current.has(path)) {
+          dragSourceDirectoryByPathRef.current.set(path, isDirectory)
+        }
+      } else {
+        dragSourceIsDirectoryRef.current = false
+        dragSourceDirectoryByPathRef.current.clear()
+      }
+    },
+    []
+  )
 
   // Native Files drag state — tracked separately from internal move state
   const [isNativeDragOver, setIsNativeDragOver] = useState(false)
@@ -232,15 +250,15 @@ export function useFileExplorerDragDrop({
 
       const newPath = joinPath(destDir, fileName)
       const operationOwner = getOperationOwnerForPath(sourcePath)
-      // Why: multi-select may drop several paths; use primary drag-source isDirectory
-      // when this path is that source (or last-drag meta after capture-phase clear).
+      // Why: multi-select may drop several paths; prefer the selection directory map.
       const meta = lastDragSourceMetaRef.current
       const isDirectory =
-        sourcePath === dragSourcePath
+        dragSourceDirectoryByPathRef.current.get(sourcePath) ??
+        (sourcePath === dragSourcePath
           ? dragSourceIsDirectoryRef.current
           : meta?.path === sourcePath
             ? meta.isDirectory
-            : false
+            : false)
 
       const run = async (): Promise<void> => {
         const mode = (useAppStore.getState().settings.confirmFileExplorerMove ??
