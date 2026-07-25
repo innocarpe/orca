@@ -52,7 +52,7 @@ export const AUTOMATION_SCHEDULE_PRESET_OPTIONS = [
     'Custom cron',
     'auto.components.automations.AutomationSchedulePicker.ddba78647e'
   ]
-] as const satisfies readonly [AutomationSchedulePreset, string, string][]
+] as const satisfies ReadonlyArray<readonly [AutomationSchedulePreset, string, string]>
 
 const DAY_OPTIONS = [
   ['0', 'Sunday'],
