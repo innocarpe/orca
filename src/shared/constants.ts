@@ -247,8 +247,9 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     // Why: default-on everywhere so it round-trips across platforms; only darwin acts on it.
     showMenuBarIcon: true,
     terminalClipboardOnSelect: false,
-    // Why: OSC 52 is a clipboard data-exfiltration vector; default off (query stays disabled separately).
-    terminalAllowOsc52Clipboard: false,
+    // Why: default on so Zellij/tmux/nvim copy works out of the box. Query
+    // replies stay disabled and payload size is capped in the OSC 52 handler.
+    terminalAllowOsc52Clipboard: true,
     claudeAgentTeamsMode: 'off',
     setupScriptLaunchMode: 'new-tab',
     terminalScrollbackRows: DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT,

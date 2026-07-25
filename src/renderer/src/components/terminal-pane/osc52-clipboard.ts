@@ -1,21 +1,23 @@
 // OSC 52 — "Manipulate Selection Data". xterm.js does not implement this
-// handler itself; applications register it to let TUIs (tmux, neovim, fzf,
-// ripgrep) copy to the host clipboard over SSH or through the PTY.
+// handler itself; applications register it to let TUIs (tmux, Zellij, neovim,
+// fzf, ripgrep) copy to the host clipboard over SSH or through the PTY.
 //
 // Wire format (xterm.js strips the leading `\x1b]52;` and trailing BEL/ST
 // before handing us the payload string):
 //
 //     Pc ; Pd
 //
-// Pc is one or more selection-kind letters ("c"=clipboard, "p"=primary,
-// "q"=secondary, "s"=select); Pd is base64-encoded UTF-8. If Pd is "?" the
-// TUI is *querying* the clipboard — we deliberately ignore that case to
-// avoid leaking clipboard contents to any process writing to the PTY.
+// Pc is zero or more selection-kind letters ("c"=clipboard, "p"=primary,
+// "q"=secondary, "s"=select). Empty Pc is treated as clipboard — the XTerm
+// default and what some multiplexers (including Zellij paths) emit. Pd is
+// base64-encoded UTF-8. If Pd is "?" the TUI is *querying* the clipboard —
+// we deliberately ignore that case to avoid leaking clipboard contents to
+// any process writing to the PTY.
 //
 // Safety: OSC 52 is a classic data-exfil / overwrite vector — piping an
 // attacker-controlled log into the terminal could silently replace the
-// user's clipboard. Callers must gate on the user-opt-in setting
-// `terminalAllowOsc52Clipboard` before invoking the handler.
+// user's clipboard. Callers gate on `terminalAllowOsc52Clipboard` (default
+// on; query stays blocked; payload size is capped).
 
 export type Osc52ParseResult =
   | { kind: 'write'; selections: string; text: string }
@@ -55,16 +57,11 @@ export function parseOsc52(data: string): Osc52ParseResult {
   if (semi === -1) {
     return { kind: 'invalid', reason: 'missing selection/data separator' }
   }
-  const selections = data.slice(0, semi)
+  // Why empty → "c": XTerm defaults empty Pc to the clipboard, and Zellij /
+  // some copy paths emit `\e]52;;<base64>\a` without an explicit letter.
+  const selections = data.slice(0, semi) || 'c'
   const payload = data.slice(semi + 1)
 
-  // Why reject empty selections: the spec allows it (defaults to "s0"), but
-  // every TUI we care about emits at least one letter, and treating empty
-  // as "apply to clipboard" would let malformed payloads mutate the
-  // clipboard by accident.
-  if (selections.length === 0) {
-    return { kind: 'invalid', reason: 'empty selection list' }
-  }
   if (!/^[cpqs0-7]+$/.test(selections)) {
     return { kind: 'invalid', reason: 'unknown selection kind' }
   }

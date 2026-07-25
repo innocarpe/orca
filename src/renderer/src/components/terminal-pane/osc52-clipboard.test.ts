@@ -51,11 +51,14 @@ describe('parseOsc52', () => {
     expect(parseOsc52(b64('no-semicolon'))).toMatchObject({ kind: 'invalid' })
   })
 
-  it('rejects empty selection list', () => {
-    // Why: the spec defaults to "s0" on empty, but treating malformed
-    // payloads as clipboard writes would let buggy/malicious emitters
-    // mutate the clipboard unintentionally.
-    expect(parseOsc52(`;${b64('x')}`)).toMatchObject({ kind: 'invalid' })
+  it('treats empty selection list as clipboard (XTerm/Zellij default)', () => {
+    // Why: multiplexers may emit `\e]52;;base64` with empty Pc; the XTerm
+    // default is clipboard, so reject-empty broke Zellij copy (#10567).
+    expect(parseOsc52(`;${b64('from zellij')}`)).toEqual({
+      kind: 'write',
+      selections: 'c',
+      text: 'from zellij'
+    })
   })
 
   it('rejects unknown selection letters', () => {

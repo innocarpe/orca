@@ -78,6 +78,10 @@ export const getTerminalClipboardSearchEntries = createLocalizedCatalog(() => [
         'clipboard'
       ),
       ...translateSearchKeyword(
+        'auto.components.settings.terminal.clipboard.search.zellij',
+        'zellij'
+      ),
+      ...translateSearchKeyword(
         'auto.components.settings.terminal.clipboard.search.5ffcd13c90',
         'tmux'
       ),

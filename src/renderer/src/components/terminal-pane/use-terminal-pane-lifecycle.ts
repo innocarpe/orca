@@ -802,7 +802,7 @@ export function useTerminalPaneLifecycle({
         })
         mode2031DisposablesRef.current.set(pane.id, mode2031Disposables)
 
-        // OSC 52 — TUI-initiated clipboard writes (tmux/nvim/fzf/ssh).
+        // OSC 52 — TUI-initiated clipboard writes (Zellij/tmux/nvim/fzf/ssh).
         // Why: read settingsRef at fire time so mid-session gate toggles apply; return true in both paths so xterm doesn't fall through.
         const osc52Disposable = pane.terminal.parser.registerOscHandler(
           52,
