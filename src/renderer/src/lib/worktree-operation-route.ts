@@ -6,22 +6,19 @@ import {
 } from '../../../shared/execution-host'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { getRepoIdFromWorktreeId } from '@/store/slices/worktree-helpers'
-import { resolveIndexedWorktreeOwner } from './worktree-runtime-owner-index'
 import {
   findFolderWorkspaceOwner,
   getExecutionHostIdForFolderWorkspace,
   type FolderWorkspaceRuntimeOwnerState
 } from './folder-workspace-runtime-owner'
+import {
+  addOperationRoute,
+  resolveFromCandidateRoutes,
+  type WorktreeOperationRoute,
+  type WorktreeOperationRouteResolution
+} from './worktree-operation-route-focus'
 
-export type WorktreeOperationRoute = {
-  executionHostId: ExecutionHostId | null
-  runtimeEnvironmentId: string | null
-}
-
-export type WorktreeOperationRouteResolution =
-  | { kind: 'resolved'; route: WorktreeOperationRoute }
-  | { kind: 'ambiguous' }
-  | { kind: 'missing' }
+export type { WorktreeOperationRoute, WorktreeOperationRouteResolution }
 
 type WorktreeOperationOwnerRecord = {
   id: string
@@ -61,14 +58,35 @@ function routeForOwner(owner: {
   }
 }
 
-function addRoute(
-  routes: Map<string, WorktreeOperationRoute>,
-  route: WorktreeOperationRoute | null
-): void {
-  if (!route) {
-    return
+function collectRepoOperationRoutes(
+  repos: WorktreeOperationRouteState['repos'],
+  repoId: string
+): Map<string, WorktreeOperationRoute> {
+  const routes = new Map<string, WorktreeOperationRoute>()
+  if (!repos) {
+    return routes
   }
-  routes.set(JSON.stringify(route), route)
+  for (const repo of repos) {
+    if (repo.id !== repoId) {
+      continue
+    }
+    if (!repo.executionHostId?.trim() && !repo.connectionId?.trim()) {
+      continue
+    }
+    addOperationRoute(routes, routeForOwner({ hostId: getRepoExecutionHostId(repo) }))
+  }
+  return routes
+}
+
+function resolveRepoOperationRoute(
+  state: WorktreeOperationRouteState,
+  repoId: string
+): WorktreeOperationRouteResolution {
+  const indexed = resolveIndexedRepoOperationRoute(state.repos, repoId)
+  if (indexed.kind !== 'ambiguous') {
+    return indexed
+  }
+  return resolveFromCandidateRoutes(collectRepoOperationRoutes(state.repos, repoId), state.settings)
 }
 
 function resolveExactWorktreeRoute(
@@ -82,7 +100,7 @@ function resolveExactWorktreeRoute(
   if (route.runtimeEnvironmentId || parseExecutionHostId(route.executionHostId)?.kind !== 'ssh') {
     return { kind: 'resolved', route }
   }
-  const repoRoute = resolveIndexedRepoOperationRoute(state.repos, owner.repoId)
+  const repoRoute = resolveRepoOperationRoute(state, owner.repoId)
   if (repoRoute.kind === 'ambiguous') {
     return repoRoute
   }
@@ -93,6 +111,28 @@ function resolveExactWorktreeRoute(
     }
   }
   return { kind: 'resolved', route }
+}
+
+function collectOwnerRoutes(
+  state: WorktreeOperationRouteState,
+  owners: Iterable<WorktreeOperationOwnerRecord>,
+  worktreeId: string,
+  exactRoutes: Map<string, WorktreeOperationRoute>,
+  exactRepoIds: Set<string>
+): void {
+  for (const worktree of owners) {
+    if (worktree.id !== worktreeId) {
+      continue
+    }
+    exactRepoIds.add(worktree.repoId)
+    const resolution = resolveExactWorktreeRoute(state, worktree)
+    if (resolution.kind === 'resolved') {
+      addOperationRoute(exactRoutes, resolution.route)
+    } else if (resolution.kind === 'ambiguous') {
+      // Why: bare SSH route when multi-host repo recovery stays ambiguous; focus may still pick.
+      addOperationRoute(exactRoutes, routeForOwner(worktree))
+    }
+  }
 }
 
 export function resolveWorktreeOperationRoute(
@@ -187,59 +227,31 @@ export function resolveExplicitWorktreeOperationRouteResult(
 ): WorktreeOperationRouteResolution {
   const exactRoutes = new Map<string, WorktreeOperationRoute>()
   const exactRepoIds = new Set<string>()
-  const indexedWorktree = resolveIndexedWorktreeOwner(state.worktreesByRepo, worktreeId)
-  if (indexedWorktree.kind === 'ambiguous') {
-    return { kind: 'ambiguous' }
-  }
-  if (indexedWorktree.kind === 'resolved') {
-    exactRepoIds.add(indexedWorktree.owner.repoId)
-    const resolution = resolveExactWorktreeRoute(state, indexedWorktree.owner)
-    if (resolution.kind === 'ambiguous') {
-      return resolution
-    }
-    if (resolution.kind === 'resolved') {
-      addRoute(exactRoutes, resolution.route)
-    }
+  // Why: scan every projection so focus can select the unique active-host owner (#10491).
+  for (const worktrees of Object.values(state.worktreesByRepo ?? {})) {
+    collectOwnerRoutes(state, worktrees, worktreeId, exactRoutes, exactRepoIds)
   }
   for (const result of Object.values(state.detectedWorktreesByRepo ?? {})) {
-    for (const worktree of result.worktrees) {
-      if (worktree.id === worktreeId) {
-        exactRepoIds.add(worktree.repoId)
-        const resolution = resolveExactWorktreeRoute(state, worktree)
-        if (resolution.kind === 'ambiguous') {
-          return resolution
-        }
-        if (resolution.kind === 'resolved') {
-          addRoute(exactRoutes, resolution.route)
-        }
-      }
-    }
+    collectOwnerRoutes(state, result.worktrees, worktreeId, exactRoutes, exactRepoIds)
   }
   if (exactRoutes.size > 0) {
-    const route = exactRoutes.values().next().value
-    return exactRoutes.size === 1 && route ? { kind: 'resolved', route } : { kind: 'ambiguous' }
+    return resolveFromCandidateRoutes(exactRoutes, state.settings)
   }
   if (exactRepoIds.size === 0) {
     exactRepoIds.add(getRepoIdFromWorktreeId(worktreeId))
   }
   const repoRoutes = new Map<string, WorktreeOperationRoute>()
   for (const repoId of exactRepoIds) {
-    const resolution = resolveIndexedRepoOperationRoute(state.repos, repoId)
-    if (resolution.kind === 'ambiguous') {
-      return resolution
-    }
+    const resolution = resolveRepoOperationRoute(state, repoId)
     if (resolution.kind === 'resolved') {
-      addRoute(repoRoutes, resolution.route)
+      addOperationRoute(repoRoutes, resolution.route)
+    } else if (resolution.kind === 'ambiguous') {
+      for (const route of collectRepoOperationRoutes(state.repos, repoId).values()) {
+        addOperationRoute(repoRoutes, route)
+      }
     }
   }
-  const route = repoRoutes.values().next().value
-  if (repoRoutes.size === 1 && route) {
-    return { kind: 'resolved', route }
-  }
-  if (repoRoutes.size > 1) {
-    return { kind: 'ambiguous' }
-  }
-  return { kind: 'missing' }
+  return resolveFromCandidateRoutes(repoRoutes, state.settings)
 }
 
 function resolveIndexedRepoOperationRoute(
