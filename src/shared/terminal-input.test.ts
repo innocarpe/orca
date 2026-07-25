@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   TERMINAL_INPUT_CHUNK_MAX_BYTES,
+  TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32,
+  TERMINAL_INPUT_CHUNK_GAP_MS,
+  TERMINAL_INPUT_CHUNK_GAP_MS_WIN32,
   TERMINAL_INPUT_TOO_LARGE_ERROR,
   assertTerminalInputWithinLimit,
   getTerminalInputByteLength,
+  getTerminalInputChunkGapMs,
+  getTerminalInputChunkMaxBytes,
   iterateTerminalInputChunks,
   isTerminalInputTooLarge,
   isTerminalInputTooLargeWithDeferredMeasurement,
@@ -33,6 +38,15 @@ describe('terminal input bounds', () => {
     const chunks = splitTerminalInputChunks('x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES + 1))
 
     expect(chunks).toEqual(['x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES), 'x'])
+  })
+
+  it('uses smaller chunks and a real gap on Windows for ConPTY pacing (#10416)', () => {
+    expect(getTerminalInputChunkMaxBytes('win32')).toBe(TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32)
+    expect(getTerminalInputChunkMaxBytes('darwin')).toBe(TERMINAL_INPUT_CHUNK_MAX_BYTES)
+    expect(getTerminalInputChunkGapMs('win32')).toBe(TERMINAL_INPUT_CHUNK_GAP_MS_WIN32)
+    expect(getTerminalInputChunkGapMs('linux')).toBe(TERMINAL_INPUT_CHUNK_GAP_MS)
+    expect(TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32).toBeLessThan(TERMINAL_INPUT_CHUNK_MAX_BYTES)
+    expect(TERMINAL_INPUT_CHUNK_GAP_MS_WIN32).toBeGreaterThan(TERMINAL_INPUT_CHUNK_GAP_MS)
   })
 
   it('iterates chunks lazily without prebuilding every terminal input chunk', () => {

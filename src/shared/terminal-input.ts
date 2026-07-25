@@ -5,9 +5,29 @@ import {
 } from './clipboard-text'
 
 export const TERMINAL_INPUT_CHUNK_MAX_BYTES = 16 * 1024
+// Why: Windows ConPTY / TUI agents (Claude) drop mid-burst input when large
+// single or back-to-back writes flood the console host — 16 KiB + setTimeout(0)
+// still truncates long orchestration injects to a tail fragment (#10416).
+export const TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32 = 1024
+export const TERMINAL_INPUT_CHUNK_GAP_MS = 0
+export const TERMINAL_INPUT_CHUNK_GAP_MS_WIN32 = 16
 export const TERMINAL_INPUT_MAX_BYTES = 16 * 1024 * 1024
 export const TERMINAL_INPUT_TOO_LARGE_ERROR =
   'Terminal input is too large for a safe terminal send.'
+
+/** Platform-aware chunk size for paced PTY writes (inject / terminal send). */
+export function getTerminalInputChunkMaxBytes(
+  platform: NodeJS.Platform = process.platform
+): number {
+  return platform === 'win32'
+    ? TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32
+    : TERMINAL_INPUT_CHUNK_MAX_BYTES
+}
+
+/** Gap between PTY input chunks so TUI hosts can drain without dropping. */
+export function getTerminalInputChunkGapMs(platform: NodeJS.Platform = process.platform): number {
+  return platform === 'win32' ? TERMINAL_INPUT_CHUNK_GAP_MS_WIN32 : TERMINAL_INPUT_CHUNK_GAP_MS
+}
 
 export function getTerminalInputByteLength(text: string): number {
   return measureClipboardTextByteLength(text).byteLength
