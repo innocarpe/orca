@@ -211,6 +211,7 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
                 repoPath: repo!.path,
                 repoId: removalTarget.repoId,
                 worktreeId: removalTarget.id,
+                hostId: removalHostId,
                 meta: removedMeta,
                 localGitOptions: localWorktreeGitOptions
               })
@@ -256,6 +257,7 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
             repoPath: repo!.path,
             repoId: removalTarget.repoId,
             worktreeId: removalTarget.id,
+            hostId: removalHostId,
             meta: removedMeta,
             localGitOptions: localWorktreeGitOptions
           })
@@ -301,6 +303,7 @@ export abstract class OrcaRuntimeWithRemoveManagedWorktree extends OrcaRuntimeWi
               repoPath: repo!.path,
               repoId: removalTarget.repoId,
               worktreeId: removalTarget.id,
+              hostId: removalHostId,
               meta: removedMeta,
               localGitOptions: localWorktreeGitOptions
             })
