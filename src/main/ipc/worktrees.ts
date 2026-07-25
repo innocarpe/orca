@@ -361,6 +361,39 @@ async function maybePruneReviewHeadRefsAfterWorktreeDelete(params: {
       error
     )
   }
+}): Promise<void> {
+  try {
+    const gitExec = params.sshGitProvider
+      ? (args: string[]) => params.sshGitProvider!.exec(args, params.repo.path)
+      : undefined
+    // Why: drop meta under the prune lock (not a pre-lock snapshot) so two
+    // concurrent last-worktree deletes cannot both see each other and skip.
+    await pruneReviewHeadLocalRefsAfterWorktreeDelete({
+      repoPath: params.repo.path,
+      repoId: params.repoId,
+      deletedWorktreeId: params.worktreeId,
+      meta: params.meta,
+      finalizeDeletedMetaAndReadSiblings: () => {
+        // Why: sibling detection only; full transient cleanup still runs after prune.
+        params.store.removeWorktreeMeta(params.worktreeId)
+        return params.store.getAllWorktreeMeta()
+      },
+      ...(gitExec ? { gitExec } : {}),
+      ...(params.sshGitProvider
+        ? {}
+        : {
+            localGitOptions: {
+              cwd: params.repo.path,
+              ...params.localGitOptions
+            }
+          })
+    })
+  } catch (error) {
+    console.warn(
+      `[worktrees] Failed to prune durable review-head refs after deleting ${params.worktreeId}:`,
+      error
+    )
+  }
 }
 
 function removeWorktreeMetadataAndTransientState(
