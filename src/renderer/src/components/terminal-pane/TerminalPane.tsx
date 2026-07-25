@@ -2506,7 +2506,8 @@ export default function TerminalPane({
     onAgentSessionForkReady: setAgentSessionFork,
     onAgentSessionContinuationReady: setAgentSessionContinuation,
     forceBracketedMultilineTextPaste,
-    rightClickToPaste
+    rightClickToPaste,
+    requestOpenLinksInAppPreference
   })
   const getContextMenuLeafId = useCallback((): string | null => {
     const paneId = contextMenu.menuPaneId
