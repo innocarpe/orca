@@ -47,6 +47,7 @@ import {
   removeWorktree
 } from '../git/worktree'
 import { gitExecFileAsync } from '../git/runner'
+import { pruneReviewHeadLocalRefsAfterWorktreeDelete } from '../git/review-head-ref-prune'
 import { withWorktreeSpan } from '../observability/instrumentation'
 import { resolveGitHubPrStartPoint } from '../github/pr-start-point'
 import {
@@ -221,6 +222,46 @@ async function mapWithConcurrency<T, R>(
     })
   )
   return results
+}
+
+/** Best-effort: drop durable refs/orca/** pins when the last linked worktree is gone (#10431). */
+async function maybePruneReviewHeadRefsAfterWorktreeDelete(params: {
+  store: Store
+  repo: Repo
+  repoId: string
+  worktreeId: string
+  meta: WorktreeMeta | undefined
+  localGitOptions: { cwd?: string; wslDistro?: string }
+  sshGitProvider: {
+    exec: (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>
+  } | null
+}): Promise<void> {
+  try {
+    const gitExec = params.sshGitProvider
+      ? (args: string[]) => params.sshGitProvider!.exec(args, params.repo.path)
+      : undefined
+    await pruneReviewHeadLocalRefsAfterWorktreeDelete({
+      repoPath: params.repo.path,
+      repoId: params.repoId,
+      deletedWorktreeId: params.worktreeId,
+      meta: params.meta,
+      worktreeMetaById: params.store.getAllWorktreeMeta(),
+      ...(gitExec ? { gitExec } : {}),
+      ...(params.sshGitProvider
+        ? {}
+        : {
+            localGitOptions: {
+              cwd: params.repo.path,
+              ...params.localGitOptions
+            }
+          })
+    })
+  } catch (error) {
+    console.warn(
+      `[worktrees] Failed to prune durable review-head refs after deleting ${params.worktreeId}:`,
+      error
+    )
+  }
 }
 
 function removeWorktreeMetadataAndTransientState(store: Store, worktreeId: string): void {
@@ -1726,6 +1767,15 @@ export function registerWorktreeHandlers(
             removedPushTarget
           )
           runtime.clearOptimisticReconcileToken(args.worktreeId)
+          await maybePruneReviewHeadRefsAfterWorktreeDelete({
+            store,
+            repo,
+            repoId,
+            worktreeId: args.worktreeId,
+            meta: removedMeta,
+            localGitOptions: localWorktreeGitOptions,
+            sshGitProvider: provider
+          })
           removeWorktreeMetadataAndTransientState(store, args.worktreeId)
           notifyWorktreesChanged(mainWindow, repoId)
           return removalResult ?? {}
@@ -1888,6 +1938,15 @@ export function registerWorktreeHandlers(
           removedPushTarget
         )
         runtime.clearOptimisticReconcileToken(args.worktreeId)
+        await maybePruneReviewHeadRefsAfterWorktreeDelete({
+          store,
+          repo,
+          repoId,
+          worktreeId: args.worktreeId,
+          meta: removedMeta,
+          localGitOptions: localWorktreeGitOptions,
+          sshGitProvider: null
+        })
         removeWorktreeMetadataAndTransientState(store, args.worktreeId)
         invalidateAuthorizedRootsCache()
 
