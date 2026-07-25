@@ -294,11 +294,12 @@ describe('installEditorSendNotesToAgentShortcut', () => {
       key: 'Enter',
       code: 'Enter',
       metaKey: true,
-      shiftKey: true
+      shiftKey: true,
+      repeat: true
     })
-    // handler returns true still — second press still acts unless we return false
-    expect(skipped.defaultPrevented).toBe(true)
-    expect(onSend).toHaveBeenCalledTimes(2)
+    // Why: auto-repeat must not re-open the picker (keyboard holds fire multiple events).
+    expect(skipped.defaultPrevented).toBe(false)
+    expect(onSend).toHaveBeenCalledTimes(1)
 
     dispose()
   })
