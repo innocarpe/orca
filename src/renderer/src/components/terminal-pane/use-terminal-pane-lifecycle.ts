@@ -70,6 +70,7 @@ import { pushMode2031SeedReply } from './terminal-mode-2031-replies'
 import { handleOsc52ClipboardRequest } from './osc52-clipboard'
 import { showOsc52ClipboardBlockedToast } from './osc52-clipboard-blocked-toast'
 import { parseOsc7 } from './parse-osc7'
+import { clearLivePaneCwd, setLivePaneCwd } from '@/components/sidebar/live-pane-cwd-registry'
 import { guardParserHandler } from './terminal-parser-handler-guard'
 import { resolveTerminalJisYenInput } from './terminal-jis-yen-input'
 import { installTerminalImeCompositionTracker } from './terminal-ime-composition-tracker'
@@ -831,6 +832,11 @@ export function useTerminalPaneLifecycle({
             if (parsedCwd) {
               const confirmed = !isPaneReplaying(replayingPanesRef, pane.id)
               paneCwdRef.current.set(pane.id, { cwd: parsedCwd, confirmed })
+              // Why: confirmed OSC 7 only — replayed scrollback must not flip
+              // sidebar agent worktree-mismatch labels (#10572).
+              if (confirmed && pane.leafId) {
+                setLivePaneCwd(makePaneKey(tabId, pane.leafId), parsedCwd)
+              }
             }
             return true
           })
@@ -1202,6 +1208,9 @@ export function useTerminalPaneLifecycle({
         }
         // Why: drop the tracked cwd so the map doesn't accumulate dead entries over long sessions.
         paneCwdRef.current.delete(paneId)
+        if (closedPane?.leafId) {
+          clearLivePaneCwd(makePaneKey(tabId, closedPane.leafId))
+        }
         const mouseHideDisposable = mouseHideDisposablesRef.current.get(paneId)
         if (mouseHideDisposable) {
           mouseHideDisposable.dispose()
