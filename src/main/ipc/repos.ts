@@ -71,6 +71,7 @@ import {
   mergeBaseRefSearchResultGroups,
   searchBaseRefDetails
 } from '../git/repo'
+import { resolveWorktreeBroadFetchRemoteName } from '../../shared/worktree-broad-fetch-remote'
 import { getSshGitProvider } from '../providers/ssh-git-dispatch'
 import { getSshGitCapabilityCache } from '../git/git-capability-state'
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
@@ -1092,7 +1093,16 @@ async function runNestedRepoScanForIpc(
   }
 }
 
-export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): void {
+export type RepoHandlerRuntime = {
+  /** Best-effort `git fetch <remote>` with the runtime remote-fetch cache (local native only). */
+  fetchRemoteWithCache: (repoPath: string, remote: string) => Promise<void>
+}
+
+export function registerRepoHandlers(
+  mainWindow: BrowserWindow,
+  store: Store,
+  runtime?: RepoHandlerRuntime
+): void {
   // Remove previously registered handlers so we can re-register on macOS app re-activation (new window).
   ipcMain.removeHandler('repos:list')
   ipcMain.removeHandler('repos:add')
@@ -2412,7 +2422,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       _event,
       args: { repoId: string; query: string; limit?: number; hostId?: ExecutionHostId }
     ) => {
-      return (await searchBaseRefDetailsForRepo(store, args)).map((entry) => entry.refName)
+      return (await searchBaseRefDetailsForRepo(store, args, runtime)).map((entry) => entry.refName)
     }
   )
 
@@ -2422,14 +2432,15 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       _event,
       args: { repoId: string; query: string; limit?: number; hostId?: ExecutionHostId }
     ) => {
-      return searchBaseRefDetailsForRepo(store, args)
+      return searchBaseRefDetailsForRepo(store, args, runtime)
     }
   )
 }
 
 async function searchBaseRefDetailsForRepo(
   store: Store,
-  args: { repoId: string; query: string; limit?: number; hostId?: ExecutionHostId }
+  args: { repoId: string; query: string; limit?: number; hostId?: ExecutionHostId },
+  runtime?: RepoHandlerRuntime
 ): Promise<BaseRefSearchResult[]> {
   const repo = getRepoForExecutionHost(store, args.repoId, args.hostId)
   if (!repo || isFolderRepo(repo)) {
@@ -2498,6 +2509,16 @@ async function searchBaseRefDetailsForRepo(
         err
       })
       return []
+    }
+  }
+  // Why: the picker only sees local remote-tracking refs. A best-effort fetch of
+  // the canonical remote (deduped/cached by the runtime) discovers branches pushed
+  // since the last fetch so search doesn't silently look empty.
+  if (runtime) {
+    try {
+      await runtime.fetchRemoteWithCache(repo.path, resolveWorktreeBroadFetchRemoteName(repo))
+    } catch {
+      // Why: offline/auth failures must not block listing whatever local refs we already have.
     }
   }
   return searchBaseRefDetails(repo.path, args.query, limit)
