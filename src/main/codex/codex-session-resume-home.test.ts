@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  claimsTrustedCodexRolloutLayout,
   findTrustedCodexSessionResume,
   resolveTrustedCodexSessionResumeHome
 } from './codex-session-resume-home'
@@ -222,5 +223,41 @@ describe('resolveTrustedCodexSessionResumeHome', () => {
         listSessionFiles
       })
     ).resolves.toBeNull()
+  })
+})
+
+describe('claimsTrustedCodexRolloutLayout', () => {
+  it('is true for a rollout path under a trusted CODEX_HOME even if the file is missing', () => {
+    expect(
+      claimsTrustedCodexRolloutLayout({
+        transcriptPath: '/Users/example/.codex/sessions/2026/07/20/rollout-session.jsonl',
+        trustedCodexHomes: ['/managed/account/home', '/Users/example/.codex']
+      })
+    ).toBe(true)
+  })
+
+  it('is false for Claude (or other non-Codex) transcript paths', () => {
+    expect(
+      claimsTrustedCodexRolloutLayout({
+        transcriptPath:
+          '/Users/example/.claude/projects/-Users-example-repo/019f81b9-19a9-7651-a8d1-352d9420bd11.jsonl',
+        trustedCodexHomes: ['/Users/example/.codex', '/managed/account/home']
+      })
+    ).toBe(false)
+  })
+
+  it('is false for empty provenance and paths outside trusted homes', () => {
+    expect(
+      claimsTrustedCodexRolloutLayout({
+        transcriptPath: undefined,
+        trustedCodexHomes: ['/Users/example/.codex']
+      })
+    ).toBe(false)
+    expect(
+      claimsTrustedCodexRolloutLayout({
+        transcriptPath: '/tmp/sessions/2026/07/20/rollout-a.jsonl',
+        trustedCodexHomes: ['/Users/example/.codex']
+      })
+    ).toBe(false)
   })
 })

@@ -76,6 +76,27 @@ export function resolveTrustedCodexSessionResumeHome(args: {
   return resolveTrustedCodexSessionResume(args)?.homePath ?? null
 }
 
+/**
+ * True when transcriptPath sits under a trusted CODEX_HOME sessions rollout layout.
+ * Does not check file existence — used to distinguish rejected Codex provenance
+ * (must hard-fail resume) from cross-agent / non-Codex paths (stale metadata → fresh).
+ */
+export function claimsTrustedCodexRolloutLayout(args: {
+  transcriptPath: string | undefined
+  trustedCodexHomes: readonly string[]
+}): boolean {
+  const persistedPath = args.transcriptPath?.trim()
+  if (!persistedPath) {
+    return false
+  }
+  for (const homePath of args.trustedCodexHomes) {
+    if (isCodexRolloutInsideSessionsRoot(join(homePath, 'sessions'), persistedPath)) {
+      return true
+    }
+  }
+  return false
+}
+
 export async function findTrustedCodexSessionResume(args: {
   sessionId: string
   transcriptPath: string | undefined
