@@ -1755,8 +1755,15 @@ function Terminal(): React.JSX.Element | null {
         if (state.activeTabType === 'editor' && state.activeFileId) {
           e.preventDefault()
           notifyTerminalCapture('editor.toggleWordWrap')
-          const wrapOn = state.settings?.editorWordWrap !== false
-          void state.updateSettings({ editorWordWrap: !wrapOn })
+          // Why: diff surfaces use diffWordWrap; plain editors use editorWordWrap (#10086).
+          const activeFile = state.openFiles.find((file) => file.id === state.activeFileId)
+          if (activeFile?.mode === 'diff') {
+            const wrapOn = state.settings?.diffWordWrap === true
+            void state.updateSettings({ diffWordWrap: !wrapOn })
+          } else {
+            const wrapOn = state.settings?.editorWordWrap !== false
+            void state.updateSettings({ editorWordWrap: !wrapOn })
+          }
           return
         }
       }
