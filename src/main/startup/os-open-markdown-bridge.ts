@@ -51,6 +51,11 @@ export function createOsOpenMarkdownBridge(options: {
         const pending = queued
         queued = []
         const root = await resolveFloatingRoot()
+        // Why: window can close during await; never send on a destroyed webContents.
+        if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+          queued = mergeMarkdownOpenPaths(queued, pending, { platform })
+          return
+        }
         const documents: MarkdownDocument[] = []
         for (const filePath of pending) {
           if (!isMarkdownDocumentName(filePath)) {
@@ -72,8 +77,30 @@ export function createOsOpenMarkdownBridge(options: {
         if (documents.length === 0) {
           return
         }
-        // Why: renderer may still be mounting listeners on a cold start; a short retry covers that race.
-        mainWindow.webContents.send('ui:openFloatingMarkdownDocuments', documents)
+        // Why: cold-start renderer may not have subscribed yet — retry once, re-queue on total miss.
+        const deliver = (): void => {
+          mainWindow.webContents.send('ui:openFloatingMarkdownDocuments', documents)
+        }
+        try {
+          deliver()
+        } catch (error) {
+          console.warn('[os-open-markdown] Failed to deliver documents to the renderer:', error)
+          queued = mergeMarkdownOpenPaths(
+            queued,
+            pending,
+            { platform }
+          )
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+          return
+        }
+        try {
+          deliver()
+        } catch (error) {
+          console.warn('[os-open-markdown] Retry deliver failed:', error)
+        }
       })().finally(() => {
         flushInFlight = null
       })
