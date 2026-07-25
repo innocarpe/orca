@@ -7,6 +7,7 @@ import {
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { getRepoIdFromWorktreeId } from '@/store/slices/worktree-helpers'
 import { addRoute, resolveExactWorktreeRoute, routeForOwner } from './worktree-owner-route'
+import { preferFocusedRoute } from './worktree-operation-route-focus'
 import {
   findIndexedDetectedWorktrees,
   hasIndexedDetectedWorktree,
@@ -228,6 +229,11 @@ export function resolveExplicitWorktreeOperationRouteResult(
     }
   }
   if (exactRoutes.size > 0) {
+    // Why: multi-host projections of the same worktree id collapse when focus selects one (#10491).
+    const preferred = preferFocusedRoute(exactRoutes.values(), state.settings)
+    if (preferred) {
+      return { kind: 'resolved', route: preferred }
+    }
     const route = exactRoutes.values().next().value
     return exactRoutes.size === 1 && route ? { kind: 'resolved', route } : { kind: 'ambiguous' }
   }
@@ -243,6 +249,10 @@ export function resolveExplicitWorktreeOperationRouteResult(
     if (resolution.kind === 'resolved') {
       addRoute(repoRoutes, resolution.route)
     }
+  }
+  const preferredRepo = preferFocusedRoute(repoRoutes.values(), state.settings)
+  if (preferredRepo) {
+    return { kind: 'resolved', route: preferredRepo }
   }
   const route = repoRoutes.values().next().value
   if (repoRoutes.size === 1 && route) {
