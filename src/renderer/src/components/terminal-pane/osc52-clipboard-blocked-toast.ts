@@ -9,7 +9,6 @@ export function showOsc52ClipboardBlockedToast(): void {
   if (hasShownOsc52ClipboardBlockedToast) {
     return
   }
-  hasShownOsc52ClipboardBlockedToast = true
 
   toast.info(
     translate(
@@ -42,4 +41,7 @@ export function showOsc52ClipboardBlockedToast(): void {
       }
     }
   )
+  // Why latch after: a throw above would otherwise burn the session's one notice
+  // without ever showing it, leaving the opted-out user with silent failures.
+  hasShownOsc52ClipboardBlockedToast = true
 }

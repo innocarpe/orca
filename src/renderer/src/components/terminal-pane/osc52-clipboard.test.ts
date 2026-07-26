@@ -58,7 +58,7 @@ describe('parseOsc52', () => {
 
   it('treats an empty selection list as clipboard, the way tmux emits it', () => {
     // Why: tmux copies via `\e]52;;<base64>` with no selection letter, so
-    // rejecting empty Pc broke tmux copy. Zellij always sends an explicit 'c'.
+    // rejecting empty Pc broke tmux copy. Zellij always sends an explicit 'c'/'p'.
     expect(parseOsc52(`;${b64('from tmux')}`)).toEqual({
       kind: 'write',
       selections: 'c',
@@ -71,8 +71,8 @@ describe('parseOsc52', () => {
   })
 
   it('rejects an empty payload instead of blanking the clipboard', () => {
-    // Why: a truncated sequence is the only realistic source, and the gate is
-    // now default-on — silently clearing the clipboard would be worse than a no-op.
+    // Why: this is XTerm's "clear the selection", which we decline to honor — with
+    // the gate default-on, any PTY could otherwise blank the clipboard for free.
     expect(parseOsc52(';')).toMatchObject({ kind: 'invalid' })
     expect(parseOsc52('c;')).toMatchObject({ kind: 'invalid' })
     expect(parseOsc52('c;   ')).toMatchObject({ kind: 'invalid' })
@@ -163,13 +163,35 @@ describe('createOsc52OscHandler', () => {
     return { handler, writeClipboardText, showBlockedWriteToast }
   }
 
-  it('writes through to the clipboard for a live pane', () => {
+  it('writes through to the clipboard for a live pane', async () => {
     const { handler, writeClipboardText } = setup()
     expect(handler(`c;${b64('live copy')}`)).toBe(true)
+    await Promise.resolve()
     expect(writeClipboardText).toHaveBeenCalledWith('live copy')
   })
 
-  it('reads the gate inputs at fire time so a mid-session toggle applies', () => {
+  it('coalesces a flood of writes into one clipboard call', async () => {
+    // Why: a 15-byte sequence repeated across one hostile chunk would otherwise fire
+    // a million IPC round-trips and native clipboard writes. Last write still wins.
+    const { handler, writeClipboardText } = setup()
+    for (let i = 0; i < 1000; i++) {
+      handler(`c;${b64(`copy ${i}`)}`)
+    }
+    await Promise.resolve()
+    expect(writeClipboardText).toHaveBeenCalledExactlyOnceWith('copy 999')
+  })
+
+  it('does not coalesce across separate turns', async () => {
+    const { handler, writeClipboardText } = setup()
+    handler(`c;${b64('first')}`)
+    await Promise.resolve()
+    handler(`c;${b64('second')}`)
+    await Promise.resolve()
+    expect(writeClipboardText).toHaveBeenNthCalledWith(1, 'first')
+    expect(writeClipboardText).toHaveBeenNthCalledWith(2, 'second')
+  })
+
+  it('reads the gate inputs at fire time so a mid-session toggle applies', async () => {
     // Why getters, not values: settings hydrate and toggle after the handler is registered.
     let enabled = false
     const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
@@ -181,28 +203,31 @@ describe('createOsc52OscHandler', () => {
     })
 
     handler(`c;${b64('before')}`)
+    await Promise.resolve()
     expect(writeClipboardText).not.toHaveBeenCalled()
 
     enabled = true
     handler(`c;${b64('after')}`)
+    await Promise.resolve()
     expect(writeClipboardText).toHaveBeenCalledExactlyOnceWith('after')
   })
 
-  it('drops a replayed write and stays silent about it', () => {
-    // Revert-proof for the wiring: dropping the replay getter makes this fail.
+  it('drops a replayed write and stays silent about it', async () => {
     const { handler, writeClipboardText, showBlockedWriteToast } = setup({ replaying: true })
     expect(handler(`c;${b64('stale scrollback copy')}`)).toBe(true)
+    await Promise.resolve()
     expect(writeClipboardText).not.toHaveBeenCalled()
     expect(showBlockedWriteToast).not.toHaveBeenCalled()
   })
 
-  it('toasts only for a real opt-out, never for unhydrated settings', () => {
+  it('toasts only for a real opt-out, never for unhydrated settings', async () => {
     const optedOut = setup({ settingEnabled: false })
     optedOut.handler(`c;${b64('blocked')}`)
     expect(optedOut.showBlockedWriteToast).toHaveBeenCalledTimes(1)
 
     const unhydrated = setup({ settingEnabled: null })
     unhydrated.handler(`c;${b64('blocked')}`)
+    await Promise.resolve()
     expect(unhydrated.writeClipboardText).not.toHaveBeenCalled()
     expect(unhydrated.showBlockedWriteToast).not.toHaveBeenCalled()
   })
@@ -218,7 +243,7 @@ describe('resolveOsc52ClipboardGate', () => {
 
   it('drops replayed writes so restore cannot clobber the clipboard', () => {
     // Why: reattach re-writes recorded PTY bytes through the same parser, so an old
-    // copy would silently overwrite what the user has copied since (#10588 review).
+    // copy would silently overwrite what the user has copied since (#10588).
     expect(resolveOsc52ClipboardGate({ settingEnabled: true, replaying: true })).toEqual({
       allowClipboardWrite: false,
       shouldSurfaceBlockedWrite: false

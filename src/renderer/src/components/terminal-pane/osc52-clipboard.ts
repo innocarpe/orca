@@ -8,9 +8,11 @@
 //     Pc ; Pd
 //
 // Pc is zero or more selection-kind letters ("c"=clipboard, "p"=primary,
-// "q"=secondary, "s"=select). Orca maps every selection kind to the one
-// system clipboard — it has no separate primary/cut-buffer sink here — so
-// `selections` is reported for callers but not used to route the write.
+// "q"=secondary, "s"=select). Orca deliberately merges all of them into the
+// system clipboard: a PRIMARY sink does exist (writeSelectionClipboardText),
+// but Zellij defaults to `p` on Linux and means the system clipboard by it,
+// so routing `p` there would break the case this default-on flip is for.
+// `selections` is reported for callers but does not route the write.
 // Pd is base64-encoded UTF-8. If Pd is "?" the TUI is *querying* the
 // clipboard — we deliberately ignore that case to avoid leaking clipboard
 // contents to any process writing to the PTY.
@@ -32,7 +34,7 @@ export type Osc52ClipboardRequestOptions = {
   onBlockedWrite?: () => void
 }
 
-const MAX_OSC52_BYTES = 128 * 1024
+const MAX_OSC52_BASE64_CHARS = 128 * 1024
 
 /** Resolves whether an incoming OSC 52 write may touch the clipboard, and whether a
  *  refusal is worth telling the user about. */
@@ -65,6 +67,29 @@ export function createOsc52OscHandler(deps: {
   writeClipboardText: (text: string) => Promise<void>
   showBlockedWriteToast: () => void
 }): (data: string) => boolean {
+  // Why coalesce: each sequence is only ~15 bytes, so one hostile chunk can fire a
+  // million parser callbacks — each a main-process clipboard write. Only the last
+  // one is observable anyway, so keep it and drop the rest.
+  let pendingText: string | null = null
+  let flushScheduled = false
+  const writeCoalesced = (text: string): Promise<void> => {
+    pendingText = text
+    if (!flushScheduled) {
+      flushScheduled = true
+      queueMicrotask(() => {
+        flushScheduled = false
+        const next = pendingText
+        pendingText = null
+        if (next !== null) {
+          void deps.writeClipboardText(next).catch(() => {
+            /* ignore clipboard write failures */
+          })
+        }
+      })
+    }
+    return Promise.resolve()
+  }
+
   return (data) => {
     const gate = resolveOsc52ClipboardGate({
       settingEnabled: deps.getSettingEnabled(),
@@ -72,7 +97,7 @@ export function createOsc52OscHandler(deps: {
     })
     return handleOsc52ClipboardRequest(data, {
       allowClipboardWrite: gate.allowClipboardWrite,
-      writeClipboardText: deps.writeClipboardText,
+      writeClipboardText: writeCoalesced,
       onBlockedWrite: gate.shouldSurfaceBlockedWrite ? deps.showBlockedWriteToast : undefined
     })
   }
@@ -104,8 +129,8 @@ export function parseOsc52(data: string): Osc52ParseResult {
     return { kind: 'invalid', reason: 'missing selection/data separator' }
   }
   // Why accept empty Pc: tmux copies via `\e]52;;<base64>` (window-copy.c passes an
-  // empty clip through the `Ms` capability). XTerm would read that as `s0`, but Orca
-  // has one clipboard sink so every kind lands there anyway. Zellij always sends `c`/`p`.
+  // empty clip through the `Ms` capability). XTerm would read that as `s0`; we merge
+  // every kind into the clipboard regardless (see header). Zellij always sends `c`/`p`.
   const selections = data.slice(0, semi) || 'c'
   const payload = data.slice(semi + 1)
 
@@ -120,7 +145,7 @@ export function parseOsc52(data: string): Osc52ParseResult {
   // Why guard size: xterm's own parser caps OSC payloads at ~10 MB; we cap
   // tighter because a legitimate clipboard write is rarely more than a
   // screenful and any multi-MB payload is almost certainly a bug or abuse.
-  if (payload.length > MAX_OSC52_BYTES) {
+  if (payload.length > MAX_OSC52_BASE64_CHARS) {
     return { kind: 'invalid', reason: 'payload exceeds size limit' }
   }
 
@@ -128,9 +153,9 @@ export function parseOsc52(data: string): Osc52ParseResult {
   if (decoded === null) {
     return { kind: 'invalid', reason: 'payload is not valid base64' }
   }
-  // Why reject empty: XTerm reads an empty Pd as "clear the selection", but the
-  // only realistic source is a truncated sequence — and with the gate default-on
-  // that would silently blank the clipboard. No TUI copies the empty string.
+  // Why reject empty: this is XTerm's "clear the selection", which we decline to
+  // honor — with the gate default-on, any PTY could blank the clipboard for free.
+  // (A truncated sequence never lands here; xterm only calls us on parse success.)
   if (decoded === '') {
     return { kind: 'invalid', reason: 'empty payload' }
   }

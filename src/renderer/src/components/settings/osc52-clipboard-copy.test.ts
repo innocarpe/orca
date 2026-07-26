@@ -12,10 +12,12 @@ describe('OSC 52 setting copy', () => {
   const locales = { en, es, ja, ko, zh }
 
   for (const [name, locale] of Object.entries(locales)) {
-    it(`names Zellij in the ${name} setting description and switch label`, () => {
+    it(`names Zellij and Grok in the ${name} setting description and switch label`, () => {
       const pane = locale.auto.components.settings.TerminalPane
-      expect(pane['69c64a479c']).toContain('Zellij')
-      expect(pane['6e6480a7df']).toContain('Zellij')
+      for (const copy of [pane['69c64a479c'], pane['6e6480a7df']]) {
+        expect(copy).toContain('Zellij')
+        expect(copy).toContain('Grok')
+      }
     })
   }
 })

@@ -506,6 +506,46 @@ describe('web settings preload API', () => {
     expect(settings.terminalCursorStyleDefaultedToBlock).toBe(true)
   })
 
+  it('migrates OSC 52 clipboard writes on for stored web settings once', async () => {
+    // Why: the web store is a second, independent settings store — the constants-level
+    // default flip only reaches profiles that never persisted the old `false` (#10567).
+    const globals = installBrowserGlobals('Linux')
+    globals.storage.setItem(
+      'orca.web.settings.v1',
+      JSON.stringify({ terminalAllowOsc52Clipboard: false })
+    )
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+
+    const settings = await globals.window.api.settings.get()
+    const stored = JSON.parse(globals.storage.getItem('orca.web.settings.v1') ?? '{}') as {
+      terminalAllowOsc52Clipboard?: boolean
+      terminalAllowOsc52ClipboardDefaultedOnForAllUsers?: boolean
+    }
+
+    expect(settings.terminalAllowOsc52Clipboard).toBe(true)
+    expect(settings.terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
+    expect(stored.terminalAllowOsc52Clipboard).toBe(true)
+    expect(stored.terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
+  })
+
+  it('preserves OSC 52 clipboard web opt-outs after migration', async () => {
+    const globals = installBrowserGlobals('Linux')
+    globals.storage.setItem(
+      'orca.web.settings.v1',
+      JSON.stringify({
+        terminalAllowOsc52Clipboard: false,
+        terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true
+      })
+    )
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+
+    const settings = await globals.window.api.settings.get()
+    expect(settings.terminalAllowOsc52Clipboard).toBe(false)
+    expect(settings.terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
+  })
+
   it('preserves first-work branch auto-rename web opt-outs after migration', async () => {
     const globals = installBrowserGlobals('Linux')
     globals.storage.setItem(

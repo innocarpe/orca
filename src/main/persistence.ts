@@ -223,6 +223,7 @@ import {
   normalizeTuiAgentEnvRecord
 } from '../shared/tui-agent-launch-defaults'
 import { normalizeTerminalCursorStyleDefault } from '../shared/terminal-cursor-style-settings'
+import { normalizeOsc52ClipboardDefaultOn } from '../shared/osc52-clipboard-settings'
 import { normalizeTerminalLineHeight } from '../shared/terminal-line-height-settings'
 import { normalizeUiLanguage } from '../shared/ui-language'
 import { normalizeBrowserPageZoomLevel } from '../shared/browser-page-zoom'
@@ -2909,13 +2910,9 @@ export class Store {
         const migratedFloatingTerminalEnabled = floatingTerminalDefaultedForAllUsers
           ? (parsed.settings?.floatingTerminalEnabled ?? true)
           : true
-        const osc52ClipboardDefaultedOnForAllUsers =
-          parsed.settings?.terminalAllowOsc52ClipboardDefaultedOnForAllUsers === true
-        // Why: every profile saved under the old off default persisted `false`, so it can't be told apart from a real opt-out; flip unmigrated profiles once so #10567 reaches existing installs, and let a later opt-out survive reload.
-        const migratedTerminalAllowOsc52Clipboard = osc52ClipboardDefaultedOnForAllUsers
-          ? (parsed.settings?.terminalAllowOsc52Clipboard ?? true)
-          : true
-        if (!osc52ClipboardDefaultedOnForAllUsers) {
+        // Why: the old off default persisted `false` for every profile, indistinguishable from a real opt-out — flip unmigrated profiles once (#10567).
+        const migratedOsc52Clipboard = normalizeOsc52ClipboardDefaultOn(parsed.settings)
+        if (parsed.settings?.terminalAllowOsc52ClipboardDefaultedOnForAllUsers !== true) {
           this.loadNeedsSave = true
         }
         const floatingTerminalCwdMigrated =
@@ -3150,8 +3147,7 @@ export class Store {
             localWindowsRuntimeDefault: migratedWindowsRuntimeDefault,
             localAccountRuntime: migratedLocalAccountRuntime,
             localAccountRuntimeDefaultedToAutoForAllUsers: true,
-            terminalAllowOsc52Clipboard: migratedTerminalAllowOsc52Clipboard,
-            terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true,
+            ...migratedOsc52Clipboard,
             floatingTerminalEnabled: migratedFloatingTerminalEnabled,
             floatingTerminalDefaultedForAllUsers: true,
             floatingTerminalCwd: migratedFloatingTerminalCwd,
