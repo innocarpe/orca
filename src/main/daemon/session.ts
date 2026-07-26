@@ -398,17 +398,12 @@ export class Session {
         return
       }
       if (process.platform === 'win32') {
+        // Why (#10475): ConPTY forceKill is already a no-op after the first bare kill;
+        // mid-wait escalate is taskkill /T only — don't reset forceKillSent.
         await killWithDescendantSweep(
           this.subprocess.pid,
           () => {
-            try {
-              // Why: allow a second native force after the mid-wait escalate — the
-              // first requestForceKill may have set forceKillSent while taskkill lagged.
-              this.forceKillSent = false
-              this.requestForceKill()
-            } catch {
-              /* best-effort re-escalate */
-            }
+            /* tree-kill owns escalate; killRoot already force-killed once */
           },
           { ownsRoot: () => this.isAlive }
         )
@@ -421,7 +416,9 @@ export class Session {
         }
       }
     }
-    const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt))
+    // Why: escalate's own taskkill can consume most of timeoutMs; keep a real
+    // post-kill window instead of collapsing to 1ms (#10475 CodeRabbit).
+    const remainingMs = Math.max(escalateAfterMs, timeoutMs - (Date.now() - startedAt))
     await this.waitForPhysicalExit(remainingMs)
   }
 

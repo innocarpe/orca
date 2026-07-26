@@ -67,4 +67,49 @@ describe('Session force-kill escalation (#10475)', () => {
     await shutdown
     expect(session.state).toBe('exited')
   })
+
+  it('on Windows mid-wait escalate is tree-kill-only (no second ConPTY forceKill)', async () => {
+    vi.useFakeTimers()
+    try {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const subprocess: SubprocessHandle = {
+        pid: 5150,
+        getForegroundProcess: () => null,
+        write: vi.fn(),
+        resize: vi.fn(),
+        kill: vi.fn(),
+        forceKill: (...args: unknown[]) => forceKill(...args),
+        signal: vi.fn(),
+        onData: vi.fn(),
+        onExit: (cb) => {
+          onExitCb = cb
+        },
+        dispose: vi.fn()
+      }
+      session = new Session({
+        sessionId: 'hermes-mid-wait',
+        cols: 80,
+        rows: 24,
+        launchAgent: 'hermes',
+        subprocess,
+        shellReadySupported: false
+      })
+
+      const shutdown = session.forceKillAndWaitForExit(8_000)
+      expect(forceKill).toHaveBeenCalledTimes(1)
+      expect(killWithDescendantSweepMock).toHaveBeenCalledTimes(1)
+
+      // First grace expires without physical exit → mid-wait tree-kill escalate.
+      await vi.advanceTimersByTimeAsync(1_500)
+      expect(killWithDescendantSweepMock).toHaveBeenCalledTimes(2)
+      // Why: ConPTY force already issued; re-resetting forceKillSent is a no-op path.
+      expect(forceKill).toHaveBeenCalledTimes(1)
+
+      onExitCb?.(137)
+      await shutdown
+      expect(session?.state).toBe('exited')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

@@ -2,7 +2,10 @@ import { execFile } from 'node:child_process'
 
 export type WindowsTreeKiller = (rootPid: number) => Promise<void>
 
-/** Bound hung taskkill so killRoot still runs in killWithDescendantSweep. */
+/**
+ * Shared wall-clock budget for the first taskkill and an optional live-root retry.
+ * Why: two full 5s timeouts (~10s) outlive mid-wait escalate budgets (#10475).
+ */
 export const WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS = 5_000
 
 /** One best-effort re-issue when the first taskkill leaves the root alive (#10475). */
@@ -34,14 +37,18 @@ function defaultDelay(ms: number): Promise<void> {
   })
 }
 
-function runTaskkill(rootPid: number, execFileImpl: typeof execFile): Promise<void> {
+function runTaskkill(
+  rootPid: number,
+  execFileImpl: typeof execFile,
+  timeoutMs: number
+): Promise<void> {
   return new Promise((resolve) => {
     execFileImpl(
       'taskkill',
       ['/pid', String(rootPid), '/T', '/F'],
       {
         // Why: a wedged taskkill must not block killRoot forever (#10004 review).
-        timeout: WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS,
+        timeout: timeoutMs,
         windowsHide: true
       },
       () => {
@@ -57,6 +64,7 @@ function runTaskkill(rootPid: number, execFileImpl: typeof execFile): Promise<vo
  * their own handle cleanup via killRoot. When the first attempt leaves the root
  * alive (stubborn agent CLIs / nested shells), retries once after a short delay
  * so worktree delete is not blocked by a single missed taskkill (#10475).
+ * Both attempts share one wall-clock budget so escalate cannot outlive its wait.
  */
 export async function terminateWindowsProcessTree(
   rootPid: number,
@@ -66,7 +74,9 @@ export async function terminateWindowsProcessTree(
     return
   }
   const run = deps.execFileImpl ?? execFile
-  await runTaskkill(rootPid, run)
+  const startedAt = Date.now()
+  const budgetMs = WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS
+  await runTaskkill(rootPid, run, budgetMs)
   if (deps.retryIfAlive === false) {
     return
   }
@@ -80,5 +90,9 @@ export async function terminateWindowsProcessTree(
   if (!isAlive(rootPid)) {
     return
   }
-  await runTaskkill(rootPid, run)
+  const remainingMs = budgetMs - (Date.now() - startedAt)
+  if (remainingMs <= 0) {
+    return
+  }
+  await runTaskkill(rootPid, run, remainingMs)
 }

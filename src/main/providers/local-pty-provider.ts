@@ -1087,7 +1087,11 @@ export class LocalPtyProvider implements IPtyProvider {
         if (pending.rootSignalled && ptyProcesses.get(id) === pending.proc) {
           // Why (#10475): ConPTY's first bare kill is already mode=force, so a plain
           // requestTrackedPtyShutdown re-issue is a no-op; re-tree-kill stubborn agents.
-          await this.forceKillTrackedPtyTree(id, pending.proc)
+          try {
+            await this.forceKillTrackedPtyTree(id, pending.proc)
+          } catch {
+            /* escalate is best-effort; the physical-exit wait owns the failure */
+          }
         }
       }
       await pending.promise
@@ -1160,7 +1164,10 @@ export class LocalPtyProvider implements IPtyProvider {
     physicalExit: PhysicalExitTracker | undefined,
     immediate: boolean
   ): Promise<void> {
-    const shouldEscalate = immediate || process.platform === 'win32' || ptyAgentSessionIds.has(id)
+    // Why: only agent / immediate (destructive) paths re-tree-kill mid-wait.
+    // Plain Windows shell closes already tree-kill at signal time when immediate;
+    // escalating every graceful close would taskkill /T long-running children (#10475).
+    const shouldEscalate = immediate || ptyAgentSessionIds.has(id)
     if (!shouldEscalate || !physicalExit) {
       await waitForPtyPhysicalExit(id, physicalExit)
       return
@@ -1178,10 +1185,18 @@ export class LocalPtyProvider implements IPtyProvider {
       return
     } catch {
       if (ptyProcesses.get(id) === proc) {
-        await this.forceKillTrackedPtyTree(id, proc)
+        try {
+          await this.forceKillTrackedPtyTree(id, proc)
+        } catch {
+          /* escalate is best-effort; the physical-exit wait owns the failure */
+        }
       }
     }
-    const remainingMs = Math.max(1, LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS - (Date.now() - startedAt))
+    // Why: don't charge a slow escalate against the post-kill wait floor (#10475).
+    const remainingMs = Math.max(
+      escalateAfterMs,
+      LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS - (Date.now() - startedAt)
+    )
     await waitForPtyPhysicalExit(id, physicalExit, remainingMs)
   }
 

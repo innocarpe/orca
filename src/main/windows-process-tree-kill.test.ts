@@ -77,6 +77,45 @@ describe('terminateWindowsProcessTree', () => {
     expect(execFileImpl).toHaveBeenCalledTimes(2)
     expect(delayMs).toHaveBeenCalledWith(WINDOWS_PROCESS_TREE_KILL_RETRY_DELAY_MS)
     expect(aliveChecks).toBe(2)
+    // Why: retry shares the first attempt's budget so escalate cannot double the wait.
+    expect(execFileImpl.mock.calls[1]?.[2]).toEqual(
+      expect.objectContaining({
+        timeout: expect.any(Number),
+        windowsHide: true
+      })
+    )
+    const retryTimeout = (execFileImpl.mock.calls[1]?.[2] as { timeout: number }).timeout
+    expect(retryTimeout).toBeGreaterThan(0)
+    expect(retryTimeout).toBeLessThanOrEqual(WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS)
+  })
+
+  it('skips the live-root retry when the shared budget is already exhausted', async () => {
+    const execFileImpl = vi.fn(
+      (
+        _cmd: string,
+        _args: readonly string[],
+        _options: { timeout?: number; windowsHide?: boolean },
+        callback: (error: Error | null) => void
+      ) => {
+        callback(null)
+      }
+    )
+    // Why: a hung first taskkill can burn the whole budget; don't open a second one.
+    const started = Date.now()
+    const nowSpy = vi
+      .spyOn(Date, 'now')
+      .mockReturnValueOnce(started)
+      .mockReturnValue(started + WINDOWS_PROCESS_TREE_KILL_TIMEOUT_MS + 1)
+    try {
+      await terminateWindowsProcessTree(9001, {
+        execFileImpl: execFileImpl as never,
+        isProcessAlive: () => true,
+        delayMs: async () => {}
+      })
+      expect(execFileImpl).toHaveBeenCalledTimes(1)
+    } finally {
+      nowSpy.mockRestore()
+    }
   })
 
   it('does not retry when the root dies during the settle delay', async () => {
