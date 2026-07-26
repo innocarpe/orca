@@ -88,7 +88,7 @@ export function getProviderUsageStatusLabel(p: ProviderRateLimits): string {
     // Why: #8974 — in-flight repair stays soft; once the stamp ages out, stop implying progress.
     if (isClaudeRefreshingSignInEscalated(p)) {
       return translate(
-        'auto.components.status.bar.tooltip.claudeSignInNeedsRefresh',
+        'auto.components.status.bar.usage-error-copy.3f8f498baa',
         'Sign-in needs refresh'
       )
     }
@@ -149,7 +149,7 @@ export function getProviderUsageErrorMessage(p: ProviderRateLimits): string {
   if (p.provider === 'claude') {
     if (isClaudeRefreshingSignInEscalated(p)) {
       return translate(
-        'auto.components.status.bar.tooltip.claudeSignInNeedsRefreshMessage',
+        'auto.components.status.bar.usage-error-copy.1c37de1668',
         'Claude usage sign-in could not be refreshed. Agent sessions may still be signed in — re-authenticate to restore usage tracking.'
       )
     }
