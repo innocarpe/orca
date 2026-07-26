@@ -2604,7 +2604,9 @@ export class AgentBrowserBridge {
         child = execFile(
           this.agentBrowserBin,
           ['--session', sessionName, 'close'],
-          { timeout: STALE_SESSION_CLOSE_TIMEOUT_MS },
+          // Why: agent-browser is a console-subsystem binary on Windows; without
+          // windowsHide a visible conhost steals focus mid-typing (#10488).
+          { timeout: STALE_SESSION_CLOSE_TIMEOUT_MS, windowsHide: true },
           (error) =>
             finish(
               error
@@ -2664,9 +2666,12 @@ export class AgentBrowserBridge {
         this.agentBrowserBin,
         args,
         // Why: screenshots return large base64 that exceeds Node's default 1MB maxBuffer (ENOBUFS).
+        // windowsHide: agent-browser is console-subsystem on Windows; a visible conhost
+        // steals focus during agent-driven browsing (#10488).
         {
           timeout: execOptions?.timeoutMs ?? EXEC_TIMEOUT_MS,
           maxBuffer: 50 * 1024 * 1024,
+          windowsHide: true,
           env: execOptions?.envOverrides
             ? { ...process.env, ...execOptions.envOverrides }
             : process.env
