@@ -8,11 +8,11 @@
 //     Pc ; Pd
 //
 // Pc is zero or more selection-kind letters ("c"=clipboard, "p"=primary,
-// "q"=secondary, "s"=select). Orca deliberately merges all of them into the
-// system clipboard: a PRIMARY sink does exist (writeSelectionClipboardText),
-// but Zellij defaults to `p` on Linux and means the system clipboard by it,
-// so routing `p` there would break the case this default-on flip is for.
-// `selections` is reported for callers but does not route the write.
+// "q"=secondary, "s"=select). Every kind lands in the system clipboard and
+// `selections` does not route the write — longstanding behavior this flip
+// only makes reachable by default. A PRIMARY sink exists
+// (writeSelectionClipboardText), so routing `p` there on Linux is an open
+// question, deliberately left out of a change that is about the gate.
 // Pd is base64-encoded UTF-8. If Pd is "?" the TUI is *querying* the
 // clipboard — we deliberately ignore that case to avoid leaking clipboard
 // contents to any process writing to the PTY.
@@ -81,9 +81,16 @@ export function createOsc52OscHandler(deps: {
         const next = pendingText
         pendingText = null
         if (next !== null) {
-          void deps.writeClipboardText(next).catch(() => {
+          // Why try/catch and not just .catch(): the write moved out of the guarded
+          // parser handler into a microtask, where a sync throw (or a preload that
+          // never installed writeClipboardText) would surface as an uncaught error.
+          try {
+            void deps.writeClipboardText(next)?.catch(() => {
+              /* ignore clipboard write failures */
+            })
+          } catch {
             /* ignore clipboard write failures */
-          })
+          }
         }
       })
     }

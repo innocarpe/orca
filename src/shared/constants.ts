@@ -489,7 +489,7 @@ export function getDefaultUIState(): PersistedUIState {
     setupGuideBrowserMilestoneLegacyComplete: false,
     browserImportHintHidden: false,
     trayMinimizeNoticeShown: false,
-    // Why: new profiles were never opted out, so they have nothing to be told about.
+    // Why: fresh profiles start on the new default, so nothing was overridden to report.
     osc52ClipboardDefaultOnNoticePending: false,
     mobileEmulatorTabIntroDismissed: false,
     mobileEmulatorAgentSetupDismissed: false,

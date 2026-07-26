@@ -2917,7 +2917,9 @@ describe('Store', () => {
     vi.useFakeTimers()
     try {
       const store = await createStore()
-      vi.advanceTimersByTime(1000)
+      // Why over-advance: the debounce is exactly 1000ms, so an exact-fit advance turns a
+      // future debounce raise into a confusing no-write instead of a loud failure.
+      vi.advanceTimersByTime(5000)
       await store.waitForPendingWrite()
     } finally {
       vi.useRealTimers()
@@ -2953,7 +2955,7 @@ describe('Store', () => {
     expect(store.getSettings().terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
   })
 
-  it('arms the one-shot notice when the OSC 52 flip overrides a persisted opt-out', async () => {
+  it('arms the one-shot notice when the OSC 52 flip overrides a persisted off', async () => {
     writeDataFile({
       schemaVersion: 1,
       repos: [],
@@ -2968,7 +2970,7 @@ describe('Store', () => {
     expect(store.getUI().osc52ClipboardDefaultOnNoticePending).toBe(true)
   })
 
-  it('leaves the OSC 52 notice disarmed for a profile that never opted out', async () => {
+  it('leaves the OSC 52 notice disarmed for a profile with no persisted value', async () => {
     // Why: the notice explains an overridden choice; a fresh profile made no choice.
     writeDataFile({
       schemaVersion: 1,
@@ -2984,24 +2986,35 @@ describe('Store', () => {
     expect(store.getUI().osc52ClipboardDefaultOnNoticePending).toBe(false)
   })
 
-  it('keeps the OSC 52 notice armed until the renderer clears it', async () => {
-    // Why: the flip happens during load, before any window exists — a crash or a quit
-    // before the toast renders must not consume the only notice the user ever gets.
+  it('keeps the OSC 52 notice armed on disk until the renderer clears it', async () => {
+    // Why the disk assertion: the flip happens during load, before any window exists, and
+    // once the settings stamp lands the arming predicate is false forever — so the on-disk
+    // ui flag is the only thing that survives a crash before the toast renders.
     writeDataFile({
       schemaVersion: 1,
       repos: [],
       worktreeMeta: {},
-      settings: {
-        terminalAllowOsc52Clipboard: true,
-        terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true
-      },
-      ui: { osc52ClipboardDefaultOnNoticePending: true },
+      settings: { terminalAllowOsc52Clipboard: false },
+      ui: {},
       githubCache: { pr: {}, issue: {} },
       workspaceSession: {}
     })
 
-    const store = await createStore()
-    expect(store.getUI().osc52ClipboardDefaultOnNoticePending).toBe(true)
+    const armed = await createStore()
+    armed.flush()
+    const armedOnDisk = readDataFile() as {
+      ui?: { osc52ClipboardDefaultOnNoticePending?: boolean }
+    }
+    expect(armedOnDisk.ui?.osc52ClipboardDefaultOnNoticePending).toBe(true)
+
+    const reloaded = await createStore()
+    expect(reloaded.getUI().osc52ClipboardDefaultOnNoticePending).toBe(true)
+
+    reloaded.updateUI({ osc52ClipboardDefaultOnNoticePending: false })
+    reloaded.flush()
+    const cleared = await createStore()
+    // Why re-check after the stamp: a cleared notice must not be resurrected by a later load.
+    expect(cleared.getUI().osc52ClipboardDefaultOnNoticePending).toBe(false)
   })
 
   it('migrates the legacy Linux primary-selection default to enabled', async () => {

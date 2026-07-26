@@ -529,7 +529,7 @@ describe('web settings preload API', () => {
     expect(stored.terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
   })
 
-  it('arms the OSC 52 notice in the web UI store when the flip overrides an opt-out', async () => {
+  it('arms the OSC 52 notice in the web UI store when the flip overrides a persisted off', async () => {
     const globals = installBrowserGlobals('Linux')
     globals.storage.setItem(
       'orca.web.settings.v1',
@@ -546,7 +546,7 @@ describe('web settings preload API', () => {
     expect(storedUi.osc52ClipboardDefaultOnNoticePending).toBe(true)
   })
 
-  it('does not arm the OSC 52 notice for a web profile that never opted out', async () => {
+  it('does not arm the OSC 52 notice for a web profile with no persisted value', async () => {
     const globals = installBrowserGlobals('Linux')
     globals.storage.setItem('orca.web.settings.v1', JSON.stringify({ terminalFontSize: 15 }))
     const { installWebPreloadApi } = await import('./web-preload-api')

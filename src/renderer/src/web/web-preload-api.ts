@@ -79,7 +79,7 @@ import { normalizeAutoRenameBranchFromWorkDefaultOn } from '../../../shared/auto
 import { normalizeTerminalCursorStyleDefault } from '../../../shared/terminal-cursor-style-settings'
 import {
   normalizeOsc52ClipboardDefaultOn,
-  osc52ClipboardDefaultOnFlipsPersistedOptOut
+  osc52ClipboardDefaultOnOverridesPersistedOff
 } from '../../../shared/osc52-clipboard-settings'
 import { normalizeTerminalCustomThemes } from '../../../shared/terminal-custom-themes'
 import { normalizeUiLanguage } from '../../../shared/ui-language'
@@ -3372,7 +3372,7 @@ function getStoredSettings(): GlobalSettings {
       const parsed = JSON.parse(rawStoredSettings) as unknown
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         writeJson(SETTINGS_STORAGE_KEY, migratedStored)
-        if (osc52ClipboardDefaultOnFlipsPersistedOptOut(stored)) {
+        if (osc52ClipboardDefaultOnOverridesPersistedOff(stored)) {
           // Why a raw merge, not readLocalWebUIState(): that path calls back into
           // getStoredSettings(), and writing through it here would recurse.
           writeJson(UI_STORAGE_KEY, {
@@ -3590,8 +3590,11 @@ function closeWebOnboarding(base: OnboardingState): OnboardingState {
 
 function readLocalWebUIState(): PersistedUIState {
   const defaults = getDefaultUIState()
-  const stored = readJson<Partial<PersistedUIState>>(UI_STORAGE_KEY, {})
+  // Why settings first: getStoredSettings() runs the OSC 52 migration, which writes the
+  // notice arm into UI_STORAGE_KEY. Reading before it would snapshot a pre-arm state that
+  // every caller then writes back, erasing the arm the stamp can never raise again.
   const storedSettings = getStoredSettings()
+  const stored = readJson<Partial<PersistedUIState>>(UI_STORAGE_KEY, {})
   const base = {
     ...defaults,
     // Why: mirror the main-process missing-property seed from legacy card layout mode when runtime ui.get is unavailable.

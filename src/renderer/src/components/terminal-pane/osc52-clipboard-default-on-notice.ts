@@ -28,6 +28,9 @@ export function useOsc52ClipboardDefaultOnNotice(persistedUIReady: boolean): voi
         'TUI clipboard writes are now on by default'
       ),
       {
+        // Why a stable id: StrictMode re-runs this effect against the same closure, so
+        // the early return can't catch the second pass — sonner dedupes it instead.
+        id: 'osc52-clipboard-default-on-notice',
         description: translate(
           'auto.components.terminal.pane.osc52.clipboard.default.on.notice.description',
           'Zellij, tmux, Neovim and other terminal programs can now copy to your clipboard. Turn it off in Terminal settings.'
@@ -52,7 +55,8 @@ export function useOsc52ClipboardDefaultOnNotice(persistedUIReady: boolean): voi
       }
     )
     // Why clear after: a throw above would burn the profile's one notice without ever
-    // showing it. Nothing re-renders between the two calls, so this cannot double-fire.
+    // enqueueing it. The toast is only queued at this point, not painted, so a crash in
+    // the gap still loses it — accepted, since the alternative loses it far more often.
     clearNotice()
   }, [clearNotice, noticePending, persistedUIReady])
 }

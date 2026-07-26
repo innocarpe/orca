@@ -225,7 +225,7 @@ import {
 import { normalizeTerminalCursorStyleDefault } from '../shared/terminal-cursor-style-settings'
 import {
   normalizeOsc52ClipboardDefaultOn,
-  osc52ClipboardDefaultOnFlipsPersistedOptOut
+  osc52ClipboardDefaultOnOverridesPersistedOff
 } from '../shared/osc52-clipboard-settings'
 import { normalizeTerminalLineHeight } from '../shared/terminal-line-height-settings'
 import { normalizeUiLanguage } from '../shared/ui-language'
@@ -2916,7 +2916,7 @@ export class Store {
         // Why: the old off default persisted `false` for every profile, indistinguishable from a real opt-out — flip unmigrated profiles once (#10567).
         const migratedOsc52Clipboard = normalizeOsc52ClipboardDefaultOn(parsed.settings)
         const osc52ClipboardNoticePending =
-          osc52ClipboardDefaultOnFlipsPersistedOptOut(parsed.settings) ||
+          osc52ClipboardDefaultOnOverridesPersistedOff(parsed.settings) ||
           parsed.ui?.osc52ClipboardDefaultOnNoticePending === true
         if (parsed.settings?.terminalAllowOsc52ClipboardDefaultedOnForAllUsers !== true) {
           this.loadNeedsSave = true

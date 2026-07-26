@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   normalizeOsc52ClipboardDefaultOn,
-  osc52ClipboardDefaultOnFlipsPersistedOptOut
+  osc52ClipboardDefaultOnOverridesPersistedOff
 } from './osc52-clipboard-settings'
 
 describe('normalizeOsc52ClipboardDefaultOn', () => {
@@ -51,25 +51,25 @@ describe('normalizeOsc52ClipboardDefaultOn', () => {
   })
 })
 
-describe('osc52ClipboardDefaultOnFlipsPersistedOptOut', () => {
+describe('osc52ClipboardDefaultOnOverridesPersistedOff', () => {
   it('is true only when the migration overrides a persisted off', () => {
     expect(
-      osc52ClipboardDefaultOnFlipsPersistedOptOut({ terminalAllowOsc52Clipboard: false })
+      osc52ClipboardDefaultOnOverridesPersistedOff({ terminalAllowOsc52Clipboard: false })
     ).toBe(true)
   })
 
-  it('is false for a fresh profile, which was never opted out', () => {
+  it('is false for a fresh profile, which has no persisted value to override', () => {
     // Why: a notice here would nag every new install about a setting they never touched.
-    expect(osc52ClipboardDefaultOnFlipsPersistedOptOut(undefined)).toBe(false)
-    expect(osc52ClipboardDefaultOnFlipsPersistedOptOut({})).toBe(false)
-    expect(osc52ClipboardDefaultOnFlipsPersistedOptOut({ terminalAllowOsc52Clipboard: true })).toBe(
-      false
-    )
+    expect(osc52ClipboardDefaultOnOverridesPersistedOff(undefined)).toBe(false)
+    expect(osc52ClipboardDefaultOnOverridesPersistedOff({})).toBe(false)
+    expect(
+      osc52ClipboardDefaultOnOverridesPersistedOff({ terminalAllowOsc52Clipboard: true })
+    ).toBe(false)
   })
 
-  it('is false once stamped, because that opt-out is honored rather than overridden', () => {
+  it('is false once stamped, because a stamped value is honored rather than overridden', () => {
     expect(
-      osc52ClipboardDefaultOnFlipsPersistedOptOut({
+      osc52ClipboardDefaultOnOverridesPersistedOff({
         terminalAllowOsc52Clipboard: false,
         terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true
       })

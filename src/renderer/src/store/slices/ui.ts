@@ -2584,7 +2584,8 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   },
   osc52ClipboardDefaultOnNoticePending: false,
   clearOsc52ClipboardDefaultOnNotice: () => {
-    // Why clear locally first: the notice must not repeat if the persist round-trip fails.
+    // Why clear locally first: a failed persist must not re-toast this session. It will
+    // re-arm on the next launch, which is the safe direction for a one-shot notice.
     set({ osc52ClipboardDefaultOnNoticePending: false })
     void window.api.ui.set({ osc52ClipboardDefaultOnNoticePending: false }).catch(console.error)
   },
