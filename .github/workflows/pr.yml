@@ -173,6 +173,9 @@ jobs:
     name: detect e2e path changes
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft != true
+    # Why: detector only needs to read the checkout; do not inherit repo defaults.
+    permissions:
+      contents: read
     outputs:
       should_run: ${{ steps.filter.outputs.should_run }}
     steps:
@@ -188,7 +191,11 @@ jobs:
           set -euo pipefail
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
-          if git diff --name-only "$BASE" "$HEAD" | grep -E '^(tests/e2e/|playwright\.|\.github/workflows/e2e\.yml$)' >/dev/null; then
+          # Why: capture first so a failed git diff does not look like "no matches"
+          # (pipeline status in `if` is not aborted by set -e). Three-dot / merge-base
+          # limits the list to files this PR introduced, not base-branch drift.
+          CHANGED="$(git diff --name-only --merge-base "$BASE" "$HEAD")"
+          if printf '%s\n' "$CHANGED" | grep -E '^(tests/e2e/|playwright\.|\.github/workflows/e2e\.yml$)' >/dev/null; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             echo "E2E path changes detected"
           else
@@ -200,4 +207,7 @@ jobs:
     name: e2e
     needs: e2e-paths
     if: needs.e2e-paths.outputs.should_run == 'true'
+    # Why: reusable e2e.yml only checkouts, builds, and uploads artifacts.
+    permissions:
+      contents: read
     uses: ./.github/workflows/e2e.yml

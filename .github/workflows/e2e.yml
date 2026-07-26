@@ -1,5 +1,9 @@
 name: E2E
 
+# Why: checkout + artifact upload only; callers can only further restrict.
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
