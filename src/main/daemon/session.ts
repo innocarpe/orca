@@ -361,8 +361,68 @@ export class Session {
       this.releaseProducerPause({ resume: true })
     }
     // Why: escalate a graceful termination now; waiting for the 5s timer would spend most of the physical-exit budget.
-    await this.requestForceKillWithRetry()
-    await this.waitForPhysicalExit(timeoutMs)
+    // Why (#10475): ConPTY forceKill is a no-op after the first bare kill (`nodePtyKillIssued`), so
+    // stubborn nested agents (Hermes) that ignore soft stop must be re-tree-killed on escalate.
+    await (process.platform === 'win32'
+      ? killWithDescendantSweep(
+          this.subprocess.pid,
+          () => {
+            try {
+              this.requestForceKill()
+            } catch {
+              /* killRoot is best-effort; physical-exit wait owns the failure */
+            }
+          },
+          { ownsRoot: () => this.isAlive }
+        )
+      : this.requestForceKillWithRetry())
+    await this.waitForPhysicalExitWithEscalation(timeoutMs)
+  }
+
+  /**
+   * Wait for OS-confirmed exit, re-issuing a force kill once if the child is
+   * still live after a short grace — agents that trap SIGTERM need the second
+   * SIGKILL/taskkill within the physical-exit budget (#10475).
+   */
+  private async waitForPhysicalExitWithEscalation(timeoutMs: number): Promise<void> {
+    const escalateAfterMs = Math.min(1_500, Math.max(1, Math.floor(timeoutMs / 4)))
+    const startedAt = Date.now()
+    try {
+      await this.physicalExit.waitForExit(
+        escalateAfterMs,
+        () => new Error(`Retrying force-kill for PTY ${this.sessionId}`)
+      )
+      return
+    } catch {
+      if (this._state === 'exited') {
+        return
+      }
+      if (process.platform === 'win32') {
+        await killWithDescendantSweep(
+          this.subprocess.pid,
+          () => {
+            try {
+              // Why: allow a second native force after the mid-wait escalate — the
+              // first requestForceKill may have set forceKillSent while taskkill lagged.
+              this.forceKillSent = false
+              this.requestForceKill()
+            } catch {
+              /* best-effort re-escalate */
+            }
+          },
+          { ownsRoot: () => this.isAlive }
+        )
+      } else {
+        try {
+          this.forceKillSent = false
+          await this.requestForceKillWithRetry()
+        } catch {
+          /* best-effort re-escalate */
+        }
+      }
+    }
+    const remainingMs = Math.max(1, timeoutMs - (Date.now() - startedAt))
+    await this.waitForPhysicalExit(remainingMs)
   }
 
   signal(sig: string): void {

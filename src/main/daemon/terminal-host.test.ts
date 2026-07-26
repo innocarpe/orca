@@ -469,7 +469,8 @@ describe('TerminalHost', () => {
         await vi.advanceTimersByTimeAsync(IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS)
         await rejected
 
-        expect(lastSubprocess.forceKill).toHaveBeenCalledTimes(1)
+        // Why (#10475): mid-wait escalate re-issues force-kill once inside the physical-exit budget.
+        expect(lastSubprocess.forceKill).toHaveBeenCalledTimes(2)
         expect(lastSubprocess.dispose).not.toHaveBeenCalled()
         expect(host.listSessions()).toHaveLength(1)
         await expect(

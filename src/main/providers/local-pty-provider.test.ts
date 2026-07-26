@@ -104,6 +104,7 @@ vi.mock('../wsl', () => ({
 
 import {
   _resetLocalPtyProviderStateForTest,
+  LOCAL_PTY_FORCE_ESCALATION_GRACE_MS,
   LOCAL_PTY_FORCE_KILL_RETRY_MS,
   LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS,
   LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS,
@@ -1366,6 +1367,59 @@ describe('LocalPtyProvider', () => {
       await Promise.all([graceful, immediate])
       expect(killSpy).toHaveBeenCalledTimes(1)
       expect(provider.hasPty(id)).toBe(false)
+    })
+
+    it('re-tree-kills when destructive cleanup joins a graceful Windows shutdown (#10475)', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const killSpy = vi.fn()
+      mockProc.kill = killSpy
+      const { id } = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        launchAgent: 'hermes'
+      })
+
+      const graceful = provider.shutdown(id, { immediate: false })
+      expect(killWithDescendantSweepMock).toHaveBeenCalledTimes(1)
+
+      const immediate = provider.shutdown(id, { immediate: true })
+      // Why: ConPTY mode is already force after the first bare kill, so escalate must
+      // re-issue taskkill /T rather than no-op requestTrackedPtyShutdown.
+      await vi.waitFor(() =>
+        expect(killWithDescendantSweepMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+      )
+      expect(killSpy).toHaveBeenCalledTimes(1)
+
+      exitCb?.({ exitCode: 137 })
+      await Promise.all([graceful, immediate])
+      expect(provider.hasPty(id)).toBe(false)
+    })
+
+    it('re-tree-kills mid-wait when an immediate agent shutdown ignores the first kill (#10475)', async () => {
+      vi.useFakeTimers()
+      try {
+        Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+        const killSpy = vi.fn()
+        mockProc.kill = killSpy
+        const { id } = await provider.spawn({
+          cols: 80,
+          rows: 24,
+          launchAgent: 'hermes'
+        })
+
+        const shutdown = provider.shutdown(id, { immediate: true })
+        expect(killWithDescendantSweepMock).toHaveBeenCalledTimes(1)
+
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_FORCE_ESCALATION_GRACE_MS)
+        expect(killWithDescendantSweepMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+
+        exitCb?.({ exitCode: 137 })
+        await shutdown
+        expect(provider.hasPty(id)).toBe(false)
+        expect(killSpy).toHaveBeenCalledTimes(1)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('rejects a physical-exit timeout but retains the owner for a successful retry', async () => {
