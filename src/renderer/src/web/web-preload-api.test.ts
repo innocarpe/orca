@@ -560,6 +560,25 @@ describe('web settings preload API', () => {
     expect(storedUi.osc52ClipboardDefaultOnNoticePending).not.toBe(true)
   })
 
+  it('arms the OSC 52 notice when ui.get is the read that runs the migration', async () => {
+    // Why seed after install: readLocalWebUIState must run the settings migration before it
+    // snapshots the UI blob, and only a ui.get that is itself the first settings read can
+    // show that. Reading first returns a pre-arm state every caller then writes back — and
+    // the stamp means nothing can raise the arm again. Another tab populating localStorage
+    // after this one loaded is the shape that reaches it.
+    const globals = installBrowserGlobals('Linux')
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+    globals.storage.setItem(
+      'orca.web.settings.v1',
+      JSON.stringify({ terminalAllowOsc52Clipboard: false })
+    )
+
+    const ui = await globals.window.api.ui.get()
+
+    expect(ui.osc52ClipboardDefaultOnNoticePending).toBe(true)
+  })
+
   it('preserves OSC 52 clipboard web opt-outs after migration', async () => {
     const globals = installBrowserGlobals('Linux')
     globals.storage.setItem(
