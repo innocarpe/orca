@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   WINDOWS_SOFTWARE_GPU_SWITCHES,
   applyWindowsSoftwareGpuFallback,
-  isSoftwareGpuEnvRequested
+  buildSoftwareGpuFallbackNotice,
+  isSoftwareGpuEnvRequested,
+  shouldPresentSoftwareGpuFallbackNotice
 } from './windows-software-gpu'
 
 function createAppMock() {
@@ -51,5 +53,76 @@ describe('applyWindowsSoftwareGpuFallback', () => {
       'use-angle'
     ])
     expect(app.commandLine.appendSwitch).toHaveBeenCalledTimes(WINDOWS_SOFTWARE_GPU_SWITCHES.length)
+  })
+})
+
+describe('shouldPresentSoftwareGpuFallbackNotice', () => {
+  it('presents for env source once per session', () => {
+    expect(
+      shouldPresentSoftwareGpuFallbackNotice({
+        active: true,
+        source: 'env',
+        alreadyPresentedThisSession: false,
+        markerAlreadyNotified: false
+      })
+    ).toBe(true)
+    expect(
+      shouldPresentSoftwareGpuFallbackNotice({
+        active: true,
+        source: 'env',
+        alreadyPresentedThisSession: true,
+        markerAlreadyNotified: false
+      })
+    ).toBe(false)
+  })
+
+  it('presents marker fallback only on first activation', () => {
+    expect(
+      shouldPresentSoftwareGpuFallbackNotice({
+        active: true,
+        source: 'marker',
+        alreadyPresentedThisSession: false,
+        markerAlreadyNotified: false
+      })
+    ).toBe(true)
+    expect(
+      shouldPresentSoftwareGpuFallbackNotice({
+        active: true,
+        source: 'marker',
+        alreadyPresentedThisSession: false,
+        markerAlreadyNotified: true
+      })
+    ).toBe(false)
+  })
+
+  it('skips when fallback is inactive or source is missing', () => {
+    expect(
+      shouldPresentSoftwareGpuFallbackNotice({
+        active: false,
+        source: 'marker',
+        alreadyPresentedThisSession: false,
+        markerAlreadyNotified: false
+      })
+    ).toBe(false)
+    expect(
+      shouldPresentSoftwareGpuFallbackNotice({
+        active: true,
+        source: null,
+        alreadyPresentedThisSession: false,
+        markerAlreadyNotified: false
+      })
+    ).toBe(false)
+  })
+})
+
+describe('buildSoftwareGpuFallbackNotice', () => {
+  it('explains env opt-in and crash-marker recovery distinctly', () => {
+    const envNotice = buildSoftwareGpuFallbackNotice('env')
+    expect(envNotice.title).toMatch(/software gpu/i)
+    expect(envNotice.detail).toContain('ORCA_SOFTWARE_GPU')
+
+    const markerNotice = buildSoftwareGpuFallbackNotice('marker')
+    expect(markerNotice.message).toMatch(/unstable hardware gpu/i)
+    expect(markerNotice.detail).toMatch(/this app version/i)
   })
 })

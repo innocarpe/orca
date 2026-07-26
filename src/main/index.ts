@@ -129,6 +129,7 @@ import {
 import { enableRendererHeapHeadroom } from './startup/renderer-heap-headroom'
 import { ensureVirtualDisplayForHeadlessServe } from './startup/ensure-virtual-display'
 import {
+  markGpuFallbackUserNotified,
   readActiveGpuFallbackMarker,
   writeGpuFallbackMarker,
   type GpuFallbackEnvironment,
@@ -137,7 +138,11 @@ import {
 import { applyGpuFallbackCommandLineSwitches } from './startup/gpu-fallback-switches'
 import {
   applyWindowsSoftwareGpuFallback,
-  isSoftwareGpuEnvRequested
+  buildSoftwareGpuFallbackNotice,
+  isSoftwareGpuEnvRequested,
+  shouldPresentSoftwareGpuFallbackNotice,
+  WINDOWS_SOFTWARE_GPU_SWITCHES,
+  type SoftwareGpuFallbackSource
 } from './startup/windows-software-gpu'
 import {
   DEFAULT_GPU_CRASH_FALLBACK_THRESHOLD,
@@ -380,6 +385,9 @@ const gpuCrashFallbackTracker = new GpuCrashFallbackTracker({
 })
 let gpuFallbackActiveThisLaunch = false
 let gpuFeatureStatus: Electron.GPUFeatureStatus | null = null
+let gpuFallbackSourceThisLaunch: SoftwareGpuFallbackSource | null = null
+let gpuFallbackMarkerAlreadyNotified = false
+let gpuFallbackNoticePresentedThisSession = false
 let localPtyStartupReady: Promise<void> = Promise.resolve()
 let localPtyProviderStartupReady: Promise<void> = Promise.resolve()
 const AGENT_STATE_CRASH_BREADCRUMB_MIN_INTERVAL_MS = 30_000
@@ -1297,6 +1305,16 @@ function openMainWindow(): BrowserWindow {
   window.once('ready-to-show', () => {
     logStartupMilestone('ready-to-show')
     setImmediate(createSystemTrayDeferred)
+    // Why: inform once after first paint so software-GPU recovery is not silent (#10097 review).
+    setImmediate(() => {
+      void maybePresentSoftwareGpuFallbackNotice(window)
+    })
+  })
+  // Why: ready-to-show can stall on broken GPUs; the reveal fallback still emits show.
+  window.once('show', () => {
+    setImmediate(() => {
+      void maybePresentSoftwareGpuFallbackNotice(window)
+    })
   })
   const trayCreateFallback = setTimeout(createSystemTrayDeferred, TRAY_CREATE_FALLBACK_MS)
   trayCreateFallback.unref?.()
@@ -1599,13 +1617,75 @@ function maybeApplyGpuFallbackForThisLaunch(): void {
     appliedSwitches = applyGpuFallbackCommandLineSwitches(app.commandLine, process.platform)
   }
   gpuFallbackActiveThisLaunch = true
+  gpuFallbackSourceThisLaunch = envRequested ? 'env' : 'marker'
+  gpuFallbackMarkerAlreadyNotified =
+    typeof marker?.userNotifiedAt === 'number' && Number.isFinite(marker.userNotifiedAt)
   // Why: with no GPU child left, child-process-gone can't report a GPU fault, so
   // name the applied switches in the trail any later crash report carries.
   recordCrashBreadcrumb('gpu_fallback_applied', {
     crashesInWindow: marker?.crashesInWindow ?? 0,
-    source: envRequested ? 'env' : 'marker',
+    source: gpuFallbackSourceThisLaunch,
     switches: appliedSwitches.join(',')
   })
+}
+
+// Why: software GPU is a silent recovery path unless we tell the user once (marker sticky / env per session).
+async function maybePresentSoftwareGpuFallbackNotice(
+  targetWindow?: BrowserWindow | null
+): Promise<void> {
+  if (
+    !shouldPresentSoftwareGpuFallbackNotice({
+      active: gpuFallbackActiveThisLaunch,
+      source: gpuFallbackSourceThisLaunch,
+      alreadyPresentedThisSession: gpuFallbackNoticePresentedThisSession,
+      markerAlreadyNotified: gpuFallbackMarkerAlreadyNotified
+    }) ||
+    isQuitting
+  ) {
+    return
+  }
+  const source = gpuFallbackSourceThisLaunch
+  if (!source) {
+    return
+  }
+  gpuFallbackNoticePresentedThisSession = true
+  const notice = buildSoftwareGpuFallbackNotice(source)
+  const options = {
+    type: 'info' as const,
+    buttons: ['OK'],
+    defaultId: 0,
+    title: notice.title,
+    message: notice.message,
+    detail: notice.detail
+  }
+  try {
+    const window =
+      targetWindow && !targetWindow.isDestroyed()
+        ? targetWindow
+        : mainWindow && !mainWindow.isDestroyed()
+          ? mainWindow
+          : undefined
+    if (window) {
+      await dialog.showMessageBox(window, options)
+    } else {
+      await dialog.showMessageBox(options)
+    }
+  } catch (error) {
+    console.warn('[gpu-fallback] failed to present software GPU notice:', error)
+    // Why: allow a later show/ready-to-show retry if the first dialog attempt failed.
+    gpuFallbackNoticePresentedThisSession = false
+    return
+  }
+  if (source === 'marker') {
+    try {
+      if (markGpuFallbackUserNotified(app.getPath('userData'))) {
+        gpuFallbackMarkerAlreadyNotified = true
+      }
+    } catch (error) {
+      console.warn('[gpu-fallback] failed to persist notice acknowledgment:', error)
+    }
+  }
+  recordCrashBreadcrumb('gpu_fallback_notice_presented', { source })
 }
 
 // Why: a burst of GPU child crashes means HW acceleration is unusable — persist a build-scoped marker and offer software rendering.

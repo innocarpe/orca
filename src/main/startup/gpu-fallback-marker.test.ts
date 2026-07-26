@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   GPU_FALLBACK_MARKER_FILE,
   clearGpuFallbackMarker,
+  markGpuFallbackUserNotified,
   readActiveGpuFallbackMarker,
   readGpuFallbackMarker,
   writeGpuFallbackMarker
@@ -113,5 +114,24 @@ describe('gpu-fallback-marker', () => {
     writeGpuFallbackMarker(userDataPath, { engagedAt: 1, crashesInWindow: 4 }, environment)
     clearGpuFallbackMarker(userDataPath)
     expect(readGpuFallbackMarker(userDataPath)).toBeNull()
+  })
+
+  it('round-trips optional userNotifiedAt and is idempotent', () => {
+    writeGpuFallbackMarker(userDataPath, { engagedAt: 10, crashesInWindow: 3 }, environment)
+    expect(readGpuFallbackMarker(userDataPath)?.userNotifiedAt).toBeUndefined()
+
+    expect(markGpuFallbackUserNotified(userDataPath, 999)).toBe(true)
+    expect(readGpuFallbackMarker(userDataPath)).toMatchObject({
+      engagedAt: 10,
+      crashesInWindow: 3,
+      userNotifiedAt: 999
+    })
+
+    expect(markGpuFallbackUserNotified(userDataPath, 1_000_000)).toBe(true)
+    expect(readGpuFallbackMarker(userDataPath)?.userNotifiedAt).toBe(999)
+  })
+
+  it('returns false when marking notify without a marker', () => {
+    expect(markGpuFallbackUserNotified(userDataPath)).toBe(false)
   })
 })
