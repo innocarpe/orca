@@ -2399,6 +2399,7 @@ function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
         const local = readLocalWebUIState()
         const next = {
           ...mergeWebUIState(local, result.ui),
+          osc52ClipboardDefaultOnNoticePending: mergeOsc52ClipboardNoticePending(local, result.ui),
           featureInteractions: mergeFeatureInteractionState(
             local.featureInteractions,
             result.ui.featureInteractions
@@ -2448,6 +2449,7 @@ function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
         const local = readLocalWebUIState()
         const next = {
           ...mergeWebUIState(local, result.ui),
+          osc52ClipboardDefaultOnNoticePending: mergeOsc52ClipboardNoticePending(local, result.ui),
           featureInteractions: mergeFeatureInteractionState(
             local.featureInteractions,
             result.ui.featureInteractions
@@ -3671,6 +3673,19 @@ function mergeContextualTourSeenIds(
     merged.add(id)
   }
   return [...merged]
+}
+
+/** Why OR rather than let the host win: the web client migrates its own localStorage
+ *  settings, so an arm raised here has no counterpart on the host, and the plain spread
+ *  would drop it — flipping the opt-out in silence, which is what the notice exists to stop. */
+function mergeOsc52ClipboardNoticePending(
+  current: PersistedUIState,
+  incoming: PersistedUIState
+): boolean {
+  return (
+    current.osc52ClipboardDefaultOnNoticePending === true ||
+    incoming.osc52ClipboardDefaultOnNoticePending === true
+  )
 }
 
 function mergeSettings(

@@ -1921,6 +1921,70 @@ describe('web UI preload API', () => {
     expect(stored.contextualToursSeenIds).toEqual(['tasks', 'browser'])
   })
 
+  it('keeps the local OSC 52 notice armed when ui.get returns an unmigrated host', async () => {
+    vi.doMock('./web-runtime-client', () => ({
+      WebRuntimeClient: class {
+        call(method: string): Promise<RuntimeRpcResponse<unknown>> {
+          return Promise.resolve({
+            id: method,
+            ok: true,
+            // Why false: the host store always projects this key, so a plain spread
+            // would overwrite the arm the web client's own settings migration raised.
+            result: { ui: { osc52ClipboardDefaultOnNoticePending: false } },
+            _meta: { runtimeId: 'runtime-1' }
+          })
+        }
+
+        close(): void {}
+      }
+    }))
+
+    const globals = installBrowserGlobals('Linux')
+    writeStoredRuntimeEnvironment(globals.storage)
+    globals.storage.setItem(
+      'orca.web.ui.v1',
+      JSON.stringify({ osc52ClipboardDefaultOnNoticePending: true })
+    )
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+
+    const ui = await globals.window.api.ui.get()
+    expect(ui.osc52ClipboardDefaultOnNoticePending).toBe(true)
+
+    await globals.window.api.ui.set({ osc52ClipboardDefaultOnNoticePending: false })
+    const cleared = await globals.window.api.ui.get()
+    expect(cleared.osc52ClipboardDefaultOnNoticePending).toBe(false)
+  })
+
+  it('keeps the local OSC 52 notice armed when recordFeatureInteraction returns an unmigrated host', async () => {
+    vi.doMock('./web-runtime-client', () => ({
+      WebRuntimeClient: class {
+        call(method: string): Promise<RuntimeRpcResponse<unknown>> {
+          return Promise.resolve({
+            id: method,
+            ok: true,
+            result: { ui: { osc52ClipboardDefaultOnNoticePending: false } },
+            _meta: { runtimeId: 'runtime-1' }
+          })
+        }
+
+        close(): void {}
+      }
+    }))
+
+    const globals = installBrowserGlobals('Linux')
+    writeStoredRuntimeEnvironment(globals.storage)
+    globals.storage.setItem(
+      'orca.web.ui.v1',
+      JSON.stringify({ osc52ClipboardDefaultOnNoticePending: true })
+    )
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+
+    const ui = await globals.window.api.ui.recordFeatureInteraction('tasks')
+    expect(ui.osc52ClipboardDefaultOnNoticePending).toBe(true)
+  })
+
   it('does not keep a local shadow copy of main-owned feature telemetry markers', async () => {
     vi.doMock('./web-runtime-client', () => ({
       WebRuntimeClient: class {
