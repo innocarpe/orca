@@ -5,9 +5,8 @@ import {
 } from './clipboard-text'
 
 export const TERMINAL_INPUT_CHUNK_MAX_BYTES = 16 * 1024
-// Why: Windows ConPTY / TUI agents (Claude) drop mid-burst input when large
-// single or back-to-back writes flood the console host — 16 KiB + setTimeout(0)
-// still truncates long orchestration injects to a tail fragment (#10416).
+// Why: #10416 reports ConPTY loss with 16 KiB/setTimeout(0); 1 KiB per
+// 16 ms caps each burst to one 60 Hz host-drain interval.
 export const TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32 = 1024
 export const TERMINAL_INPUT_CHUNK_GAP_MS = 0
 export const TERMINAL_INPUT_CHUNK_GAP_MS_WIN32 = 16

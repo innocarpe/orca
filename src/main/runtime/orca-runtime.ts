@@ -2718,6 +2718,13 @@ type NativeChatLaunchDraftResolutionTombstone = RuntimeNativeChatLaunchDraftReso
 
 const MAX_NATIVE_CHAT_LAUNCH_DRAFT_RESOLUTION_TOMBSTONES = 200
 
+type TerminalInputWriteQueue = {
+  tail: Promise<void>
+  pending: number
+  cancelled: boolean
+  delays: Set<{ timer: ReturnType<typeof setTimeout>; reject: (error: Error) => void }>
+}
+
 async function hasLocalWorktreeBaseRef(
   repoPath: string,
   baseRef: string,
@@ -2859,6 +2866,7 @@ export class OrcaRuntimeService {
   private detachedPreAllocatedLeaves = new Map<string, RuntimeLeafRecord>()
   private graphSyncCallbacks: (() => void)[] = []
   private waitersByHandle = new Map<string, Set<TerminalWaiter>>()
+  private terminalInputWriteQueues = new Map<string, TerminalInputWriteQueue>()
   private ptyController: RuntimePtyController | null = null
   private notifier: RuntimeNotifier | null = null
   private clientEventListeners = new Set<(event: RuntimeClientEvent) => void>()
@@ -4892,6 +4900,11 @@ export class OrcaRuntimeService {
   }
 
   setPtyController(controller: RuntimePtyController | null): void {
+    if (!controller) {
+      for (const ptyId of this.terminalInputWriteQueues.keys()) {
+        this.cancelTerminalInputWrites(ptyId)
+      }
+    }
     // Why: CLI terminal writes must go through the main-owned PTY registry
     // instead of tunneling back through renderer IPC, or live handles could
     // drift from the process they are supposed to control during reloads.
@@ -7900,6 +7913,7 @@ export class OrcaRuntimeService {
       if (tab.id === tabId) {
         const pty = this.findPtyForMobileTerminalTab(worktreeId, tab)
         if (pty) {
+          this.cancelTerminalInputWrites(pty.ptyId)
           this.ptyController?.kill(pty.ptyId)
         } else {
           this.notifier?.closeTerminal(tab.parentTabId)
@@ -8083,6 +8097,7 @@ export class OrcaRuntimeService {
     }
     if (options.killPtys !== false) {
       for (const ptyId of ptyIdsToKill) {
+        this.cancelTerminalInputWrites(ptyId)
         this.ptyController?.kill(ptyId)
       }
     }
@@ -10922,14 +10937,16 @@ export class OrcaRuntimeService {
     }
     try {
       await assertTerminalInputWithinLimitWithYield(data)
-      await this.writeTerminalInputChunks(ptyId, data, {
-        // Why: a phone can claim the floor while a paste yields between chunks.
-        beforeWrite: () => {
-          if (this.getDriver(ptyId).kind === 'mobile') {
-            throw new Error('terminal_mobile_driver_active')
+      await this.enqueueTerminalInputWrite(ptyId, (queue) =>
+        this.writeTerminalInputChunks(ptyId, data, queue, {
+          // Why: a phone can claim the floor while a paste yields between chunks.
+          beforeWrite: () => {
+            if (this.getDriver(ptyId).kind === 'mobile') {
+              throw new Error('terminal_mobile_driver_active')
+            }
           }
-        }
-      })
+        })
+      )
       return true
     } catch {
       return false
@@ -13333,6 +13350,7 @@ export class OrcaRuntimeService {
     if (exitIncarnationId && pty?.incarnationId && exitIncarnationId !== pty.incarnationId) {
       return
     }
+    this.cancelTerminalInputWrites(ptyId)
     const preservesAbnormalSshSurface =
       this.isSshOwnedPtyId(ptyId) && pty?.connectionId != null && exitCode < 0
     if (preservesAbnormalSshSurface) {
@@ -16411,7 +16429,9 @@ export class OrcaRuntimeService {
         throw new Error('invalid_terminal_send')
       }
       await assertTerminalInputWithinLimitWithYield(action.text)
-      await this.writeTerminalAction(pty.pty.ptyId, action, payload, options)
+      await this.enqueueTerminalInputWrite(pty.pty.ptyId, (queue) =>
+        this.writeTerminalAction(pty.pty.ptyId, action, payload, queue, options)
+      )
       return {
         handle,
         accepted: true,
@@ -16436,7 +16456,9 @@ export class OrcaRuntimeService {
       throw new Error('terminal_not_writable')
     }
 
-    await this.writeTerminalAction(leaf.ptyId, action, payload, options)
+    await this.enqueueTerminalInputWrite(leaf.ptyId, (queue) =>
+      this.writeTerminalAction(leaf.ptyId!, action, payload, queue, options)
+    )
 
     return {
       handle,
@@ -16461,7 +16483,9 @@ export class OrcaRuntimeService {
         throw new Error('terminal_not_writable')
       }
       await assertTerminalInputWithinLimitWithYield(payload)
-      await this.writeTerminalAgentPrompt(pty.pty.ptyId, payload, options)
+      await this.enqueueTerminalInputWrite(pty.pty.ptyId, (queue) =>
+        this.writeTerminalAgentPrompt(pty.pty.ptyId, payload, queue, options)
+      )
       return { handle, accepted: true, bytesWritten }
     }
 
@@ -16475,7 +16499,9 @@ export class OrcaRuntimeService {
     if (await this.isLeafPtyProvenAbsent(leaf.ptyId)) {
       throw new Error('terminal_not_writable')
     }
-    await this.writeTerminalAgentPrompt(leaf.ptyId, payload, options)
+    await this.enqueueTerminalInputWrite(leaf.ptyId, (queue) =>
+      this.writeTerminalAgentPrompt(leaf.ptyId!, payload, queue, options)
+    )
     return { handle, accepted: true, bytesWritten }
   }
 
@@ -16919,10 +16945,86 @@ export class OrcaRuntimeService {
     return bestStatus ? { status: bestStatus, updatedAt: bestUpdatedAt } : null
   }
 
+  private cancelTerminalInputWrites(ptyId: string): void {
+    const queue = this.terminalInputWriteQueues.get(ptyId)
+    if (!queue) {
+      return
+    }
+    queue.cancelled = true
+    this.terminalInputWriteQueues.delete(ptyId)
+    for (const delay of queue.delays) {
+      clearTimeout(delay.timer)
+      delay.reject(new Error('terminal_not_writable'))
+    }
+    queue.delays.clear()
+  }
+
+  private assertTerminalInputWriteActive(queue: TerminalInputWriteQueue): void {
+    if (queue.cancelled) {
+      throw new Error('terminal_not_writable')
+    }
+  }
+
+  private waitForTerminalInputGap(
+    queue: TerminalInputWriteQueue,
+    delayMs: number
+  ): Promise<void> {
+    if (queue.cancelled) {
+      return Promise.reject(new Error('terminal_not_writable'))
+    }
+    return new Promise<void>((resolve, reject) => {
+      const delay = {
+        timer: setTimeout(() => {
+          queue.delays.delete(delay)
+          if (queue.cancelled) {
+            reject(new Error('terminal_not_writable'))
+          } else {
+            resolve()
+          }
+        }, delayMs),
+        reject
+      }
+      queue.delays.add(delay)
+    })
+  }
+
+  private enqueueTerminalInputWrite<T>(
+    ptyId: string,
+    operation: (queue: TerminalInputWriteQueue) => Promise<T>
+  ): Promise<T> {
+    let queue = this.terminalInputWriteQueues.get(ptyId)
+    if (!queue || queue.cancelled) {
+      queue = { tail: Promise.resolve(), pending: 0, cancelled: false, delays: new Set() }
+      this.terminalInputWriteQueues.set(ptyId, queue)
+    }
+    const activeQueue = queue
+    activeQueue.pending += 1
+    const result = activeQueue.tail.then(() => {
+      if (activeQueue.cancelled) {
+        throw new Error('terminal_not_writable')
+      }
+      return operation(activeQueue)
+    })
+    activeQueue.tail = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result.finally(() => {
+      activeQueue.pending -= 1
+      if (
+        activeQueue.pending === 0 &&
+        this.terminalInputWriteQueues.get(ptyId) === activeQueue
+      ) {
+        this.terminalInputWriteQueues.delete(ptyId)
+      }
+    })
+  }
+
   private async writeTerminalAction(
     ptyId: string,
     action: { text?: string; enter?: boolean; interrupt?: boolean },
     payload: string,
+    queue: TerminalInputWriteQueue,
     options: {
       beforeWrite?: (ptyId: string) => void | Promise<void>
       reserveWrite?: (ptyId: string) => void
@@ -16935,15 +17037,16 @@ export class OrcaRuntimeService {
     const hasText = typeof action.text === 'string' && action.text.length > 0
     const hasSuffix = action.enter || action.interrupt
     if (hasText) {
-      await this.writeTerminalInputChunks(ptyId, action.text!, options)
+      await this.writeTerminalInputChunks(ptyId, action.text!, queue, options)
     }
     if (hasSuffix) {
       const suffix = (action.enter ? '\r' : '') + (action.interrupt ? '\x03' : '')
       if (hasText) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        await this.waitForTerminalInputGap(queue, 500)
       }
       try {
         await options.beforeWrite?.(ptyId)
+        this.assertTerminalInputWriteActive(queue)
         options.reserveWrite?.(ptyId)
       } catch (error) {
         if (options.suffixFailureError) {
@@ -16963,6 +17066,7 @@ export class OrcaRuntimeService {
     }
 
     await options.beforeWrite?.(ptyId)
+    this.assertTerminalInputWriteActive(queue)
     options.reserveWrite?.(ptyId)
     const wrote = this.ptyController?.write(ptyId, payload) ?? false
     if (!wrote) {
@@ -16974,18 +17078,21 @@ export class OrcaRuntimeService {
   private async writeTerminalInputChunks(
     ptyId: string,
     text: string,
+    queue: TerminalInputWriteQueue,
     options: {
       beforeWrite?: (ptyId: string) => void | Promise<void>
       reserveWrite?: (ptyId: string) => void
       afterWrite?: (ptyId: string) => void | Promise<void>
     } = {}
   ): Promise<void> {
-    const chunkMaxBytes = getTerminalInputChunkMaxBytes()
-    const chunkGapMs = getTerminalInputChunkGapMs()
+    const platform = this.getPtyExecutionHostMetadata(ptyId).hostPlatform ?? process.platform
+    const chunkMaxBytes = getTerminalInputChunkMaxBytes(platform)
+    const chunkGapMs = getTerminalInputChunkGapMs(platform)
     const chunks = iterateTerminalInputChunks(text, chunkMaxBytes)
     let chunk = chunks.next()
     while (!chunk.done) {
       await options.beforeWrite?.(ptyId)
+      this.assertTerminalInputWriteActive(queue)
       options.reserveWrite?.(ptyId)
       const wrote = this.ptyController?.write(ptyId, chunk.value) ?? false
       if (!wrote) {
@@ -16997,7 +17104,7 @@ export class OrcaRuntimeService {
       if (!chunk.done && chunkGapMs > 0) {
         // Why: Windows ConPTY needs a real gap, not just setTimeout(0), or long
         // injects are silently truncated to a tail fragment (#10416).
-        await new Promise((resolve) => setTimeout(resolve, chunkGapMs))
+        await this.waitForTerminalInputGap(queue, chunkGapMs)
       }
     }
   }
@@ -17005,6 +17112,7 @@ export class OrcaRuntimeService {
   private async writeTerminalAgentPrompt(
     ptyId: string,
     pastePayload: string,
+    queue: TerminalInputWriteQueue,
     options: {
       beforeWrite?: (ptyId: string) => void | Promise<void>
       suffixFailureError?: string
@@ -17013,12 +17121,14 @@ export class OrcaRuntimeService {
     let wrotePasteBytes = false
     let completedPaste = false
     try {
-      const chunkMaxBytes = getTerminalInputChunkMaxBytes()
-      const chunkGapMs = getTerminalInputChunkGapMs()
+      const platform = this.getPtyExecutionHostMetadata(ptyId).hostPlatform ?? process.platform
+      const chunkMaxBytes = getTerminalInputChunkMaxBytes(platform)
+      const chunkGapMs = getTerminalInputChunkGapMs(platform)
       const chunks = iterateTerminalInputChunks(pastePayload, chunkMaxBytes)
       let chunk = chunks.next()
       while (!chunk.done) {
         await options.beforeWrite?.(ptyId)
+        this.assertTerminalInputWriteActive(queue)
         const wrote = this.ptyController?.write(ptyId, chunk.value) ?? false
         if (!wrote) {
           throw new Error('terminal_not_writable')
@@ -17027,20 +17137,21 @@ export class OrcaRuntimeService {
         chunk = chunks.next()
         // Why: non-Windows gap is 0 — skip the timer so we do not force an event-loop turn per chunk.
         if (!chunk.done && chunkGapMs > 0) {
-          await new Promise((resolve) => setTimeout(resolve, chunkGapMs))
+          await this.waitForTerminalInputGap(queue, chunkGapMs)
         }
       }
       completedPaste = true
     } catch (error) {
-      if (wrotePasteBytes && !completedPaste) {
+      if (wrotePasteBytes && !completedPaste && !queue.cancelled) {
         this.ptyController?.write(ptyId, AGENT_PROMPT_BRACKETED_PASTE_END)
       }
       throw error
     }
 
-    await new Promise((resolve) => setTimeout(resolve, AGENT_PROMPT_SUBMIT_DELAY_MS))
+    await this.waitForTerminalInputGap(queue, AGENT_PROMPT_SUBMIT_DELAY_MS)
     try {
       await options.beforeWrite?.(ptyId)
+      this.assertTerminalInputWriteActive(queue)
     } catch (error) {
       if (options.suffixFailureError) {
         throw new Error(options.suffixFailureError)
@@ -26777,6 +26888,7 @@ export class OrcaRuntimeService {
       const siblingCount = surface?.tab.parentLayout
         ? countTerminalLayoutLeaves(surface.tab.parentLayout.root)
         : this.countLeavesInTab(tabId)
+      this.cancelTerminalInputWrites(pty.pty.ptyId)
       const ptyKilled = this.ptyController?.kill(pty.pty.ptyId) ?? false
       if (!ptyKilled || siblingCount <= 1) {
         if (surface) {
@@ -26799,6 +26911,7 @@ export class OrcaRuntimeService {
     const { leaf } = this.getLiveLeafForHandle(handle)
     let ptyKilled = false
     if (leaf.ptyId) {
+      this.cancelTerminalInputWrites(leaf.ptyId)
       ptyKilled = this.ptyController?.kill(leaf.ptyId) ?? false
     }
     // Why: in a multi-pane tab, killing the PTY is enough (renderer's exit handler closes the pane); an extra IPC close would race it and close the whole tab.
@@ -27126,6 +27239,7 @@ export class OrcaRuntimeService {
       if (options.deadline !== undefined && Date.now() >= options.deadline) {
         break
       }
+      this.cancelTerminalInputWrites(ptyId)
       const stop = (): boolean | Promise<boolean> => {
         if (options.deadline !== undefined && Date.now() >= options.deadline) {
           return false
