@@ -56,7 +56,16 @@ import {
   registerAppMenu,
   rebuildAppMenu
 } from './menu/register-app-menu'
-import { checkForUpdatesFromMenu, isQuittingForUpdate, resolveUpdateInstallMode } from './updater'
+import {
+  checkForRemoteServerUpdate,
+  checkForUpdatesFromMenu,
+  downloadRemoteServerUpdate,
+  getRemoteServerUpdaterSnapshot,
+  installRemoteServerUpdate,
+  isQuittingForUpdate,
+  resolveUpdateInstallMode
+} from './updater'
+import { configureRemoteServerUpdater } from './runtime/remote-server-updater'
 import type { TuiAgent, UpdateCheckOptions } from '../shared/types'
 import { recordUpdaterLifecycle } from './updater-lifecycle-diagnostics'
 import {
@@ -117,6 +126,7 @@ import {
 import { ensureWindowsUserDataAclGrant } from './startup/windows-user-data-acl'
 import { shouldQuitWhenAllWindowsClosed } from './startup/window-all-closed-quit-policy'
 import { createServeDesktopActivationGate } from './startup/serve-desktop-activation'
+import { createOsOpenMarkdownBridge } from './startup/os-open-markdown-bridge'
 import { RateLimitService } from './rate-limits/service'
 import { readMiniMaxSessionCookie } from './minimax/minimax-cookie-store'
 import { getInitialClaudeRateLimitTarget } from './rate-limits/claude-rate-limit-target'
@@ -150,7 +160,7 @@ import {
   ensureRealHomeCodexHookState,
   isRealHomeCodexHookLaneUsable
 } from './codex/codex-real-home-hook-install'
-import { setCodexTrustGrantTelemetry } from './codex/codex-hook-trust-grant'
+import { setCodexTrustGrantTelemetry } from './codex/codex-trust-grant-telemetry'
 import { startCodexSessionBackfillInBackground } from './codex/codex-session-backfill'
 import { startCodexSessionIndexHealInBackground } from './codex/codex-session-index-heal'
 import { createCodexSessionMigrationScheduler } from './codex/codex-session-migration-scheduler'
@@ -233,7 +243,6 @@ import { preserveAgentAuthBeforeRestart } from './agent-auth-restart-preservatio
 import { CliInstaller } from './cli/cli-installer'
 import { installLinuxBareOrcaDispatcher } from './cli/linux-bare-orca-dispatcher'
 import { reconcileManagedWslCliRegistrations } from './cli/wsl-cli-registration-reconciliation'
-import { selfHealRuntimeEnvironmentFocus } from './runtime-environment-focus-self-heal'
 
 let mainWindow: BrowserWindow | null = null
 /** Whether a manual app.quit() (Cmd+Q) is in progress; lets the close handler skip the running-process confirmation and go straight to close. */
@@ -253,6 +262,7 @@ let runtimeRpc: OrcaRuntimeRpcServer | null = null
 const serveReadinessPublisher = new ServeReadinessPublisher()
 let desktopRelayService: DesktopRelayService | null = null
 let desktopRelayStatus: RelayBrokerStatus = 'offline'
+let pendingUnpairedDeviceAuthFailure = false
 // Why: gates whether headless serve installs the offscreen browser backend (and advertises browser pane support).
 let headlessBrowserDisplayAvailable = false
 
@@ -289,6 +299,15 @@ const isServeMode = process.argv.includes('--serve')
 if (isServeMode) {
   reserveServeStdoutForReadiness()
 }
+// Why: OS "Open With" / double-click markdown paths may arrive before the main window exists.
+const osOpenMarkdownBridge = createOsOpenMarkdownBridge()
+
+function flushOsOpenMarkdownDocuments(): void {
+  void osOpenMarkdownBridge.flush(() =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+  )
+}
+
 const desktopActivationGate = createServeDesktopActivationGate({
   initialState: isServeMode ? 'initializing' : 'ready',
   activateWindow: () => {
@@ -296,6 +315,8 @@ const desktopActivationGate = createServeDesktopActivationGate({
     if (!isQuittingForUpdate()) {
       focusExistingWindow()
     }
+    // Why: second-instance Open With may focus an already-loaded window without did-finish-load.
+    flushOsOpenMarkdownDocuments()
   },
   onBlocked: (reason) => console.error(`[serve] Desktop activation blocked: ${reason}`)
 })
@@ -453,6 +474,12 @@ const devAgentHookEndpointNamespace = devInstanceIdentity.isDev
 installUncaughtPipeErrorGuard()
 // Why: expose the app version via process.env so main and the forked daemon can set TERM_PROGRAM_VERSION without importing electron.
 process.env.ORCA_APP_VERSION = app.getVersion()
+configureRemoteServerUpdater({
+  getSnapshot: getRemoteServerUpdaterSnapshot,
+  check: checkForRemoteServerUpdate,
+  download: downloadRemoteServerUpdate,
+  install: installRemoteServerUpdate
+})
 patchPackagedProcessPath()
 // Why: the sync seed above covers early IPC (homebrew/nix); the async login-shell probe below (packaged only) then adds the user's rc PATH.
 if (app.isPackaged && process.platform !== 'win32') {
@@ -493,8 +520,12 @@ function focusExistingWindow(): void {
   })
 }
 
-function requestDesktopActivation(): void {
+function requestDesktopActivation(commandLine?: string[]): void {
+  if (commandLine && commandLine.length > 0) {
+    osOpenMarkdownBridge.enqueueArgv(commandLine)
+  }
   desktopActivationGate.requestActivation()
+  flushOsOpenMarkdownDocuments()
 }
 
 function getDesktopWindowStatus(): RuntimeDesktopWindowStatus {
@@ -597,7 +628,23 @@ const hasSingleInstanceLock = skipSingleInstanceLock
   ? true
   : bypassSingleInstanceLock
     ? true
-    : acquireSingleInstanceLock(app, requestDesktopActivation)
+    : acquireSingleInstanceLock(app, (commandLine) => {
+        requestDesktopActivation(commandLine)
+      })
+
+// Why: macOS delivers open-file before ready; queue early so cold start does not drop Finder opens.
+if (process.platform === 'darwin') {
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    osOpenMarkdownBridge.enqueuePaths([filePath])
+    if (app.isReady()) {
+      requestDesktopActivation()
+    }
+  })
+}
+
+// Why: Windows/Linux pass absolute paths on the initial argv when launched via "Open with".
+osOpenMarkdownBridge.enqueueArgv(process.argv)
 if (startupDiagnosticsEnabled) {
   logStartupDiagnostic('single-instance-lock-result', {
     acquired: hasSingleInstanceLock,
@@ -673,7 +720,11 @@ function startTerminalRuntimeStartupServices(): Promise<void> {
     // Why: both desktop and headless serve must adopt the same persistent provider before creating terminals or a renderer.
     startDaemonPtyProvider: async (signal) => {
       logStartupMilestone('startup-service-start', { service: 'daemon-pty-provider' })
-      await initDaemonPtyProvider(signal)
+      // Why: only GUI-spawned macOS daemons watch for login-session death; a headless
+      // serve daemon must survive its spawning session ending (SSH disconnect).
+      await initDaemonPtyProvider(signal, {
+        macosLoginSessionWatch: process.platform === 'darwin' && !isServeMode
+      })
       logStartupMilestone('startup-service-done', { service: 'daemon-pty-provider' })
     },
     // Why: PTY spawn env reads ORCA_AGENT_HOOK_* from live server state, so the renderer awaits this before restored terminals reconnect.
@@ -1089,6 +1140,8 @@ function openMainWindow(): BrowserWindow {
     clearExpectedRendererReload(rendererWebContentsId)
     recordCrashBreadcrumb('main_window_loaded')
     logStartupMilestone('did-finish-load')
+    // Why: cold-start Open With may have queued before the renderer mounted listeners.
+    flushOsOpenMarkdownDocuments()
     if (!store) {
       return
     }
@@ -1818,7 +1871,6 @@ app.whenReady().then(async () => {
       `[claude-live-pty] Seeded ${persistedClaudePtyIds.length} persisted Claude session id(s) into the refresh gate`
     )
   }
-  selfHealRuntimeEnvironmentFocus({ store, userDataPath: app.getPath('userData') })
   applyAppIcon(store.getSettings().appIcon)
   if (shouldSuppressDevEducation({ isDev: is.dev })) {
     suppressDevEducationForStore(store)
@@ -1847,11 +1899,14 @@ app.whenReady().then(async () => {
   // Why: the trust-grant module is bundled into plain-node CLI entries where
   // the telemetry client cannot load, so the tracker is injected here instead
   // of imported there.
-  setCodexTrustGrantTelemetry(({ outcome, hostKind, reason }) => {
+  setCodexTrustGrantTelemetry(({ outcome, hostKind, lane, reason, errorClass, verifyClass }) => {
     track('codex_trust_grant', {
       outcome,
       host_kind: hostKind,
-      ...(reason !== undefined ? { fallback_reason: reason } : {})
+      lane,
+      ...(reason !== undefined ? { fallback_reason: reason } : {}),
+      ...(errorClass !== undefined ? { error_class: errorClass } : {}),
+      ...(verifyClass !== undefined ? { verify_class: verifyClass } : {})
     })
   })
   // Why: the error-tracking lane (telemetry-error-tracking.md) is its own
@@ -2253,6 +2308,11 @@ app.whenReady().then(async () => {
   })
   // Why: parallel E2E Electron instances would race the fixed port (EADDRINUSE); port 0 gives each a random OS-assigned port.
   const isE2E = Boolean(process.env.ORCA_E2E_USER_DATA_DIR)
+  const requestedE2EWsPort = process.env.ORCA_E2E_RUNTIME_WS_PORT
+  const e2eWsPort = requestedE2EWsPort === undefined ? 0 : Number(requestedE2EWsPort)
+  if (isE2E && (!Number.isInteger(e2eWsPort) || e2eWsPort < 0 || e2eWsPort > 65_535)) {
+    throw new Error(`Invalid ORCA_E2E_RUNTIME_WS_PORT value: ${requestedE2EWsPort}`)
+  }
   // Why: pin dev to 6769 so `pnpm dev` doesn't race packaged Orca on 6768 and fall back to a random port, breaking deterministic mobile pairing/repro (STA-1511).
   const devWsPort = is.dev && !isE2E ? 6769 : undefined
   let serveOptions: ServeOptions | null = null
@@ -2270,7 +2330,7 @@ app.whenReady().then(async () => {
     // Why: mobile pairing needs the stable pre-setName() path (getCanonicalUserDataPath), not a late app.getPath('userData') that drops paired devices across restarts.
     userDataPath: getCanonicalUserDataPath(),
     enableWebSocket: true,
-    ...(isE2E ? { wsPort: 0 } : {}),
+    ...(isE2E ? { wsPort: e2eWsPort } : {}),
     ...(devWsPort !== undefined ? { wsPort: devWsPort } : {}),
     ...(serveOptions?.wsPort !== undefined
       ? {
@@ -2281,7 +2341,29 @@ app.whenReady().then(async () => {
       : {}),
     webClientRoot: getBundledWebClientRoot()
   })
-  registerMobileHandlers(runtimeRpc, { getRelayStatus: () => desktopRelayStatus })
+  registerMobileHandlers(runtimeRpc, {
+    getRelayStatus: () => desktopRelayStatus,
+    consumePendingUnpairedDeviceAuthFailure: (webContentsId) => {
+      if (
+        !mainWindow ||
+        mainWindow.isDestroyed() ||
+        mainWindow.webContents.id !== webContentsId ||
+        !pendingUnpairedDeviceAuthFailure
+      ) {
+        return false
+      }
+      pendingUnpairedDeviceAuthFailure = false
+      return true
+    }
+  })
+  // Why: repeated direct auth failures otherwise look like a client that never connects; point users to re-pairing.
+  runtimeRpc.setOnUnpairedDeviceAuthFailure(() => {
+    // Why: runtime startup races renderer mount; retain the one-shot until the listener consumes it.
+    pendingUnpairedDeviceAuthFailure = true
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mobile:unpairedDeviceAuthFailure')
+    }
+  })
 
   startTerminalRuntimeStartupServices()
   app.on('activate', requestDesktopActivation)
