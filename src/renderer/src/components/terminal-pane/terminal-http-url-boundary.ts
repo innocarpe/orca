@@ -3,36 +3,39 @@
  * Why extracted: keeps hit-testing under max-lines while hosting CJK-aware rules (#10571).
  */
 
+// Why (#10571 review): enumerate glyphs forever misses 〜/〖〗/NBSP; property classes scale.
+const NON_ASCII_BODY_TERMINATOR_RE = /[\p{White_Space}\p{P}\p{Sm}]/u
+
 export function isHttpUrlBodyTerminator(code: number): boolean {
-  return (
-    isUrlWhitespace(code) ||
-    isAsciiUrlBodyDelimiter(code) ||
-    // Why (#10571): CJK agents often glue fullwidth brackets/quotes to URLs
-    // with no ASCII space; treat those as terminators like (){}<> ASCII peers.
-    isCjkUrlBracketOrQuote(code)
-  )
+  if (code <= 0x7f) {
+    return isAsciiUrlWhitespace(code) || isAsciiUrlBodyDelimiter(code)
+  }
+  return isNonAsciiUrlBodyTerminator(code)
 }
 
 export function isHttpUrlTrailingPunctuation(code: number): boolean {
-  return (
-    isUrlWhitespace(code) ||
-    isAsciiUrlTrailingPunctuation(code) ||
-    // Why (#10571): strip trailing CJK punctuation the same way we strip .,?!
-    isCjkUrlTrailingPunctuation(code)
-  )
+  if (code <= 0x7f) {
+    return isAsciiUrlWhitespace(code) || isAsciiUrlTrailingPunctuation(code)
+  }
+  // Why: max-length cuts can leave non-ASCII punct at the candidate tail.
+  return isNonAsciiUrlBodyTerminator(code)
 }
 
-function isUrlWhitespace(code: number): boolean {
-  // ASCII whitespace + U+3000 IDEOGRAPHIC SPACE (common after Japanese URLs).
-  return (
-    code === 9 ||
-    code === 10 ||
-    code === 11 ||
-    code === 12 ||
-    code === 13 ||
-    code === 32 ||
-    code === 0x3000
-  )
+/**
+ * Why (#10571 review): if a terminator is missed, CJK must not fold into the
+ * authority — WHATWG IDNA would silently retarget the link (spoof surface).
+ * Paths/queries still accept non-ASCII after `/` `?` `#`.
+ */
+export function isHttpUrlAuthorityCodeAllowed(code: number): boolean {
+  return code <= 0x7f
+}
+
+function isNonAsciiUrlBodyTerminator(code: number): boolean {
+  return NON_ASCII_BODY_TERMINATOR_RE.test(String.fromCodePoint(code))
+}
+
+function isAsciiUrlWhitespace(code: number): boolean {
+  return code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32
 }
 
 function isAsciiUrlBodyDelimiter(code: number): boolean {
@@ -64,45 +67,5 @@ function isAsciiUrlTrailingPunctuation(code: number): boolean {
     code === 0x7e || // ~
     code === 0x5b || // [
     code === 0x5d // ]
-  )
-}
-
-/** Fullwidth and CJK bracket/quote code points that mirror ASCII URL delimiters. */
-function isCjkUrlBracketOrQuote(code: number): boolean {
-  return (
-    code === 0xff08 || // （
-    code === 0xff09 || // ）
-    code === 0xff3b || // ［
-    code === 0xff3d || // ］
-    code === 0xff5b || // ｛
-    code === 0xff5d || // ｝
-    code === 0x3008 || // 〈
-    code === 0x3009 || // 〉
-    code === 0x300a || // 《
-    code === 0x300b || // 》
-    code === 0x300c || // 「
-    code === 0x300d || // 」
-    code === 0x300e || // 『
-    code === 0x300f || // 』
-    code === 0x3010 || // 【
-    code === 0x3011 || // 】
-    code === 0x3014 || // 〔
-    code === 0x3015 // 〕
-  )
-}
-
-function isCjkUrlTrailingPunctuation(code: number): boolean {
-  return (
-    isCjkUrlBracketOrQuote(code) ||
-    code === 0x3001 || // 、
-    code === 0x3002 || // 。
-    code === 0x30fb || // ・
-    code === 0x2026 || // …
-    code === 0xff0c || // ，
-    code === 0xff0e || // ．
-    code === 0xff01 || // ！
-    code === 0xff1f || // ？
-    code === 0xff1a || // ：
-    code === 0xff1b // ；
   )
 }

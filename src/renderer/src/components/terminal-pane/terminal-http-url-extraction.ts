@@ -1,5 +1,9 @@
 import { TERMINAL_HTTP_URL_MAX_LENGTH } from './terminal-http-link-limits'
-import { isHttpUrlBodyTerminator, isHttpUrlTrailingPunctuation } from './terminal-http-url-boundary'
+import {
+  isHttpUrlAuthorityCodeAllowed,
+  isHttpUrlBodyTerminator,
+  isHttpUrlTrailingPunctuation
+} from './terminal-http-url-boundary'
 
 type ParsedTerminalHttpLink = {
   url: string
@@ -77,12 +81,39 @@ function hasHttpUrlWordBoundary(lineText: string, startIndex: number): boolean {
 
 function findHttpUrlCandidateEnd(lineText: string, startIndex: number): number {
   const scanEnd = Math.min(lineText.length, startIndex + TERMINAL_HTTP_URL_MAX_LENGTH + 1)
-  for (let index = startIndex; index < scanEnd; index += 1) {
-    if (isHttpUrlBodyTerminator(lineText.charCodeAt(index))) {
+  // Why: authority ends at first / ? #; non-ASCII there must not reach IDNA.
+  let inAuthority = true
+  const authorityStart = httpUrlAuthorityStartIndex(lineText, startIndex)
+
+  for (let index = startIndex; index < scanEnd; ) {
+    const code = lineText.codePointAt(index) ?? 0
+    const width = code > 0xffff ? 2 : 1
+
+    if (inAuthority && index >= authorityStart) {
+      if (code === 0x2f || code === 0x3f || code === 0x23) {
+        inAuthority = false
+      } else if (!isHttpUrlAuthorityCodeAllowed(code)) {
+        return index
+      }
+    }
+
+    if (isHttpUrlBodyTerminator(code)) {
       return index
     }
+    index += width
   }
   return scanEnd
+}
+
+function httpUrlAuthorityStartIndex(lineText: string, startIndex: number): number {
+  if (lineText.startsWith('https://', startIndex)) {
+    return startIndex + 'https://'.length
+  }
+  if (lineText.startsWith('http://', startIndex)) {
+    return startIndex + 'http://'.length
+  }
+  // Why: scheme finder only yields http(s); treat body start as authority floor.
+  return startIndex
 }
 
 function trimHttpUrlTrailingPunctuation(

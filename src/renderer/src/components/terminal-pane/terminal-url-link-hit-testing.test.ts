@@ -87,4 +87,63 @@ describe('extractTerminalHttpLinks', () => {
     expect(extractTerminalHttpLinks(spaced)[0]?.url).toBe(url)
     expect(extractTerminalHttpLinks(paren)[0]?.url).toBe(url)
   })
+
+  it('terminates on CJK punctuation so prose is not IDNA-folded into the host', () => {
+    // Why (#10571 review): trailing-only trim never saw 、。・ — body must stop first.
+    const cases: { line: string; end: string }[] = [
+      { line: 'https://example.com、それから', end: 'https://example.com' },
+      { line: 'https://example.com。次の行', end: 'https://example.com' },
+      { line: 'https://example.com・次', end: 'https://example.com' },
+      { line: 'https://example.com！注意', end: 'https://example.com' },
+      { line: 'https://example.com？詳細', end: 'https://example.com' }
+    ]
+    for (const { line, end } of cases) {
+      expect(extractTerminalHttpLinks(line)).toEqual([
+        { url: 'https://example.com/', startIndex: 0, endIndex: end.length }
+      ])
+    }
+  })
+
+  it('guards authority so bare CJK after the host cannot retarget via IDNA', () => {
+    // Why: defense in depth if a terminator is ever missed — letters aren't \p{P}.
+    const line = 'https://example.comそれから'
+    expect(extractTerminalHttpLinks(line)).toEqual([
+      {
+        url: 'https://example.com/',
+        startIndex: 0,
+        endIndex: 'https://example.com'.length
+      }
+    ])
+  })
+
+  it('still allows non-ASCII in the path after leaving authority', () => {
+    const line = 'see https://example.com/ドキュメント'
+    const links = extractTerminalHttpLinks(line)
+    expect(links).toHaveLength(1)
+    expect(links[0]?.url).toBe(new URL('https://example.com/ドキュメント').toString())
+    expect(links[0]?.endIndex).toBe(line.length)
+  })
+
+  it('terminates on Unicode whitespace beyond ideographic space', () => {
+    // Why (CodeRabbit): NBSP / EM SPACE / NARROW NO-BREAK SPACE are \p{White_Space}.
+    for (const ws of ['\u00a0', '\u2003', '\u202f']) {
+      const line = `https://example.com${ws}next`
+      expect(extractTerminalHttpLinks(line)).toEqual([
+        {
+          url: 'https://example.com/',
+          startIndex: 0,
+          endIndex: 'https://example.com'.length
+        }
+      ])
+    }
+  })
+
+  it('terminates on property-class punctuation not in the old glyph list', () => {
+    // Why: 〜 is Pd, ～ is Sm, 〖〗 were missing from the enumerated bracket set.
+    for (const punct of ['〜', '～', '〖', '〗']) {
+      const line = `https://example.com${punct}続き`
+      expect(extractTerminalHttpLinks(line)[0]?.url).toBe('https://example.com/')
+      expect(extractTerminalHttpLinks(line)[0]?.endIndex).toBe('https://example.com'.length)
+    }
+  })
 })
