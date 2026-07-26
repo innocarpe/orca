@@ -1014,7 +1014,8 @@ function getWindowsEncryptionKey(browser: DetectedBrowser): EncryptionKeyResult 
     const result = execFileSync(
       'powershell',
       ['-NoProfile', '-NonInteractive', '-Command', script],
-      { encoding: 'utf-8', timeout: 10_000, input: dpapiData }
+      // Why: powershell is console-subsystem; without windowsHide the import flashes a conhost (#10488).
+      { encoding: 'utf-8', timeout: 10_000, input: dpapiData, windowsHide: true }
     ).trim()
 
     return { key: Buffer.from(result, 'base64'), mode: 'aes-256-gcm' }
