@@ -1392,9 +1392,8 @@ export default function SmartWorkspaceNameField({
                 origin={issueSourceCandidates.origin}
                 upstream={issueSourceCandidates.upstream}
                 density="compact"
-                // Why: composer only picks issue/PR sources for branch create, so the
-                // mixed-surface PR caveat tooltip is redundant (Tasks header keeps it).
-                suppressTooltip
+                // Why: compact U/O only changes issue routing, not PR routing — keep
+                // "Showing issues from …" so the control does not look PR-scoped.
                 disabled={disabled}
                 onChange={(next) => {
                   void setIssueSourcePreference(selectedRepo.id, selectedRepo.path, next)
