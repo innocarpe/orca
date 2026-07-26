@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  claimsTrustedCodexRolloutLayout,
+  claimsCodexRolloutLayout,
   findTrustedCodexSessionResume,
   resolveTrustedCodexSessionResumeHome
 } from './codex-session-resume-home'
@@ -226,38 +226,46 @@ describe('resolveTrustedCodexSessionResumeHome', () => {
   })
 })
 
-describe('claimsTrustedCodexRolloutLayout', () => {
-  it('is true for a rollout path under a trusted CODEX_HOME even if the file is missing', () => {
+describe('claimsCodexRolloutLayout', () => {
+  it('is true for a rollout path even if the file is missing', () => {
     expect(
-      claimsTrustedCodexRolloutLayout({
-        transcriptPath: '/Users/example/.codex/sessions/2026/07/20/rollout-session.jsonl',
-        trustedCodexHomes: ['/managed/account/home', '/Users/example/.codex']
-      })
+      claimsCodexRolloutLayout('/Users/example/.codex/sessions/2026/07/20/rollout-session.jsonl')
+    ).toBe(true)
+  })
+
+  it('is true for compressed rollouts and Windows-separated paths', () => {
+    expect(
+      claimsCodexRolloutLayout(
+        '/Users/example/.codex/sessions/2026/07/20/rollout-session.jsonl.zst'
+      )
+    ).toBe(true)
+    expect(
+      claimsCodexRolloutLayout(
+        'C:\\Users\\example\\.codex\\sessions\\2026\\07\\20\\rollout-session.jsonl'
+      )
+    ).toBe(true)
+  })
+
+  it('is true for a rollout under a home Orca no longer trusts, so resume cannot silently fall through to the selected account', () => {
+    expect(
+      claimsCodexRolloutLayout('/removed/account/home/sessions/2026/07/20/rollout-a.jsonl')
     ).toBe(true)
   })
 
   it('is false for Claude (or other non-Codex) transcript paths', () => {
     expect(
-      claimsTrustedCodexRolloutLayout({
-        transcriptPath:
-          '/Users/example/.claude/projects/-Users-example-repo/019f81b9-19a9-7651-a8d1-352d9420bd11.jsonl',
-        trustedCodexHomes: ['/Users/example/.codex', '/managed/account/home']
-      })
+      claimsCodexRolloutLayout(
+        '/Users/example/.claude/projects/-Users-example-repo/019f81b9-19a9-7651-a8d1-352d9420bd11.jsonl'
+      )
     ).toBe(false)
   })
 
-  it('is false for empty provenance and paths outside trusted homes', () => {
+  it('is false for empty provenance and JSONL misplaced inside a sessions root', () => {
+    expect(claimsCodexRolloutLayout(undefined)).toBe(false)
+    expect(claimsCodexRolloutLayout('   ')).toBe(false)
+    expect(claimsCodexRolloutLayout('/Users/example/.codex/sessions/rollout-a.jsonl')).toBe(false)
     expect(
-      claimsTrustedCodexRolloutLayout({
-        transcriptPath: undefined,
-        trustedCodexHomes: ['/Users/example/.codex']
-      })
-    ).toBe(false)
-    expect(
-      claimsTrustedCodexRolloutLayout({
-        transcriptPath: '/tmp/sessions/2026/07/20/rollout-a.jsonl',
-        trustedCodexHomes: ['/Users/example/.codex']
-      })
+      claimsCodexRolloutLayout('/Users/example/.codex/sessions/2026/07/20/nested/rollout-a.jsonl')
     ).toBe(false)
   })
 })

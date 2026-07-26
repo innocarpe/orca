@@ -169,7 +169,7 @@ import { createCodexSessionMigrationScheduler } from './codex/codex-session-migr
 import { prepareLegacySharedCodexSessionResume } from './codex/codex-legacy-session-resume'
 import { resolveHostCodexSessionSourceHome } from './codex/codex-session-source-home'
 import {
-  claimsTrustedCodexRolloutLayout,
+  claimsCodexRolloutLayout,
   findTrustedCodexSessionResume
 } from './codex/codex-session-resume-home'
 import { getSystemCodexHomePath } from './codex/codex-home-paths'
@@ -853,15 +853,9 @@ async function prepareCodexSessionResumeForLaunch(args: {
     trustedCodexHomes: trustedHomes
   })
   if (!sessionSource) {
-    // Why: only block when path claimed Codex rollout provenance under a trusted home but failed
-    // verification. Cross-agent/stale paths (e.g. ~/.claude/… with agent mislabeled "codex") must
-    // start fresh instead of hard-failing resume.
-    if (
-      claimsTrustedCodexRolloutLayout({
-        transcriptPath: args.providerSession.transcriptPath,
-        trustedCodexHomes: trustedHomes
-      })
-    ) {
+    // Why: an unverifiable Codex rollout still blocks; only paths that never claimed Codex
+    // provenance (e.g. ~/.claude/… on a pane mislabeled "codex") fall through to a normal launch.
+    if (claimsCodexRolloutLayout(args.providerSession.transcriptPath)) {
       throw new Error(
         'Orca could not verify the originating Codex session file, so automatic resume was stopped to avoid using a different account.'
       )
