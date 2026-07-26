@@ -4404,6 +4404,7 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
 
     const ownerSettings = trySettingsForWorktreeOwner(get(), worktreeId)
     if (!ownerSettings) {
+      // Why: local activity already updated; skip remote meta when multi-host identity is unresolved (#10634).
       warnAmbiguousOwnerOnce(worktreeId, 'persist worktree activity timestamp')
       return
     }
