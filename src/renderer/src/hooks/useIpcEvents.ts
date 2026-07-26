@@ -1353,26 +1353,35 @@ export function useIpcEvents(): void {
         window.api.ui.onOpenFloatingMarkdownDocuments((documents) => {
           void (async () => {
             const store = useAppStore.getState()
-            // Why: OS Open With should surface the floating workspace even if the user hid it.
-            if (store.settings?.floatingTerminalEnabled === false) {
+            // Why: cold start has settings=null; treat unhydrated as disabled so OS
+            // Open With still enables the floating workspace before hydration.
+            if (store.settings?.floatingTerminalEnabled !== true) {
               await store.updateSettings({ floatingTerminalEnabled: true })
             }
             window.dispatchEvent(new CustomEvent(OPEN_FLOATING_TERMINAL_EVENT))
             for (const document of documents) {
-              useAppStore.getState().openFile(
-                {
-                  filePath: document.filePath,
-                  relativePath: document.relativePath,
-                  worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-                  language: detectLanguage(document.relativePath),
-                  mode: 'edit',
-                  runtimeEnvironmentId: null
-                },
-                {
-                  preview: false,
-                  suppressActiveRuntimeFallback: true
-                }
-              )
+              try {
+                useAppStore.getState().openFile(
+                  {
+                    filePath: document.filePath,
+                    relativePath: document.relativePath,
+                    worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+                    language: detectLanguage(document.relativePath),
+                    mode: 'edit',
+                    runtimeEnvironmentId: null
+                  },
+                  {
+                    preview: false,
+                    suppressActiveRuntimeFallback: true
+                  }
+                )
+              } catch (error) {
+                console.warn(
+                  '[os-open-markdown] Failed to open document:',
+                  document.filePath,
+                  error
+                )
+              }
             }
           })().catch((error) => {
             console.warn('[os-open-markdown] Failed to open floating markdown documents:', error)

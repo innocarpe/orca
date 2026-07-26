@@ -32,6 +32,21 @@ describe('extractMarkdownPathsFromArgv', () => {
     ).toEqual(['C:\\notes\\A.md'])
   })
 
+  it('normalizes dot-segment aliases before dedupe', () => {
+    expect(
+      extractMarkdownPathsFromArgv(
+        ['/tmp/notes/../notes/a.md', '/tmp/notes/a.md'],
+        { platform: 'linux' }
+      )
+    ).toEqual(['/tmp/notes/a.md'])
+    expect(
+      extractMarkdownPathsFromArgv(
+        ['C:\\temp\\..\\temp\\notes\\a.md', 'C:\\temp\\notes\\a.md'],
+        { platform: 'win32' }
+      )
+    ).toEqual(['C:\\temp\\notes\\a.md'])
+  })
+
   it('ignores relative paths', () => {
     expect(
       extractMarkdownPathsFromArgv(['readme.md', './docs/a.md'], { platform: 'linux' })
