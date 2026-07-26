@@ -5,7 +5,11 @@ import { Moon, Sun } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { buildDefaultTerminalOptions } from '@/lib/pane-manager/pane-terminal-options'
-import { readPrefersReducedMotion, resolveTerminalCursorBlink } from '@/lib/terminal-cursor-blink'
+import { resolveTerminalCursorBlink } from '@/lib/terminal-cursor-blink'
+import {
+  getPrefersReducedMotionSnapshot,
+  usePrefersReducedMotionLive
+} from '@/components/terminal-pane/use-prefers-reduced-motion'
 import { buildFontFamily } from '@/components/terminal-pane/layout-serialization'
 import { composeActiveTerminalTheme } from '@/components/terminal-pane/terminal-appearance'
 import { clampNumber, resolveEffectiveTerminalAppearance } from '@/lib/terminal-theme'
@@ -64,6 +68,8 @@ export function TerminalSettingsPreview({
   const ligaturesAddonRef = useRef<LigaturesAddon | null>(null)
   const skipInitialOptionMutationRef = useRef(false)
   const skipInitialThemeRewriteRef = useRef(false)
+  // Why: re-apply cursorBlink when OS reduced-motion flips without a settings change.
+  const prefersReducedMotion = usePrefersReducedMotionLive()
 
   const effectiveFontFamily = previewFontFamily || settings.terminalFontFamily
   const terminalLineHeight = normalizeTerminalLineHeight(settings.terminalLineHeight)
@@ -131,7 +137,7 @@ export function TerminalSettingsPreview({
       cursorStyle: settings.terminalCursorStyle,
       cursorBlink: resolveTerminalCursorBlink({
         settingEnabled: settings.terminalCursorBlink,
-        prefersReducedMotion: readPrefersReducedMotion()
+        prefersReducedMotion: getPrefersReducedMotionSnapshot()
       }),
       fontSize: settings.terminalFontSize,
       fontFamily: buildFontFamily(effectiveFontFamily),
@@ -186,7 +192,7 @@ export function TerminalSettingsPreview({
     terminal.options.cursorInactiveStyle = settings.terminalCursorStyle
     terminal.options.cursorBlink = resolveTerminalCursorBlink({
       settingEnabled: settings.terminalCursorBlink,
-      prefersReducedMotion: readPrefersReducedMotion()
+      prefersReducedMotion: prefersReducedMotion
     })
   }, [
     settings.terminalFontSize,
@@ -194,7 +200,8 @@ export function TerminalSettingsPreview({
     settings.terminalFontWeight,
     terminalLineHeight,
     settings.terminalCursorStyle,
-    settings.terminalCursorBlink
+    settings.terminalCursorBlink,
+    prefersReducedMotion
   ])
 
   useEffect(() => {
