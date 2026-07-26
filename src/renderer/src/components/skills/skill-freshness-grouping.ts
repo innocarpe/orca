@@ -73,8 +73,9 @@ export function locationChip(installation: SkillFreshnessInstallation): SkillLoc
  * That second half is what the badge already reports: it turns amber and offers
  * Details, and Details opens this modal. Returning only out-of-date skills left that
  * modal saying every skill was up to date over an empty list, contradicting the badge
- * that sent the user there. Skills where every copy is current are still omitted, as
- * is a plugin's own copy of a same-named skill, which is not the user's to fix.
+ * that sent the user there (#10633 / #11128). Skills where every copy is current are
+ * still omitted, as is a plugin's own copy of a same-named skill, which is not the
+ * user's to fix.
  *
  * `alwaysIncludeNames` overrides that filter. A successful update makes every
  * targeted skill current, which would otherwise drop its row the instant the

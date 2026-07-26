@@ -90,6 +90,8 @@ describe('groupSkillFreshness', () => {
         ]
       }
     ])
+    // Why: inaccessible-only groups must stay cannot-update so they never look eligible.
+    expect(groups[1]?.status).toBe('cannot-update')
   })
 
   it('lists an edited canonical copy, which is what an update would overwrite', () => {
