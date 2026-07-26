@@ -55,10 +55,7 @@ import { resolveAgentForegroundProcessWithAvailability } from './agent-foregroun
 import { resolveStableForegroundProcess } from './stable-foreground-process'
 import { getAgentForegroundContextPaths } from './agent-foreground-context-paths'
 import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
-import {
-  captureDescendantSnapshot,
-  terminateDescendantSnapshot
-} from '../pty-descendant-termination'
+import { killWithDescendantSweep } from '../pty-descendant-termination'
 import { readWindowsConptyProcessIds } from './windows-conpty-process-membership'
 import { canConfirmAgentFromConsolePresence } from './windows-console-foreground'
 import { forceKillPosixPtyProcessGroups } from '../pty/posix-pty-process-groups'
@@ -114,6 +111,8 @@ const ptyForceKillTimers = new Map<string, ReturnType<typeof setTimeout>>()
 export const LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS = 8_000
 export const LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS = 5_000
 export const LOCAL_PTY_FORCE_KILL_RETRY_MS = 250
+/** Mid-wait re-tree-kill / SIGKILL budget before the remaining physical-exit wait (#10475). */
+export const LOCAL_PTY_FORCE_ESCALATION_GRACE_MS = 1_500
 
 let loadGeneration = 0
 const ptyLoadGeneration = new Map<string, number>()
@@ -256,12 +255,16 @@ function createPtyPhysicalExit(id: string): void {
   ptyPhysicalExits.set(id, new PhysicalExitTracker())
 }
 
-function waitForPtyPhysicalExit(id: string, physicalExit?: PhysicalExitTracker): Promise<void> {
+function waitForPtyPhysicalExit(
+  id: string,
+  physicalExit?: PhysicalExitTracker,
+  timeoutMs = LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS
+): Promise<void> {
   if (!physicalExit) {
     return Promise.reject(new Error(`PTY "${id}" exit tracking unavailable`))
   }
   return physicalExit.waitForExit(
-    LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS,
+    timeoutMs,
     () => new Error(`Timed out waiting for PTY process exit: ${id}`)
   )
 }
@@ -847,7 +850,11 @@ export class LocalPtyProvider implements IPtyProvider {
     const proc = spawnResult.process
     const spawnedShellIsWsl =
       process.platform === 'win32' && pathWin32.basename(shellPath).toLowerCase() === 'wsl.exe'
-    const spawnedWslDistro = spawnedShellIsWsl ? (launchWslDistro ?? undefined) : null
+    const spawnedWslDistro = spawnedShellIsWsl
+      ? (launchWslDistro ?? undefined)
+      : process.platform === 'win32'
+        ? null
+        : undefined
     createPtyPhysicalExit(id)
     ptyProcesses.set(id, proc)
     ptyInitialCwd.set(id, cwd)
@@ -1078,7 +1085,9 @@ export class LocalPtyProvider implements IPtyProvider {
       if (opts.immediate === true) {
         pending.immediate = true
         if (pending.rootSignalled && ptyProcesses.get(id) === pending.proc) {
-          this.requestTrackedPtyShutdown(id, pending.proc, true)
+          // Why (#10475): ConPTY's first bare kill is already mode=force, so a plain
+          // requestTrackedPtyShutdown re-issue is a no-op; re-tree-kill stubborn agents.
+          await this.forceKillTrackedPtyTree(id, pending.proc)
         }
       }
       await pending.promise
@@ -1111,21 +1120,94 @@ export class LocalPtyProvider implements IPtyProvider {
     operation: PtyShutdownOperation
   ): Promise<void> {
     const physicalExit = ptyPhysicalExits.get(id)
-    // Why: snapshot before signaling — once the shell dies, descendants reparent to pid 1 and a ppid walk can't find them.
-    const descendants = ptyAgentSessionIds.has(id)
-      ? await captureDescendantSnapshot(proc.pid)
-      : null
-    // Why: a natural exit can race the snapshot — never signal descendants or the root PID after this PTY loses ownership.
-    if (ptyProcesses.get(id) === proc) {
-      if (descendants) {
-        terminateDescendantSnapshot(descendants)
+    const signalRoot = (): void => {
+      // Why: natural exit can race the sweep — never signal after this PTY loses ownership.
+      if (ptyProcesses.get(id) !== proc) {
+        return
       }
       // Cancel startup delivery now, but keep the exit listener and ownership maps until node-pty reports physical exit.
       runPtyCleanup(id)
       operation.rootSignalled = true
       this.requestTrackedPtyShutdown(id, proc, operation.immediate)
     }
-    await waitForPtyPhysicalExit(id, physicalExit)
+    if (ptyAgentSessionIds.has(id)) {
+      // Why: POSIX needs a pre-kill descendant snapshot; Windows uses taskkill /T so
+      // agent/MCP orphans cannot hold the worktree cwd after shell stop (#10004).
+      await killWithDescendantSweep(proc.pid, signalRoot, {
+        ownsRoot: () => ptyProcesses.get(id) === proc
+      })
+    } else if (process.platform === 'win32' && operation.immediate) {
+      // Why: a plain shell's ConPTY teardown doesn't reap orphaned children (useConptyDll
+      // skips the console reap), so a live `pnpm i`/`node` keeps the ConPTY console alive and
+      // holds the worktree cwd, failing destructive removal. taskkill /T /F clears the tree so
+      // physical stop is verifiable. POSIX shells reach their child pgroup on forceKill (#10004).
+      await killWithDescendantSweep(proc.pid, signalRoot, {
+        ownsRoot: () => ptyProcesses.get(id) === proc
+      })
+    } else {
+      signalRoot()
+    }
+    await this.waitForTrackedPtyPhysicalExit(id, proc, physicalExit, operation.immediate)
+  }
+
+  /**
+   * Wait for physical exit; on immediate/agent destructive paths re-issue a tree
+   * force-kill once if the child is still live after a short grace (#10475).
+   */
+  private async waitForTrackedPtyPhysicalExit(
+    id: string,
+    proc: pty.IPty,
+    physicalExit: PhysicalExitTracker | undefined,
+    immediate: boolean
+  ): Promise<void> {
+    const shouldEscalate = immediate || process.platform === 'win32' || ptyAgentSessionIds.has(id)
+    if (!shouldEscalate || !physicalExit) {
+      await waitForPtyPhysicalExit(id, physicalExit)
+      return
+    }
+    const startedAt = Date.now()
+    const escalateAfterMs = Math.min(
+      LOCAL_PTY_FORCE_ESCALATION_GRACE_MS,
+      Math.max(1, Math.floor(LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS / 4))
+    )
+    try {
+      await physicalExit.waitForExit(
+        escalateAfterMs,
+        () => new Error(`Retrying force-kill for PTY ${id}`)
+      )
+      return
+    } catch {
+      if (ptyProcesses.get(id) === proc) {
+        await this.forceKillTrackedPtyTree(id, proc)
+      }
+    }
+    const remainingMs = Math.max(1, LOCAL_PTY_PHYSICAL_EXIT_TIMEOUT_MS - (Date.now() - startedAt))
+    await waitForPtyPhysicalExit(id, physicalExit, remainingMs)
+  }
+
+  /** Tree-kill (Windows taskkill / POSIX descendant sweep) then force the root. */
+  private async forceKillTrackedPtyTree(id: string, proc: pty.IPty): Promise<void> {
+    if (process.platform === 'win32' || ptyAgentSessionIds.has(id)) {
+      await killWithDescendantSweep(
+        proc.pid,
+        () => {
+          if (ptyProcesses.get(id) !== proc) {
+            return
+          }
+          // Why: ConPTY's first bare kill already closed the pseudoconsole; re-issuing
+          // can double-close the native handle. Tree kill (taskkill) is the escalate.
+          if (process.platform === 'win32' && ptyTerminationMode.get(id) === 'force') {
+            return
+          }
+          // Why: POSIX force may have been mode=graceful; clear so SIGKILL can land.
+          ptyTerminationMode.delete(id)
+          this.requestTrackedPtyShutdown(id, proc, true)
+        },
+        { ownsRoot: () => ptyProcesses.get(id) === proc }
+      )
+      return
+    }
+    this.requestTrackedPtyShutdown(id, proc, true)
   }
 
   private requestTrackedPtyShutdown(id: string, proc: pty.IPty, immediate: boolean): void {
@@ -1323,7 +1405,8 @@ export class LocalPtyProvider implements IPtyProvider {
       cwd: ptyInitialCwd.get(id) ?? '',
       title: proc.process || ptyShellName.get(id) || 'shell',
       ...(ptyWorktreeId.get(id) ? { worktreeId: ptyWorktreeId.get(id) } : {}),
-      ...(ptyTerminalHandle.get(id) ? { terminalHandle: ptyTerminalHandle.get(id) } : {})
+      ...(ptyTerminalHandle.get(id) ? { terminalHandle: ptyTerminalHandle.get(id) } : {}),
+      ...(ptyWslDistroById.has(id) ? { wslDistro: ptyWslDistroById.get(id) ?? null } : {})
     }))
   }
 
