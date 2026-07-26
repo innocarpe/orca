@@ -304,6 +304,14 @@ export const TUI_AGENT_CONFIG: Record<TuiAgent, TuiAgentConfig> = {
     expectedProcess: 'devin',
     // Why: `devin -- <prompt>` auto-submits immediately (docs.devin.ai/cli), so start the REPL with no argv prompt.
     promptInjectionMode: 'stdin-after-start'
+  },
+  zcode: {
+    detectCmd: 'zcode',
+    launchCmd: 'zcode',
+    expectedProcess: 'zcode',
+    // Why: ZCode's documented surface is the desktop app / REPL; no stable
+    // headless prompt flag, so launch bare and inject after startup.
+    promptInjectionMode: 'stdin-after-start'
   }
 }
 

@@ -1452,6 +1452,66 @@ describe('shared agent-hook-listener', () => {
     expect(stopped?.providerSession).toMatchObject({ key: 'session_id', id: 'session_abc' })
   })
 
+  it('normalizes ZCode Claude-compatible lifecycle events as zcode status', () => {
+    const submitted = normalizeHookPayload(
+      state,
+      'zcode',
+      {
+        paneKey: PANE_KEY,
+        payload: {
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'zcode-session-1',
+          cwd: '/repo',
+          prompt: 'implement the feature'
+        }
+      },
+      'production'
+    )
+    const tool = normalizeHookPayload(
+      state,
+      'zcode',
+      {
+        paneKey: PANE_KEY,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          session_id: 'zcode-session-1',
+          tool_name: 'Write',
+          tool_input: { file_path: 'src/a.ts', content: 'x' }
+        }
+      },
+      'production'
+    )
+    const waiting = normalizeHookPayload(
+      state,
+      'zcode',
+      {
+        paneKey: PANE_KEY,
+        payload: { hook_event_name: 'PermissionRequest', session_id: 'zcode-session-1' }
+      },
+      'production'
+    )
+    const stopped = normalizeHookPayload(
+      state,
+      'zcode',
+      {
+        paneKey: PANE_KEY,
+        payload: { hook_event_name: 'Stop', session_id: 'zcode-session-1' }
+      },
+      'production'
+    )
+
+    expect(submitted?.payload).toMatchObject({
+      agentType: 'zcode',
+      state: 'working',
+      prompt: 'implement the feature'
+    })
+    expect(tool?.payload).toMatchObject({ agentType: 'zcode', state: 'working', toolName: 'Write' })
+    expect(waiting?.payload).toMatchObject({ agentType: 'zcode', state: 'waiting' })
+    expect(stopped?.payload).toMatchObject({ agentType: 'zcode', state: 'done' })
+    expect(stopped?.providerSession).toMatchObject({ key: 'session_id', id: 'zcode-session-1' })
+    expect(resolveHookSource('/hook/zcode')).toBe('zcode')
+  })
+
   it('normalizes MiMo Code OpenCode-compatible lifecycle events as mimo-code status', () => {
     const message = normalizeHookPayload(
       state,

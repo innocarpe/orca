@@ -186,8 +186,10 @@ export function extractAgentProviderSession(
     case 'gemini':
     case 'droid':
     // Why: Kimi Code posts a Claude-shaped `session_id` (e.g. session_<uuid>).
-    // falls through
-    case 'kimi': {
+// falls through
+    case 'kimi':
+    // Why: ZCode posts Claude-compatible session_id on lifecycle hooks.
+    case 'zcode': {
       const id = readSessionId(payload, ['session_id'])
       return id ? { key: 'session_id', id } : null
     }

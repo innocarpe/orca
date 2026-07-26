@@ -2280,6 +2280,8 @@ function isNewTurnEvent(source: AgentHookSource, eventName: unknown): boolean {
     // Why: Kimi Code emits Claude-compatible hook events, so UserPromptSubmit is its new-turn boundary too.
     // falls through
     case 'kimi':
+    // Why: ZCode lifecycle events mirror Claude's; UserPromptSubmit is the new-turn boundary.
+    case 'zcode':
       return eventName === 'UserPromptSubmit'
     case 'codex':
       return eventName === 'SessionStart' || eventName === 'UserPromptSubmit'
@@ -2374,6 +2376,8 @@ function extractToolFields(
     // Why: Kimi Code uses Claude's tool_name/tool_input payload fields verbatim.
     // falls through
     case 'kimi':
+    // Why: ZCode stdin contract carries Claude-compatible tool_name/tool_input.
+    case 'zcode':
       return extractClaudeToolFields(eventName, hookPayload)
     case 'codex':
       return extractCodexToolFields(eventName, hookPayload)
@@ -2764,16 +2768,21 @@ function isKimiUserInputTool(toolName: string | undefined): boolean {
   return toolName?.replaceAll(/[^a-z0-9]/gi, '').toLowerCase() === 'askuserquestion'
 }
 
-// Why: Kimi Code emits Claude-compatible payloads/event names; normalize but attribute to Kimi so the sidebar shows Kimi's icon/label, not Claude's.
-function normalizeKimiEvent(
+// Why: Claude-compatible agents (Kimi, ZCode) share PreToolUse→waiting for AskUserQuestion.
+function isClaudeCompatibleUserInputTool(toolName: string | undefined): boolean {
+  return isKimiUserInputTool(toolName)
+}
+
+function normalizeClaudeCompatibleAgentEvent(
   state: HookListenerState,
+  source: 'kimi' | 'zcode',
   eventName: unknown,
   promptText: string,
   paneKey: string,
   hookPayload: Record<string, unknown>
 ): ParsedAgentStatusPayload | null {
   const toolName = readString(hookPayload, 'tool_name')
-  const isUserInputTool = isKimiUserInputTool(toolName)
+  const isUserInputTool = isClaudeCompatibleUserInputTool(toolName)
 
   let stateName: 'working' | 'waiting' | 'done' | null = null
   if (
@@ -2796,8 +2805,8 @@ function normalizeKimiEvent(
   const snapshot = resolveToolState(
     state,
     paneKey,
-    extractToolFields('kimi', eventName, hookPayload),
-    { resetOnNewTurn: isNewTurnEvent('kimi', eventName) }
+    extractToolFields(source, eventName, hookPayload),
+    { resetOnNewTurn: isNewTurnEvent(source, eventName) }
   )
 
   const interrupted =
@@ -2806,14 +2815,50 @@ function normalizeKimiEvent(
   return normalizeAgentStatusPayload({
     state: stateName,
     prompt: resolvePrompt(state, paneKey, promptText, {
-      resetOnNewTurn: isNewTurnEvent('kimi', eventName)
+      resetOnNewTurn: isNewTurnEvent(source, eventName)
     }),
-    agentType: 'kimi',
+    agentType: source,
     toolName: snapshot.toolName,
     toolInput: snapshot.toolInput,
     lastAssistantMessage: snapshot.lastAssistantMessage,
     interrupted
   })
+}
+
+// Why: Kimi Code emits Claude-compatible payloads; attribute status to Kimi.
+function normalizeKimiEvent(
+  state: HookListenerState,
+  eventName: unknown,
+  promptText: string,
+  paneKey: string,
+  hookPayload: Record<string, unknown>
+): ParsedAgentStatusPayload | null {
+  return normalizeClaudeCompatibleAgentEvent(
+    state,
+    'kimi',
+    eventName,
+    promptText,
+    paneKey,
+    hookPayload
+  )
+}
+
+// Why: ZCode lifecycle hooks mirror Claude's event names/payloads; attribute to zcode.
+function normalizeZcodeEvent(
+  state: HookListenerState,
+  eventName: unknown,
+  promptText: string,
+  paneKey: string,
+  hookPayload: Record<string, unknown>
+): ParsedAgentStatusPayload | null {
+  return normalizeClaudeCompatibleAgentEvent(
+    state,
+    'zcode',
+    eventName,
+    promptText,
+    paneKey,
+    hookPayload
+  )
 }
 
 function normalizeGeminiEvent(
@@ -4014,6 +4059,9 @@ export function normalizeHookPayload(
     case 'kimi':
       payload = normalizeKimiEvent(state, eventName, promptText, paneKey, hookPayloadRecord)
       break
+    case 'zcode':
+      payload = normalizeZcodeEvent(state, eventName, promptText, paneKey, hookPayloadRecord)
+      break
   }
 
   // Why: connectionId is null here; ingestRemote stamps it from mux identity on receive. See docs/design/agent-status-over-ssh.md §5.
@@ -4081,7 +4129,8 @@ export const HOOK_SOURCE_BY_PATHNAME: Readonly<Record<string, AgentHookSource>> 
   '/hook/copilot': 'copilot',
   '/hook/hermes': 'hermes',
   '/hook/devin': 'devin',
-  '/hook/kimi': 'kimi'
+  '/hook/kimi': 'kimi',
+  '/hook/zcode': 'zcode'
 })
 
 export function resolveHookSource(pathname: string): AgentHookSource | null {
