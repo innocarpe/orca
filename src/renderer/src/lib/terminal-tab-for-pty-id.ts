@@ -5,12 +5,18 @@ export type TerminalTabPtyOwnershipState = Pick<
   'tabsByWorktree' | 'terminalLayoutsByTabId' | 'ptyIdsByTabId'
 >
 
-/** Resolve a synthetic mobile handle's ptyId through live and persisted tab bindings. */
-export function resolveTerminalTabIdForPtyId(
+/** Ownership of a PTY across tabs in one worktree. Ambiguous ≠ unowned. */
+export type TerminalTabPtyOwnership =
+  | { kind: 'owned'; tabId: string }
+  | { kind: 'none' }
+  | { kind: 'ambiguous' }
+
+/** Resolve a PTY through live and persisted tab bindings; never pick first-of-many. */
+export function resolveTerminalTabPtyOwnership(
   state: TerminalTabPtyOwnershipState,
   worktreeId: string,
   ptyId: string
-): string | null {
+): TerminalTabPtyOwnership {
   const tabs = state.tabsByWorktree[worktreeId] ?? []
   let resolvedTabId: string | null = null
   for (const tab of tabs) {
@@ -27,9 +33,19 @@ export function resolveTerminalTabIdForPtyId(
     if (resolvedTabId && resolvedTabId !== tab.id) {
       // Why: stale duplicate ownership must not attach whichever hidden tab
       // happens to appear first in persisted order.
-      return null
+      return { kind: 'ambiguous' }
     }
     resolvedTabId = tab.id
   }
-  return resolvedTabId
+  return resolvedTabId ? { kind: 'owned', tabId: resolvedTabId } : { kind: 'none' }
+}
+
+/** Resolve a synthetic mobile handle's ptyId; null for none or ambiguous. */
+export function resolveTerminalTabIdForPtyId(
+  state: TerminalTabPtyOwnershipState,
+  worktreeId: string,
+  ptyId: string
+): string | null {
+  const ownership = resolveTerminalTabPtyOwnership(state, worktreeId, ptyId)
+  return ownership.kind === 'owned' ? ownership.tabId : null
 }
