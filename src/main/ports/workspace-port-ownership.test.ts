@@ -84,10 +84,41 @@ describe('killWorkspacePort', () => {
       })
       terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
       vi.spyOn(process, 'kill').mockImplementation(() => true)
+      const delayMs = vi.fn(async () => {})
 
       await expect(
-        killWorkspacePort(worktrees, { pid: 4242, port: 5173, repoId: 'repo' })
+        killWorkspacePort(worktrees, { pid: 4242, port: 5173, repoId: 'repo' }, { delayMs })
       ).resolves.toEqual({ ok: false, reason: 'Failed to stop the process.' })
+      // Why: brief retries before declaring failure (PID may linger after TerminateProcess).
+      expect(delayMs).toHaveBeenCalled()
+    })
+  })
+
+  it('on Windows treats a transient post-taskkill probe as success once ESRCH appears', async () => {
+    await withPlatform('win32', async () => {
+      scanWorkspacePortsMock.mockResolvedValue({
+        platform: 'win32',
+        scannedAt: Date.now(),
+        ports: [workspacePort(4242, 5173)]
+      })
+      terminateWindowsProcessTreeMock.mockResolvedValue(undefined)
+      let probes = 0
+      vi.spyOn(process, 'kill').mockImplementation(() => {
+        probes += 1
+        if (probes === 1) {
+          return true
+        }
+        const err = new Error('kill ESRCH') as Error & { code?: string }
+        err.code = 'ESRCH'
+        throw err
+      })
+      const delayMs = vi.fn(async () => {})
+
+      await expect(
+        killWorkspacePort(worktrees, { pid: 4242, port: 5173, repoId: 'repo' }, { delayMs })
+      ).resolves.toEqual({ ok: true })
+      expect(probes).toBe(2)
+      expect(delayMs).toHaveBeenCalledTimes(1)
     })
   })
 
