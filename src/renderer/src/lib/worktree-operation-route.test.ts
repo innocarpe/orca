@@ -153,6 +153,29 @@ describe('resolveWorktreeOperationRouteResult', () => {
     })
   })
 
+  it('scopes explicit-route scan to the worktree repoId (ignores other repos)', () => {
+    expect(
+      resolveWorktreeOperationRouteResult(
+        {
+          worktreesByRepo: {
+            'repo-other': [
+              {
+                id: WORKTREE_ID,
+                repoId: 'repo-other',
+                hostId: 'ssh:wrong-host'
+              } as Worktree
+            ],
+            'repo-1': [worktree('local')]
+          }
+        },
+        WORKTREE_ID
+      )
+    ).toEqual({
+      kind: 'resolved',
+      route: { executionHostId: 'local', runtimeEnvironmentId: null }
+    })
+  })
+
   it('resolves host-stamped local worktree even when the project exists on local + SSH (#10634)', () => {
     expect(
       resolveWorktreeOperationRouteResult(

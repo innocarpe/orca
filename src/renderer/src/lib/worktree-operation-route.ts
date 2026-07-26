@@ -252,18 +252,21 @@ export function resolveExplicitWorktreeOperationRouteResult(
 ): WorktreeOperationRouteResolution {
   const exactRoutes = new Map<string, WorktreeOperationRoute>()
   const exactRepoIds = new Set<string>()
-  // Why: scan every projection so focus can select the unique active-host owner (#10491).
-  for (const worktrees of Object.values(state.worktreesByRepo ?? {})) {
-    collectOwnerRoutes(state, worktrees, worktreeId, exactRoutes, exactRepoIds)
+  // Why: multi-host dupes share one repoId key; scanning every repo is O(total worktrees) (#10491).
+  const repoId = getRepoIdFromWorktreeId(worktreeId)
+  const ownedWorktrees = state.worktreesByRepo?.[repoId]
+  if (ownedWorktrees) {
+    collectOwnerRoutes(state, ownedWorktrees, worktreeId, exactRoutes, exactRepoIds)
   }
-  for (const result of Object.values(state.detectedWorktreesByRepo ?? {})) {
-    collectOwnerRoutes(state, result.worktrees, worktreeId, exactRoutes, exactRepoIds)
+  const ownedDetected = state.detectedWorktreesByRepo?.[repoId]?.worktrees
+  if (ownedDetected) {
+    collectOwnerRoutes(state, ownedDetected, worktreeId, exactRoutes, exactRepoIds)
   }
   if (exactRoutes.size > 0) {
     return resolveFromCandidateRoutes(exactRoutes, state.settings)
   }
   if (exactRepoIds.size === 0) {
-    exactRepoIds.add(getRepoIdFromWorktreeId(worktreeId))
+    exactRepoIds.add(repoId)
   }
   const repoRoutes = new Map<string, WorktreeOperationRoute>()
   for (const repoId of exactRepoIds) {
