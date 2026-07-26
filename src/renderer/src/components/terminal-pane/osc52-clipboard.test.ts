@@ -300,8 +300,9 @@ describe('createOsc52OscHandler', () => {
   })
 
   it('keeps coalescing after a failed write instead of wedging the pane', async () => {
-    // Why: the flush latch is reset before the write, so a throw must not strand it —
-    // otherwise the first failure silently kills clipboard copy for the session.
+    // Why: a stranded flush latch silently kills clipboard copy for the rest of the session.
+    // Today two things prevent it — the latch resets before the write, and the try/catch means
+    // the microtask reaches its end either way — so this binds the pair, not the ordering alone.
     const writeClipboardText = vi
       .fn<(text: string) => Promise<void>>()
       .mockImplementationOnce(() => {

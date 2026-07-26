@@ -99,9 +99,24 @@ describe('useOsc52ClipboardDefaultOnNotice', () => {
   it.each(['onAutoClose', 'onDismiss'] as const)('consumes the notice on %s', async (callback) => {
     await mountProbe(true)
 
-    toastInfoMock.mock.calls[0]?.[1]?.[callback]?.()
+    // Why assert the option exists before invoking: optional chaining makes a missing
+    // callback a silent no-op, so a revert to clear-at-enqueue would satisfy the count
+    // below without ever wiring this close path.
+    const close = toastInfoMock.mock.calls[0]?.[1]?.[callback]
+    expect(close).toBeTypeOf('function')
+    expect(storeState.clearOsc52ClipboardDefaultOnNotice).not.toHaveBeenCalled()
+
+    close()
 
     expect(storeState.clearOsc52ClipboardDefaultOnNotice).toHaveBeenCalledTimes(1)
+  })
+
+  it('dedupes the StrictMode double-invoke with a stable toast id', async () => {
+    // Why pin the id: the effect re-runs against the same closure, so the early return
+    // cannot catch the second pass — sonner collapses it only because the id matches.
+    await mountProbe(true)
+
+    expect(toastInfoMock.mock.calls[0]?.[1]?.id).toBe('osc52-clipboard-default-on-notice')
   })
 
   it('keeps the notice armed when the toast throws, so it is not burned unshown', async () => {
@@ -130,6 +145,10 @@ describe('useOsc52ClipboardDefaultOnNotice', () => {
     const options = toastInfoMock.mock.calls[0]?.[1]
     expect(options.description).toContain('Zellij')
     expect(options.action.label).toBe('Open Setting')
+
+    // Why assert unspent first: without it, a revert to clear-at-enqueue satisfies the
+    // count below and the action's own clear becomes deletable with nothing going red.
+    expect(storeState.clearOsc52ClipboardDefaultOnNotice).not.toHaveBeenCalled()
 
     options.action.onClick()
 
