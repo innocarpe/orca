@@ -267,6 +267,7 @@ import {
   buildAgentResumeStartupPlan,
   buildAgentStartupPlan
 } from '../../shared/tui-agent-startup'
+import { applyShellCommandWrapper } from '../../shared/shell-command-wrapper'
 import { repoIsRemote } from '../../shared/agent-launch-remote'
 import {
   isAgentForegroundWrapperProcess,
@@ -21628,7 +21629,24 @@ export class OrcaRuntimeService {
         throw new Error('runtime_unavailable')
       }
       const workspace = await this.resolveTerminalWorkspaceLaunchScope(worktreeSelector)
-      const launchOpts = await this.resolveAgentTerminalCreateOptions(workspace, opts)
+      const resolvedLaunchOpts = await this.resolveAgentTerminalCreateOptions(workspace, opts)
+      // Why: wrap bare/agent launch commands through the opt-in shell template so CLI/mobile
+      // createTerminal paths match renderer queueTabStartupCommand (e.g. devenv shell -- $CMD).
+      // Keep claudeAgentTeamsSourceCommand on the unwrapped agent line so teammate-mode
+      // inference still sees `claude` rather than `devenv shell -- claude`.
+      const launchOpts = {
+        ...resolvedLaunchOpts,
+        ...(resolvedLaunchOpts.command
+          ? {
+              command: applyShellCommandWrapper(
+                this.store?.getSettings?.().shellCommandWrapper,
+                resolvedLaunchOpts.command
+              ),
+              claudeAgentTeamsSourceCommand:
+                resolvedLaunchOpts.claudeAgentTeamsSourceCommand ?? resolvedLaunchOpts.command
+            }
+          : {})
+      }
       let ptySpawnCommitReported = false
       const reportPtySpawnCommitted = (): void => {
         if (ptySpawnCommitReported) {
