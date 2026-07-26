@@ -22,9 +22,6 @@ export function useOsc52ClipboardDefaultOnNotice(persistedUIReady: boolean): voi
     if (!shouldShowOsc52ClipboardDefaultOnNotice({ persistedUIReady, noticePending })) {
       return
     }
-    // Why clear first: the store write flips `noticePending`, so clearing up front
-    // keeps a re-render from queueing a second toast before the state settles.
-    clearNotice()
     toast.info(
       translate(
         'auto.components.terminal.pane.osc52.clipboard.default.on.notice.title',
@@ -54,5 +51,8 @@ export function useOsc52ClipboardDefaultOnNotice(persistedUIReady: boolean): voi
         }
       }
     )
+    // Why clear after: a throw above would burn the profile's one notice without ever
+    // showing it. Nothing re-renders between the two calls, so this cannot double-fire.
+    clearNotice()
   }, [clearNotice, noticePending, persistedUIReady])
 }
