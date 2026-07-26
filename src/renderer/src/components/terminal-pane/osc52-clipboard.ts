@@ -17,10 +17,18 @@
 // clipboard — we deliberately ignore that case to avoid leaking clipboard
 // contents to any process writing to the PTY.
 //
-// Safety: OSC 52 is a classic data-exfil / overwrite vector — piping an
-// attacker-controlled log into the terminal could silently replace the
-// user's clipboard. Callers gate on `terminalAllowOsc52Clipboard` (default
-// on; query stays blocked; payload size is capped).
+// Safety: OSC 52 is a classic clipboard-overwrite vector — piping an
+// attacker-controlled log into the terminal could silently replace the user's
+// clipboard. Callers gate on `terminalAllowOsc52Clipboard` (default on; query
+// stays blocked, so nothing is exfiltrated; payload size is capped).
+//
+// Accepted residual risk of default-on: the decoded text is written verbatim,
+// newlines and all, so a hostile PTY can stage an execute-on-paste payload.
+// We do not filter here — a multi-line copy out of a TUI is the feature — and
+// the mitigation belongs at paste time, where bracketed paste keeps a pasted
+// newline out of the shell's input (see terminal-bracketed-paste.ts). This
+// matches kitty and Ghostty, which both allow OSC 52 writes unprompted by
+// default while still gating reads.
 
 export type Osc52ParseResult =
   /** `selections` is normalized: an empty Pc is reported as 'c'. */
@@ -46,6 +54,12 @@ export function resolveOsc52ClipboardGate(input: {
 }): { allowClipboardWrite: boolean; shouldSurfaceBlockedWrite: boolean } {
   // Why drop during replay: reattach and cold-restore re-write recorded PTY bytes through the same
   // parser, so a stale `\e]52;c;…` would overwrite whatever the user has copied since. No fresh intent.
+  //
+  // Known over-suppression: the flag is read when xterm parses, not when the bytes were queued, and
+  // the replay path drains queued live bytes before engaging the guard (pty-connection.ts, "drain any
+  // queued background bytes BEFORE the replay paint"). A copy issued in the same tick as a reattach
+  // is therefore dropped silently. Fixing it means tagging chunks at queue time; a lost copy the user
+  // can repeat is the cheaper side of that trade.
   const allowClipboardWrite = !input.replaying && input.settingEnabled === true
   return {
     allowClipboardWrite,
@@ -68,8 +82,9 @@ export function createOsc52OscHandler(deps: {
   showBlockedWriteToast: () => void
 }): (data: string) => boolean {
   // Why coalesce: each sequence is only ~15 bytes, so one hostile chunk can fire a
-  // million parser callbacks — each a main-process clipboard write. Only the last
-  // one is observable anyway, so keep it and drop the rest.
+  // million parser callbacks — each a main-process clipboard write. Only the last of
+  // a microtask's worth is observable, so keep that and drop the rest. This bounds a
+  // flood to roughly one write per xterm parse yield, not to one write overall.
   let pendingText: string | null = null
   let flushScheduled = false
   const writeCoalesced = (text: string): Promise<void> => {
