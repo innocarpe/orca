@@ -75,6 +75,7 @@ import {
   type ExecutionHostId
 } from '../../../../shared/execution-host'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { forEachWithConcurrency } from '../../../../shared/map-with-concurrency'
 import {
   resolveWorktreeOperationRoute,
   settingsForWorktreeOperationRoute
@@ -113,6 +114,8 @@ const ACTIVE_WORKTREE_TERMINAL_PREP_IDLE_TIMEOUT_MS = 180
 const FOLDER_WORKSPACE_ACTIVITY_PERSIST_INTERVAL_MS = 1_000
 // Why: each repo's `git worktree list` is an independent main-process child; a higher ceiling cuts startup scan batches (#7225) while staying bounded against launching every git probe at once.
 export const WORKTREE_REFRESH_CONCURRENCY = 8
+// Why: bulk hydration purge can touch hundreds of worktrees; bound orphan PTY sweeps so one purge cannot open unbounded main-process scans.
+const ORPHAN_PROCESS_SWEEP_CONCURRENCY = 4
 const pendingActivationTerminalPrepCancels = new Map<string, () => void>()
 const detachedHeadAutoDerivedDisplayNames = new Map<string, string>()
 const folderWorkspaceWorktreeCache = new WeakMap<FolderWorkspace, Worktree>()
@@ -4949,11 +4952,17 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     // Callers that already killed (explicit remove) tolerate a second no-op sweep.
     const sweep = window.api?.worktrees?.sweepOrphanProcesses
     if (typeof sweep === 'function') {
-      for (const worktreeId of purgeableWorktreeIds) {
-        void sweep({ worktreeId }).catch((err: unknown) => {
-          console.warn(`[worktree-teardown] orphan sweep failed for ${worktreeId}:`, err)
-        })
-      }
+      void forEachWithConcurrency(
+        purgeableWorktreeIds,
+        ORPHAN_PROCESS_SWEEP_CONCURRENCY,
+        async (worktreeId) => {
+          try {
+            await sweep({ worktreeId })
+          } catch (err: unknown) {
+            console.warn(`[worktree-teardown] orphan sweep failed for ${worktreeId}:`, err)
+          }
+        }
+      )
     }
   },
 
