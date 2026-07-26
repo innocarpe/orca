@@ -131,7 +131,8 @@ export function TerminalColorOverridesSection({
             >
               {translate(
                 'auto.components.settings.TerminalWindowSection.03c855d15f',
-                'Reset all color overrides'
+                'Reset {{value0}} color overrides',
+                { value0: mode }
               )}
             </Button>
           </div>

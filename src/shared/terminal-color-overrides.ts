@@ -58,6 +58,14 @@ function cloneOverrides(overrides: TerminalColorOverrides | undefined): Terminal
   return overrides ? { ...overrides } : {}
 }
 
+/** Map UI mode to the bag that rendering actually uses when light matches dark. */
+export function effectiveTerminalColorOverrideMode(
+  settings: Pick<TerminalColorOverrideSettings, 'terminalUseSeparateLightTheme'>,
+  mode: TerminalColorOverrideMode
+): TerminalColorOverrideMode {
+  return mode === 'light' && !settings.terminalUseSeparateLightTheme ? 'dark' : mode
+}
+
 /**
  * Resolve which color-override bag applies for a terminal appearance mode.
  *
@@ -69,8 +77,7 @@ export function resolveTerminalColorOverridesForMode(
   settings: TerminalColorOverrideSettings,
   mode: TerminalColorOverrideMode
 ): TerminalColorOverrides | undefined {
-  const effectiveMode: TerminalColorOverrideMode =
-    mode === 'light' && !settings.terminalUseSeparateLightTheme ? 'dark' : mode
+  const effectiveMode = effectiveTerminalColorOverrideMode(settings, mode)
 
   if (hasPerModeTerminalColorOverrides(settings)) {
     return effectiveMode === 'light'
@@ -83,6 +90,7 @@ export function resolveTerminalColorOverridesForMode(
 /**
  * First dual-mode edit seeds only the target mode from the legacy bag so the
  * other mode starts clean (fixes shared-override bleed across light/dark).
+ * Edits always target the effective bag when light matches dark.
  */
 export function updateTerminalColorOverrideKey(
   settings: TerminalColorOverrideSettings,
@@ -90,6 +98,8 @@ export function updateTerminalColorOverrideKey(
   key: keyof TerminalColorOverrides,
   value: string | undefined
 ): Partial<GlobalSettings> {
+  const effectiveMode = effectiveTerminalColorOverrideMode(settings, mode)
+
   if (!hasPerModeTerminalColorOverrides(settings)) {
     const seeded = cloneOverrides(settings.terminalColorOverrides)
     if (value) {
@@ -99,32 +109,39 @@ export function updateTerminalColorOverrideKey(
     }
     return {
       terminalColorOverrides: undefined,
-      terminalColorOverridesDark: mode === 'dark' ? compactOverrides(seeded) : undefined,
-      terminalColorOverridesLight: mode === 'light' ? compactOverrides(seeded) : undefined
+      terminalColorOverridesDark: effectiveMode === 'dark' ? compactOverrides(seeded) : undefined,
+      terminalColorOverridesLight: effectiveMode === 'light' ? compactOverrides(seeded) : undefined
     }
   }
 
   const bag = cloneOverrides(
-    mode === 'light' ? settings.terminalColorOverridesLight : settings.terminalColorOverridesDark
+    effectiveMode === 'light'
+      ? settings.terminalColorOverridesLight
+      : settings.terminalColorOverridesDark
   )
   if (value) {
     bag[key] = value
   } else {
     delete bag[key]
   }
-  return mode === 'light'
+  return effectiveMode === 'light'
     ? { terminalColorOverridesLight: compactOverrides(bag) }
     : { terminalColorOverridesDark: compactOverrides(bag) }
 }
 
-/** Merge an imported palette into the dark bag (or legacy when still shared). */
+/**
+ * Merge an imported palette into the dark bag.
+ * Why dark-only: Ghostty/Warp themes are dark-biased; writing legacy would
+ * bleed into light until the first per-mode edit.
+ */
 export function mergeImportedTerminalColorOverrides(
   settings: TerminalColorOverrideSettings,
   imported: TerminalColorOverrides
 ): Partial<GlobalSettings> {
   if (!hasPerModeTerminalColorOverrides(settings)) {
     return {
-      terminalColorOverrides: {
+      terminalColorOverrides: undefined,
+      terminalColorOverridesDark: {
         ...settings.terminalColorOverrides,
         ...imported
       }
@@ -142,16 +159,20 @@ export function resetTerminalColorOverridesForMode(
   settings: TerminalColorOverrideSettings,
   mode: TerminalColorOverrideMode
 ): Partial<GlobalSettings> {
+  const effectiveMode = effectiveTerminalColorOverrideMode(settings, mode)
+
   if (!hasPerModeTerminalColorOverrides(settings)) {
-    // Legacy bag was shared; clear only the edited mode and leave the other
+    // Legacy bag was shared; clear only the effective mode and leave the other
     // mode without overrides so light/dark no longer share the old values.
     return {
       terminalColorOverrides: undefined,
-      terminalColorOverridesDark: mode === 'dark' ? undefined : settings.terminalColorOverrides,
-      terminalColorOverridesLight: mode === 'light' ? undefined : settings.terminalColorOverrides
+      terminalColorOverridesDark:
+        effectiveMode === 'dark' ? undefined : settings.terminalColorOverrides,
+      terminalColorOverridesLight:
+        effectiveMode === 'light' ? undefined : settings.terminalColorOverrides
     }
   }
-  return mode === 'light'
+  return effectiveMode === 'light'
     ? { terminalColorOverridesLight: undefined }
     : { terminalColorOverridesDark: undefined }
 }
