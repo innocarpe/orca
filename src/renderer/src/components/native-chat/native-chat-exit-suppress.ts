@@ -47,3 +47,32 @@ export function getNativeChatExitSuppressRemainingMs(paneKey: string, nowMs = Da
 export function clearNativeChatExitSuppressForTests(): void {
   lastOptimisticSendAtByPaneKey.clear()
 }
+
+/**
+ * Decide what a deferred post-suppress confirmed-exit timer should do.
+ * Title can recover to a live agent before grace ends — never replay a stale
+ * exit once evidence says the agent is back.
+ */
+export function resolveDeferredConfirmedAgentExitAction(args: {
+  scheduledGeneration: number
+  currentGeneration: number
+  leafId: string
+  chatLeafId: string | null
+  stillSuppressed: boolean
+  titleShowsLiveAgent: boolean
+}): 'apply' | 'skip' | 'reschedule' {
+  if (args.scheduledGeneration !== args.currentGeneration) {
+    return 'skip'
+  }
+  if (!args.chatLeafId || args.leafId !== args.chatLeafId) {
+    return 'skip'
+  }
+  if (args.stillSuppressed) {
+    return 'reschedule'
+  }
+  // Why: a recovered agent title means the original exit signal was transient.
+  if (args.titleShowsLiveAgent) {
+    return 'skip'
+  }
+  return 'apply'
+}

@@ -48,12 +48,16 @@ export function resolveHostReadableTranscriptPath(
     return null
   }
   const pathExists = deps.pathExists ?? existsSync
-  if (pathExists(path)) {
+  const platform = deps.platform ?? process.platform
+  // Why: on Windows, classify guest Linux paths before pathExists — Node can
+  // treat `/exists` as a drive-relative local path (`C:\exists`) and falsely
+  // return the local file instead of translating to a WSL UNC.
+  const isWindowsGuestLinuxPath = platform === 'win32' && isGuestAbsoluteLinuxPath(path)
+  if (!isWindowsGuestLinuxPath && pathExists(path)) {
     return path
   }
 
-  const platform = deps.platform ?? process.platform
-  if (platform !== 'win32' || !isGuestAbsoluteLinuxPath(path)) {
+  if (!isWindowsGuestLinuxPath) {
     return null
   }
 

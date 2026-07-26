@@ -64,7 +64,8 @@ import NativeChatView from '../native-chat/NativeChatView'
 import { shouldSuppressNativeChatExitForPane } from '../native-chat/native-chat-pending'
 import {
   getNativeChatExitSuppressRemainingMs,
-  NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
+  NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS,
+  resolveDeferredConfirmedAgentExitAction
 } from '../native-chat/native-chat-exit-suppress'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
@@ -714,6 +715,12 @@ export default function TerminalPane({
     ]
   )
   const pendingConfirmedExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Why: invalidate deferred exit timers when a newer signal supersedes them (title recovery).
+  const confirmedExitGenerationRef = useRef(0)
+  const chatLeafIdRef = useRef(chatLeafId)
+  chatLeafIdRef.current = chatLeafId
+  const isChatViewModeRef = useRef(isChatViewMode)
+  isChatViewModeRef.current = isChatViewMode
   const applyNativeChatLeafRoute = useCallback(
     (route: NativeChatLeafRoute): void => {
       if (route.chatLeafId !== chatLeafId) {
@@ -731,6 +738,52 @@ export default function TerminalPane({
     },
     [chatLeafId, setTabViewMode, unifiedTabId]
   )
+  const scheduleDeferredConfirmedAgentExit = useCallback(
+    (leafId: string, paneKey: string): void => {
+      if (pendingConfirmedExitTimerRef.current) {
+        clearTimeout(pendingConfirmedExitTimerRef.current)
+      }
+      const generation = ++confirmedExitGenerationRef.current
+      const remainingMs = Math.max(
+        1,
+        getNativeChatExitSuppressRemainingMs(paneKey) || NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
+      )
+      pendingConfirmedExitTimerRef.current = setTimeout(() => {
+        pendingConfirmedExitTimerRef.current = null
+        const action = resolveDeferredConfirmedAgentExitAction({
+          scheduledGeneration: generation,
+          currentGeneration: confirmedExitGenerationRef.current,
+          leafId,
+          chatLeafId: chatLeafIdRef.current,
+          stillSuppressed: shouldSuppressNativeChatExitForPane(paneKey),
+          // Why: title recovery before grace ends must not force Terminal mode.
+          titleShowsLiveAgent: resolveTitleAgentForLeaf(leafId) != null
+        })
+        if (action === 'skip') {
+          return
+        }
+        if (action === 'reschedule') {
+          scheduleDeferredConfirmedAgentExit(leafId, paneKey)
+          return
+        }
+        const panes = managerRef.current?.getPanes() ?? []
+        const activeLeafId = managerRef.current?.getActivePane()?.leafId ?? null
+        const currentChatLeafId = chatLeafIdRef.current
+        applyNativeChatLeafRoute(
+          resolveNativeChatLeafRoute({
+            isChatViewMode: isChatViewModeRef.current,
+            chatLeafId: currentChatLeafId,
+            activeLeafId,
+            chatLeafStillMounted: panes.some((pane) => pane.leafId === currentChatLeafId),
+            activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId),
+            chatLeafHasConfirmedAgentExit: true,
+            suppressExitChat: false
+          })
+        )
+      }, remainingMs)
+    },
+    [applyNativeChatLeafRoute, isChatEligibleForLeaf, resolveTitleAgentForLeaf]
+  )
   const handleConfirmedAgentExit = useCallback(
     (leafId: string): void => {
       if (leafId !== chatLeafId) {
@@ -746,18 +799,14 @@ export default function TerminalPane({
           paneKey
         })
         // Why: re-evaluate after grace so a genuine exit is not stuck forever.
+        scheduleDeferredConfirmedAgentExit(leafId, paneKey)
+      } else {
+        // Why: a live confirmed exit supersedes any pending deferred recheck.
+        confirmedExitGenerationRef.current += 1
         if (pendingConfirmedExitTimerRef.current) {
           clearTimeout(pendingConfirmedExitTimerRef.current)
-        }
-        // Why: pending sends have no fixed end — fall back to the full grace.
-        const remainingMs = Math.max(
-          1,
-          getNativeChatExitSuppressRemainingMs(paneKey) || NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
-        )
-        pendingConfirmedExitTimerRef.current = setTimeout(() => {
           pendingConfirmedExitTimerRef.current = null
-          onAgentExitedRef.current(leafId)
-        }, remainingMs)
+        }
       }
       applyNativeChatLeafRoute(
         resolveNativeChatLeafRoute({
@@ -771,14 +820,34 @@ export default function TerminalPane({
         })
       )
     },
-    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode, tabId]
+    [
+      applyNativeChatLeafRoute,
+      chatLeafId,
+      isChatEligibleForLeaf,
+      isChatViewMode,
+      scheduleDeferredConfirmedAgentExit,
+      tabId
+    ]
   )
+  // Why: cancel deferred exit when the title shows a live agent again mid-grace.
+  useEffect(() => {
+    if (!chatLeafId || resolveTitleAgentForLeaf(chatLeafId) == null) {
+      return
+    }
+    if (!pendingConfirmedExitTimerRef.current) {
+      return
+    }
+    confirmedExitGenerationRef.current += 1
+    clearTimeout(pendingConfirmedExitTimerRef.current)
+    pendingConfirmedExitTimerRef.current = null
+  }, [chatLeafId, resolveTitleAgentForLeaf, runtimePaneTitlesByPaneId, terminalTab?.title])
   useEffect(() => {
     // Why: transport callbacks must observe only committed chat ownership; render work can be replayed/discarded under concurrent React.
     onAgentExitedRef.current = handleConfirmedAgentExit
   }, [handleConfirmedAgentExit])
   useEffect(() => {
     return () => {
+      confirmedExitGenerationRef.current += 1
       if (pendingConfirmedExitTimerRef.current) {
         clearTimeout(pendingConfirmedExitTimerRef.current)
         pendingConfirmedExitTimerRef.current = null

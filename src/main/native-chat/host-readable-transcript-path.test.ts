@@ -22,14 +22,36 @@ describe('isGuestAbsoluteLinuxPath', () => {
 })
 
 describe('resolveHostReadableTranscriptPath', () => {
-  it('returns the path unchanged when it already exists', () => {
+  it('returns a pre-existing host path unchanged (non-guest forms)', () => {
     expect(
-      resolveHostReadableTranscriptPath('/already/there.jsonl', {
+      resolveHostReadableTranscriptPath('C:\\Users\\ada\\rollout.jsonl', {
         platform: 'win32',
-        pathExists: (candidate) => candidate === '/already/there.jsonl',
+        pathExists: (candidate) => candidate === 'C:\\Users\\ada\\rollout.jsonl',
         listDistros: () => ['Ubuntu']
       })
-    ).toBe('/already/there.jsonl')
+    ).toBe('C:\\Users\\ada\\rollout.jsonl')
+  })
+
+  it('does not treat a colliding local Windows path as a guest Linux transcript', () => {
+    // Why: Node on Windows can resolve `/exists` as `C:\exists`; guest paths
+    // must skip the raw probe and only accept a real WSL UNC translation.
+    const linux = '/exists'
+    const unc = '\\\\wsl.localhost\\Ubuntu\\exists'
+    const seen: string[] = []
+    expect(
+      resolveHostReadableTranscriptPath(linux, {
+        platform: 'win32',
+        pathExists: (candidate) => {
+          seen.push(candidate)
+          // Local drive collision would exist, but must not win over WSL mapping.
+          return candidate === 'C:\\exists' || candidate === unc || candidate === linux
+        },
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toBe(unc)
+    expect(seen).not.toContain(linux)
+    expect(seen).toContain(unc)
   })
 
   it('translates a missing Linux path to a readable WSL UNC on Windows', () => {
@@ -67,9 +89,8 @@ describe('resolveHostReadableTranscriptPath', () => {
             : '\\\\wsl.localhost\\Debian\\home\\other'
       })
     ).toBe(ubuntuUnc)
-    // Why: Ubuntu home matches the path, so the first probe after the raw miss
-    // must be Ubuntu (early-return means Debian is never opened).
-    expect(seen).toEqual([linux, ubuntuUnc])
+    // Why: guest Linux paths skip the raw probe on Windows; Ubuntu home ranks first.
+    expect(seen).toEqual([ubuntuUnc])
   })
 
   it('returns null when no distro maps to an existing path', () => {
