@@ -28,10 +28,16 @@ export type GpuFallbackMarker = {
   appVersion: string
   electronVersion: string
   platform: 'win32'
+  /** When set, the user was already told software GPU is active for this marker. */
+  userNotifiedAt?: number
 }
 
 function markerPath(userDataPath: string): string {
   return join(userDataPath, GPU_FALLBACK_MARKER_FILE)
+}
+
+function readOptionalFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 export function readGpuFallbackMarker(userDataPath: string): GpuFallbackMarker | null {
@@ -53,13 +59,15 @@ export function readGpuFallbackMarker(userDataPath: string): GpuFallbackMarker |
     ) {
       return null
     }
+    const userNotifiedAt = readOptionalFiniteNumber(parsed.userNotifiedAt)
     return {
       schemeVersion: GPU_FALLBACK_SCHEME_VERSION,
       engagedAt: parsed.engagedAt,
       crashesInWindow: parsed.crashesInWindow,
       appVersion: parsed.appVersion,
       electronVersion: parsed.electronVersion,
-      platform: parsed.platform
+      platform: parsed.platform,
+      ...(userNotifiedAt !== undefined ? { userNotifiedAt } : {})
     }
   } catch {
     // missing or corrupt means no fallback requested
@@ -69,18 +77,48 @@ export function readGpuFallbackMarker(userDataPath: string): GpuFallbackMarker |
 
 export function writeGpuFallbackMarker(
   userDataPath: string,
-  info: { engagedAt: number; crashesInWindow: number },
+  info: { engagedAt: number; crashesInWindow: number; userNotifiedAt?: number },
   environment: WindowsGpuFallbackEnvironment
 ): void {
+  const userNotifiedAt = readOptionalFiniteNumber(info.userNotifiedAt)
   const marker: GpuFallbackMarker = {
     schemeVersion: GPU_FALLBACK_SCHEME_VERSION,
     engagedAt: info.engagedAt,
     crashesInWindow: info.crashesInWindow,
     appVersion: environment.appVersion,
     electronVersion: environment.electronVersion,
-    platform: 'win32'
+    platform: 'win32',
+    ...(userNotifiedAt !== undefined ? { userNotifiedAt } : {})
   }
   writeFileSync(markerPath(userDataPath), JSON.stringify(marker))
+}
+
+/** Persist that the software-GPU notice was shown for the active sticky marker. */
+export function markGpuFallbackUserNotified(
+  userDataPath: string,
+  notifiedAt: number = Date.now()
+): boolean {
+  const marker = readGpuFallbackMarker(userDataPath)
+  if (!marker) {
+    return false
+  }
+  if (readOptionalFiniteNumber(marker.userNotifiedAt) !== undefined) {
+    return true
+  }
+  writeGpuFallbackMarker(
+    userDataPath,
+    {
+      engagedAt: marker.engagedAt,
+      crashesInWindow: marker.crashesInWindow,
+      userNotifiedAt: notifiedAt
+    },
+    {
+      appVersion: marker.appVersion,
+      electronVersion: marker.electronVersion,
+      platform: 'win32'
+    }
+  )
+  return true
 }
 
 export function clearGpuFallbackMarker(userDataPath: string): void {
