@@ -36,6 +36,7 @@ describe('resolveMainWindowChromeOptions (#8797)', () => {
     ).toEqual({
       backgroundColor: '#00000000',
       platformBlurOptions: {
+        transparent: true,
         backgroundMaterial: 'acrylic'
       }
     })

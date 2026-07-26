@@ -49,6 +49,17 @@ describe('#8797 macOS window blur + background opacity', () => {
     expect(chrome.backgroundColor).toBe('#00000000')
   })
 
+  it('does not cover Windows acrylic with an opaque BrowserWindow fill', () => {
+    const chrome = resolveMainWindowChromeOptions({
+      platform: 'win32',
+      blur: true,
+      dark: true
+    })
+    expect(chrome.platformBlurOptions.backgroundMaterial).toBe('acrylic')
+    expect(chrome.platformBlurOptions.transparent).toBe(true)
+    expect(chrome.backgroundColor).toBe('#00000000')
+  })
+
   it('still applies terminalBackgroundOpacity to the xterm theme rgba', () => {
     const theme = composeActiveTerminalTheme(
       { background: '#0a0a0a', foreground: '#ffffff' },

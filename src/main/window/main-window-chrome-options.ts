@@ -49,6 +49,9 @@ export function resolveMainWindowChromeOptions(input: {
     return {
       backgroundColor: '#00000000',
       platformBlurOptions: {
+        // Why: acrylic needs an alpha-capable window surface; without transparent
+        // the material fails to composite under titleBarStyle:'hidden'.
+        transparent: true,
         backgroundMaterial: 'acrylic'
       }
     }
