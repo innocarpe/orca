@@ -1457,6 +1457,18 @@ describe('AgentBrowserBridge', () => {
     )
     expect(closeCall).toBeTruthy()
     expect(closeCall![1]).toEqual(['--session', 'orca-tab-tab-1', 'close'])
+    // Why: console-subsystem agent-browser must not flash a conhost on Windows (#10488).
+    expect(closeCall![2]).toEqual(expect.objectContaining({ windowsHide: true }))
+  })
+
+  it('hides the agent-browser console window on Windows for ordinary commands', async () => {
+    succeedWith({ snapshot: 'tree' })
+    await bridge.snapshot()
+
+    const snapshotCall = execFileMock.mock.calls.find((call: unknown[]) =>
+      (call[1] as string[]).includes('snapshot')
+    )
+    expect(snapshotCall?.[2]).toEqual(expect.objectContaining({ windowsHide: true }))
   })
 
   it('repairs per-worktree active routing when the active tab closes', async () => {
