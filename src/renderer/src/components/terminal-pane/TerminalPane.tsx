@@ -35,7 +35,6 @@ import {
   selectRuntimeAwareSshTargetRemoved
 } from '@/store/slices/runtime-environment-ssh'
 import { hydrateRuntimeEnvironmentSshState } from '@/runtime/runtime-environment-ssh-state'
-import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 import { handleInternalTerminalFileDrop } from './terminal-drop-handler'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import {
@@ -57,11 +56,17 @@ import { useEffectiveMacOptionAsAlt } from '@/lib/keyboard-layout/use-effective-
 import { useTerminalFontZoom } from './useTerminalFontZoom'
 import CloseTerminalDialog, { type CloseTerminalDialogCopyKind } from './CloseTerminalDialog'
 import { MobileDriverOverlay } from './MobileDriverOverlay'
-import { TerminalErrorToast } from './TerminalErrorToast'
+import { stripSshReconnectOwnedErrorLines, TerminalErrorToast } from './TerminalErrorToast'
 import { TerminalSessionStateSaveFailureDialog } from './TerminalSessionStateSaveFailureDialog'
 import TerminalContextMenu from './TerminalContextMenu'
 import TerminalPaneHeaderOverlay from './TerminalPaneHeaderOverlay'
 import NativeChatView from '../native-chat/NativeChatView'
+import { shouldSuppressNativeChatExitForPane } from '../native-chat/native-chat-pending'
+import {
+  getNativeChatExitSuppressRemainingMs,
+  NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
+} from '../native-chat/native-chat-exit-suppress'
+import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
 import { TerminalAgentSessionForkDialog } from './TerminalAgentSessionForkDialog'
 import { AgentSessionContinuationDialog } from '@/components/agent-session-continuation/AgentSessionContinuationDialog'
@@ -125,8 +130,13 @@ import {
   closeWebRuntimeTerminal,
   updateWebRuntimePaneLayout
 } from '@/runtime/web-runtime-session'
-import { isPrimarySelectionEnabled, readPrimarySelectionText } from '@/lib/primary-selection'
+import {
+  armPrimarySelectionNativePasteSuppression,
+  isPrimarySelectionEnabled,
+  readPrimarySelectionText
+} from '@/lib/primary-selection'
 import { APP_MENU_PASTE_EVENT } from '@/lib/app-menu-paste'
+import { CODEX_ACCOUNT_RESTART_STARTUP } from '@/lib/codex-session-restart'
 import { WORKSPACE_FILE_PATH_MIME, WORKSPACE_FILE_PATHS_MIME } from '@/lib/workspace-file-drag'
 import { isTerminalSessionStateSaveFailure } from '../../../../shared/terminal-session-state-save-failure'
 import { isTerminalZeroDimensionsDiagnostic } from '../../../../shared/terminal-zero-dimensions-diagnostic'
@@ -154,6 +164,15 @@ import {
 } from '@/components/terminal-quick-commands/TerminalQuickCommandDialog'
 import { keybindingMatchesAction } from '../../../../shared/keybindings'
 import { pasteTerminalClipboard } from './terminal-clipboard-paste'
+import {
+  firesNativePasteEvent,
+  getClipboardEventText,
+  isClipboardEventPasteRequired
+} from './terminal-clipboard-event-paste'
+import {
+  assertClipboardTextWithinLimitWithYield,
+  type ReadClipboardTextOptions
+} from '../../../../shared/clipboard-text'
 import { scheduleImagePasteWebglAtlasRecovery } from './terminal-webgl-atlas-recovery'
 import { restoreTerminalFitToDesktop, restoreTerminalFitsToDesktop } from './terminal-fit-restore'
 import { useVisibleTerminalTabClaim } from './use-visible-terminal-tab-claim'
@@ -330,11 +349,8 @@ export default function TerminalPane({
     isNativeChatTranscriptLocalReadable(getConnectionIdFromState(store, worktreeId))
   )
   // Which machine's SSH store this target belongs to: a remote server's per-environment bucket, or null for this machine's local SSH maps.
-  // Why: paired web clients force null — they mirror their one host through the local maps, not an explicit environment bucket.
   const sshReconnectEnvironmentId = useAppStore((store) =>
-    sshReconnectTargetId && !isPairedWebClientWindow()
-      ? getExplicitRuntimeEnvironmentIdForWorktree(store, worktreeId)
-      : null
+    sshReconnectTargetId ? getExplicitRuntimeEnvironmentIdForWorktree(store, worktreeId) : null
   )
   const sshReconnectStatus = useAppStore((store) =>
     sshReconnectTargetId
@@ -697,12 +713,18 @@ export default function TerminalPane({
       resolveTitleAgentForLeaf
     ]
   )
+  const pendingConfirmedExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const applyNativeChatLeafRoute = useCallback(
     (route: NativeChatLeafRoute): void => {
       if (route.chatLeafId !== chatLeafId) {
         setChatLeafId(route.chatLeafId)
       }
       if (route.exitChat && unifiedTabId) {
+        // Why: exit routes null the leaf — record the pre-route owner for triage (#10098).
+        recordRendererCrashBreadcrumb('native_chat_exit_to_terminal', {
+          reason: 'leaf_route',
+          chatLeafId
+        })
         // Why: event/effect replay must not flip terminal mode back to chat.
         setTabViewMode(unifiedTabId, 'terminal')
       }
@@ -716,6 +738,27 @@ export default function TerminalPane({
       }
       const panes = managerRef.current?.getPanes() ?? []
       const activeLeafId = managerRef.current?.getActivePane()?.leafId ?? null
+      const paneKey = makePaneKey(tabId, leafId)
+      const suppressExitChat = shouldSuppressNativeChatExitForPane(paneKey)
+      if (suppressExitChat) {
+        recordRendererCrashBreadcrumb('native_chat_agent_exit_suppressed', {
+          reason: 'recent_chat_send',
+          paneKey
+        })
+        // Why: re-evaluate after grace so a genuine exit is not stuck forever.
+        if (pendingConfirmedExitTimerRef.current) {
+          clearTimeout(pendingConfirmedExitTimerRef.current)
+        }
+        // Why: pending sends have no fixed end — fall back to the full grace.
+        const remainingMs = Math.max(
+          1,
+          getNativeChatExitSuppressRemainingMs(paneKey) || NATIVE_CHAT_EXIT_SUPPRESS_AFTER_SEND_MS
+        )
+        pendingConfirmedExitTimerRef.current = setTimeout(() => {
+          pendingConfirmedExitTimerRef.current = null
+          onAgentExitedRef.current(leafId)
+        }, remainingMs)
+      }
       applyNativeChatLeafRoute(
         resolveNativeChatLeafRoute({
           isChatViewMode,
@@ -723,16 +766,25 @@ export default function TerminalPane({
           activeLeafId,
           chatLeafStillMounted: panes.some((pane) => pane.leafId === chatLeafId),
           activeLeafIsEligible: isChatEligibleForLeaf(activeLeafId),
-          chatLeafHasConfirmedAgentExit: true
+          chatLeafHasConfirmedAgentExit: true,
+          suppressExitChat
         })
       )
     },
-    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode]
+    [applyNativeChatLeafRoute, chatLeafId, isChatEligibleForLeaf, isChatViewMode, tabId]
   )
   useEffect(() => {
     // Why: transport callbacks must observe only committed chat ownership; render work can be replayed/discarded under concurrent React.
     onAgentExitedRef.current = handleConfirmedAgentExit
   }, [handleConfirmedAgentExit])
+  useEffect(() => {
+    return () => {
+      if (pendingConfirmedExitTimerRef.current) {
+        clearTimeout(pendingConfirmedExitTimerRef.current)
+        pendingConfirmedExitTimerRef.current = null
+      }
+    }
+  }, [])
   const canToggleChatForLeaf = useCallback(
     (leafId: string | null): boolean => {
       // Scope the "always allow toggling back" rule to the leaf showing chat; must not make an unsupported sibling look eligible.
@@ -1620,7 +1672,7 @@ export default function TerminalPane({
         tabId,
         worktreeId,
         cwd,
-        startup: { command: 'codex' },
+        startup: CODEX_ACCOUNT_RESTART_STARTUP,
         paneTransportsRef,
         paneMode2031Ref,
         paneKittyKeyboardModesRef,
@@ -2005,7 +2057,9 @@ export default function TerminalPane({
 
     const pasteFromClipboard = (
       pane: ManagedPane,
-      source: Extract<TerminalPasteSource, 'keyboard' | 'paste-event'>
+      source: Extract<TerminalPasteSource, 'keyboard' | 'paste-event'>,
+      readClipboardText: (options?: ReadClipboardTextOptions) => Promise<string> = window.api.ui
+        .readClipboardText
     ): void => {
       const connectionId = getConnectionId(worktreeId) ?? null
       const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(
@@ -2014,7 +2068,7 @@ export default function TerminalPane({
       )
       const activeElementAtDispatch = document.activeElement
       void pasteTerminalClipboard({
-        readClipboardText: window.api.ui.readClipboardText,
+        readClipboardText,
         saveClipboardImageAsTempFile: window.api.ui.saveClipboardImageAsTempFile,
         connectionId,
         runtimeEnvironmentId,
@@ -2068,6 +2122,13 @@ export default function TerminalPane({
         }
         return
       }
+      if (isClipboardEventPasteRequired() && firesNativePasteEvent(e, isMac)) {
+        // Why: without navigator.clipboard the chord's native paste event is the
+        // only clipboard access — let its default fire and handle it in onPaste.
+        // A remapped chord (e.g. Ctrl+Y) fires no paste event, so keep consuming it
+        // below instead of letting xterm encode it to the PTY as a raw control char.
+        return
+      }
       e.preventDefault()
       e.stopPropagation()
       const manager = managerRef.current
@@ -2116,6 +2177,13 @@ export default function TerminalPane({
       }
       const pane = manager.getActivePane() ?? manager.getPanes()[0]
       if (!pane) {
+        return
+      }
+      if (isClipboardEventPasteRequired()) {
+        const eventText = getClipboardEventText(e)
+        pasteFromClipboard(pane, 'paste-event', (options) =>
+          assertClipboardTextWithinLimitWithYield(eventText, options)
+        )
         return
       }
       pasteFromClipboard(pane, 'paste-event')
@@ -2631,6 +2699,10 @@ export default function TerminalPane({
       }
       event.preventDefault()
       event.stopPropagation()
+      // Why: preventDefault on mousedown does not stop Chromium's native
+      // middle-click paste follow-up, so arm the shared window to swallow it and
+      // avoid inserting text into the PTY twice.
+      armPrimarySelectionNativePasteSuppression()
       clickedPane.terminal.focus()
       void readPrimarySelectionText().then(async (text) => {
         if (!text) {
@@ -2704,6 +2776,10 @@ export default function TerminalPane({
       ) {
         event.preventDefault()
         event.stopPropagation()
+        // Why: auxclick fires at button release, when Chromium's native paste is
+        // imminent; re-arm here so a slow release past the mousedown window still
+        // swallows the follow-up paste.
+        armPrimarySelectionNativePasteSuppression()
       }
     },
     [getPrimarySelectionMiddleClickPane]
@@ -2783,6 +2859,18 @@ export default function TerminalPane({
     sshReconnectStatus &&
     sshReconnectStatus !== 'connected'
   )
+  // Why: while the reconnect banner owns recovery, strip only the SSH-owned lines from the
+  // (possibly aggregated) error, so a later successful connect can't flash the raw ssh:connect
+  // failure and any unrelated error still surfaces after reconnect.
+  useEffect(() => {
+    if (!showSshReconnectOverlay || terminalError == null) {
+      return
+    }
+    const kept = stripSshReconnectOwnedErrorLines(terminalError)
+    if (kept !== terminalError) {
+      setTerminalError(kept)
+    }
+  }, [showSshReconnectOverlay, terminalError])
   const menuPaneHasCustomTitle =
     contextMenu.menuPaneId !== null && Boolean(paneTitles[contextMenu.menuPaneId])
   const chatLeafStillMounted = chatLeafId
@@ -2893,23 +2981,32 @@ export default function TerminalPane({
           })
         }}
       />
-      {terminalError && isActive && (
+      {/* Why: the reconnect banner already owns SSH recovery UX; the z-50 error
+          toast was painting over it (same bottom strip) with the raw ssh:connect failure. */}
+      {terminalError && isActive && !showSshReconnectOverlay ? (
         <TerminalErrorToast
           error={terminalError}
           onDismiss={() => setTerminalError(null)}
           onRestartDaemon={() => daemonActions.setPending('restart')}
         />
-      )}
-      {showSshReconnectOverlay && sshReconnectTargetId && sshReconnectStatus ? (
-        <TerminalSshReconnectOverlay
-          targetId={sshReconnectTargetId}
-          targetLabel={sshReconnectTargetLabel}
-          status={sshReconnectStatus}
-          targetRemoved={sshReconnectTargetRemoved}
-          worktreeId={worktreeId}
-          sshOwnerEnvironmentId={sshReconnectEnvironmentId}
-        />
       ) : null}
+      {/* Why: portal into the pane so the banner stacks above the xterm canvas (sibling mount painted under WebGL). */}
+      {showSshReconnectOverlay && sshReconnectTargetId && sshReconnectStatus
+        ? managedPanes.map((pane) =>
+            createPortal(
+              <TerminalSshReconnectOverlay
+                targetId={sshReconnectTargetId}
+                targetLabel={sshReconnectTargetLabel}
+                status={sshReconnectStatus}
+                targetRemoved={sshReconnectTargetRemoved}
+                worktreeId={worktreeId}
+                sshOwnerEnvironmentId={sshReconnectEnvironmentId}
+              />,
+              pane.container,
+              `ssh-reconnect-${pane.id}`
+            )
+          )
+        : null}
       <DaemonActionDialog api={daemonActions} />
       {isActive && (
         <TerminalSessionStateSaveFailureDialog
