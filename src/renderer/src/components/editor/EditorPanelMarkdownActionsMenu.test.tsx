@@ -3,7 +3,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EditorPanelMarkdownActionsMenu } from './EditorPanelMarkdownActionsMenu'
 
-const checkboxItems = vi.hoisted(() => ({ list: [] as { checked?: boolean; label: string }[] }))
+const checkboxItems = vi.hoisted(() => ({
+  list: [] as {
+    checked?: boolean
+    label: string
+    onCheckedChange?: (checked: boolean) => void
+  }[]
+}))
 
 vi.mock('@/components/ui/dropdown-menu', async () => {
   const React_ = await import('react')
@@ -17,15 +23,17 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     DropdownMenuTrigger: passthrough,
     DropdownMenuCheckboxItem: ({
       checked,
-      children
+      children,
+      onCheckedChange
     }: {
       checked?: boolean
       children?: React.ReactNode
+      onCheckedChange?: (checked: boolean) => void
     }) => {
       const label = React_.Children.toArray(children)
         .filter((child): child is string => typeof child === 'string')
         .join('')
-      checkboxItems.list.push({ checked, label })
+      checkboxItems.list.push({ checked, label, onCheckedChange })
       return React_.createElement(React_.Fragment, null, children)
     }
   }
@@ -39,6 +47,8 @@ describe('EditorPanelMarkdownActionsMenu', () => {
   })
 
   it('shows Word Wrap for normal file tabs using editorWordWrap (#9974)', () => {
+    const onToggleDiffWordWrap = vi.fn()
+    const onToggleEditorWordWrap = vi.fn()
     renderToStaticMarkup(
       React.createElement(EditorPanelMarkdownActionsMenu, {
         isMarkdown: false,
@@ -49,17 +59,23 @@ describe('EditorPanelMarkdownActionsMenu', () => {
         canExportMarkdownToPdf: false,
         canShowMarkdownFrontmatterToggle: false,
         markdownFrontmatterVisible: false,
-        onToggleDiffWordWrap: () => {},
-        onToggleEditorWordWrap: () => {},
+        onToggleDiffWordWrap,
+        onToggleEditorWordWrap,
         onToggleMarkdownFrontmatter: () => {},
         onExportMarkdownToPdf: () => {}
       })
     )
 
-    expect(checkboxItems.list).toEqual([{ checked: true, label: 'Word Wrap' }])
+    expect(checkboxItems.list).toHaveLength(1)
+    expect(checkboxItems.list[0]).toMatchObject({ checked: true, label: 'Word Wrap' })
+    checkboxItems.list[0]?.onCheckedChange?.(false)
+    expect(onToggleEditorWordWrap).toHaveBeenCalledOnce()
+    expect(onToggleDiffWordWrap).not.toHaveBeenCalled()
   })
 
   it('binds Word Wrap to diffWordWrap on diff surfaces', () => {
+    const onToggleDiffWordWrap = vi.fn()
+    const onToggleEditorWordWrap = vi.fn()
     renderToStaticMarkup(
       React.createElement(EditorPanelMarkdownActionsMenu, {
         isMarkdown: false,
@@ -70,13 +86,17 @@ describe('EditorPanelMarkdownActionsMenu', () => {
         canExportMarkdownToPdf: false,
         canShowMarkdownFrontmatterToggle: false,
         markdownFrontmatterVisible: false,
-        onToggleDiffWordWrap: () => {},
-        onToggleEditorWordWrap: () => {},
+        onToggleDiffWordWrap,
+        onToggleEditorWordWrap,
         onToggleMarkdownFrontmatter: () => {},
         onExportMarkdownToPdf: () => {}
       })
     )
 
-    expect(checkboxItems.list).toEqual([{ checked: true, label: 'Word Wrap' }])
+    expect(checkboxItems.list).toHaveLength(1)
+    expect(checkboxItems.list[0]).toMatchObject({ checked: true, label: 'Word Wrap' })
+    checkboxItems.list[0]?.onCheckedChange?.(false)
+    expect(onToggleDiffWordWrap).toHaveBeenCalledOnce()
+    expect(onToggleEditorWordWrap).not.toHaveBeenCalled()
   })
 })
