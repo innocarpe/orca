@@ -235,15 +235,18 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(function
   }, [postMessage, textScale])
 
   // Why: settings toggle must dim already-mounted terminals without a reload.
+  // Subscribe first so a live toggle cannot be overridden by a stale load result.
   useEffect(() => {
     let cancelled = false
+    let receivedSubscriptionUpdate = false
+    const unsubscribe = subscribeTerminalDimDirListingSizes((enabled) => {
+      receivedSubscriptionUpdate = true
+      postMessage({ type: 'set-dim-dir-listing-sizes', enabled })
+    })
     void loadTerminalDimDirListingSizes().then((enabled) => {
-      if (!cancelled) {
+      if (!cancelled && !receivedSubscriptionUpdate) {
         postMessage({ type: 'set-dim-dir-listing-sizes', enabled })
       }
-    })
-    const unsubscribe = subscribeTerminalDimDirListingSizes((enabled) => {
-      postMessage({ type: 'set-dim-dir-listing-sizes', enabled })
     })
     return () => {
       cancelled = true

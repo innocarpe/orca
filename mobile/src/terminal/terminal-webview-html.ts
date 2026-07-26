@@ -960,6 +960,8 @@ ${TERMINAL_WEBGL_RECOVERY_JS}
       applyFitScale('reset-zoom-msg');
     } else if (msg.type === 'set-theme') {
       applyTerminalTheme(msg.terminalTheme);
+      // Why: size-dim overlays use the active theme background; re-tint after theme swaps.
+      try { scheduleSizeDimRefresh(); } catch (e) {}
     } else if (msg.type === 'set-dim-dir-listing-sizes') {
       setDimDirListingSizes(!!msg.enabled);
     } else if (msg.type === 'cancel-select') {
