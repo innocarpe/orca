@@ -123,8 +123,8 @@ describe('handleOsc52ClipboardRequest', () => {
   })
 
   it('never answers a clipboard query even with writes enabled', () => {
-    // Why: enabled is now the default, so the query block has to hold in the
-    // configuration nearly every user runs — not just the opted-out one.
+    // A guard, not coverage of this change: queries were already refused. It matters
+    // more now only because default-on makes `allowClipboardWrite: true` the norm.
     const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
 
     for (const query of ['c;?', ';?']) {
@@ -134,6 +134,27 @@ describe('handleOsc52ClipboardRequest', () => {
     }
 
     expect(writeClipboardText).not.toHaveBeenCalled()
+  })
+
+  it('routes every selection kind to the system clipboard, including bare PRIMARY', () => {
+    // Pins today's behavior rather than endorsing it: `selections` is parsed but never
+    // consulted, so a `p`-only write lands in CLIPBOARD. Routing it to the PRIMARY sink
+    // on Linux is a live question — this test is what makes that a deliberate break.
+    const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+
+    for (const selections of ['p', 'q', 's0', 'pc']) {
+      handleOsc52ClipboardRequest(`${selections};${b64(`via ${selections}`)}`, {
+        allowClipboardWrite: true,
+        writeClipboardText
+      })
+    }
+
+    expect(writeClipboardText.mock.calls.map(([text]) => text)).toEqual([
+      'via p',
+      'via q',
+      'via s0',
+      'via pc'
+    ])
   })
 
   it('does not surface blocked queries because Orca must not answer them', () => {
@@ -150,9 +171,17 @@ describe('handleOsc52ClipboardRequest', () => {
 })
 
 describe('createOsc52OscHandler', () => {
-  function setup(overrides: { settingEnabled?: boolean | null; replaying?: boolean } = {}) {
+  function setup(
+    overrides: {
+      settingEnabled?: boolean | null
+      replaying?: boolean
+      writeClipboardText?: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>
+    } = {}
+  ) {
     const settingEnabled = 'settingEnabled' in overrides ? overrides.settingEnabled : true
-    const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    const writeClipboardText =
+      overrides.writeClipboardText ??
+      vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
     const showBlockedWriteToast = vi.fn()
     const handler = createOsc52OscHandler({
       getSettingEnabled: () => settingEnabled,
@@ -210,6 +239,83 @@ describe('createOsc52OscHandler', () => {
     handler(`c;${b64('after')}`)
     await Promise.resolve()
     expect(writeClipboardText).toHaveBeenCalledExactlyOnceWith('after')
+  })
+
+  // The coalesced write runs in a microtask, outside the parser handler xterm guards, so
+  // a bridge failure there escapes the pane as an uncaught error instead of a failed copy.
+  it.each([
+    [
+      // Dropping the try/catch turns this into an uncaught exception that fails the run.
+      'a clipboard bridge that throws synchronously',
+      vi.fn<(text: string) => Promise<void>>(() => {
+        throw new Error('clipboard unavailable')
+      })
+    ],
+    [
+      // Not revert-proof on its own — dropping the `?.` turns this into a TypeError the
+      // try/catch also swallows. It pins the behavior: a bad bridge must not crash the pane.
+      'a preload whose bridge returns nothing',
+      vi.fn<(text: string) => Promise<void>>(() => undefined as unknown as Promise<void>)
+    ]
+  ])('survives %s', async (_label, writeClipboardText) => {
+    const { handler } = setup({ writeClipboardText })
+
+    expect(handler(`c;${b64('copy me')}`)).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(writeClipboardText).toHaveBeenCalledWith('copy me')
+  })
+
+  it('swallows a rejected clipboard write rather than leaking an unhandled rejection', async () => {
+    // Why the listener: an unhandled rejection here does not fail this suite on its own,
+    // so without it the `.catch` on the coalesced write is deletable with nothing going red.
+    const unhandled: unknown[] = []
+    const record = (reason: unknown): void => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', record)
+    const written: string[] = []
+    try {
+      // Why not vi.fn here: the spy tracks settled results, which marks the rejection
+      // handled and hides exactly the leak this test exists to catch.
+      const handler = createOsc52OscHandler({
+        getSettingEnabled: () => true,
+        getReplaying: () => false,
+        writeClipboardText: (text) => {
+          written.push(text)
+          return Promise.reject(new Error('denied by OS'))
+        },
+        showBlockedWriteToast: vi.fn()
+      })
+
+      expect(handler(`c;${b64('copy me')}`)).toBe(true)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    } finally {
+      process.off('unhandledRejection', record)
+    }
+
+    expect(written).toEqual(['copy me'])
+    expect(unhandled).toEqual([])
+  })
+
+  it('keeps coalescing after a failed write instead of wedging the pane', async () => {
+    // Why: the flush latch is reset before the write, so a throw must not strand it —
+    // otherwise the first failure silently kills clipboard copy for the session.
+    const writeClipboardText = vi
+      .fn<(text: string) => Promise<void>>()
+      .mockImplementationOnce(() => {
+        throw new Error('clipboard unavailable')
+      })
+      .mockResolvedValue(undefined)
+    const { handler } = setup({ writeClipboardText })
+
+    handler(`c;${b64('first')}`)
+    await Promise.resolve()
+    handler(`c;${b64('second')}`)
+    await Promise.resolve()
+
+    expect(writeClipboardText).toHaveBeenNthCalledWith(2, 'second')
   })
 
   it('drops a replayed write and stays silent about it', async () => {

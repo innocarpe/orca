@@ -36,12 +36,22 @@ export function useOsc52ClipboardDefaultOnNotice(persistedUIReady: boolean): voi
           'Zellij, tmux, Neovim and other terminal programs can now copy to your clipboard. Turn it off in Terminal settings.'
         ),
         duration: 15_000,
+        // Why consume on close rather than on enqueue: this is the profile's one notice that
+        // a security posture changed under it, and the flag can never re-arm once the settings
+        // stamp lands. Clearing at enqueue spends it on launches where nothing was ever seen —
+        // a quit inside the 15s, a crash in the gap. Clearing on close costs at most a repeat
+        // next launch, which the user ends by dismissing it.
+        onAutoClose: clearNotice,
+        onDismiss: clearNotice,
         action: {
           label: translate(
             'auto.components.terminal.pane.osc52.clipboard.default.on.notice.action',
             'Open Setting'
           ),
           onClick: () => {
+            // Why clear here too: sonner's action path deletes the toast without firing
+            // onDismiss, so acting on the notice would otherwise leave it armed.
+            clearNotice()
             const store = useAppStore.getState()
             store.setSettingsSearchQuery('')
             store.openSettingsTarget({
@@ -54,9 +64,5 @@ export function useOsc52ClipboardDefaultOnNotice(persistedUIReady: boolean): voi
         }
       }
     )
-    // Why clear after: a throw above would burn the profile's one notice without ever
-    // enqueueing it. The toast is only queued at this point, not painted, so a crash in
-    // the gap still loses it — accepted, since the alternative loses it far more often.
-    clearNotice()
   }, [clearNotice, noticePending, persistedUIReady])
 }

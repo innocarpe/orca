@@ -87,19 +87,24 @@ describe('useOsc52ClipboardDefaultOnNotice', () => {
     document.body.innerHTML = ''
   })
 
-  it('toasts the armed profile and then consumes the notice', async () => {
+  it('toasts the armed profile without spending the notice up front', async () => {
+    // Why not consume on enqueue: quitting inside the toast's 15s would burn the profile's
+    // only notice on a launch where the posture change was never actually communicated.
     await mountProbe(true)
 
     expect(toastInfoMock).toHaveBeenCalledTimes(1)
+    expect(storeState.clearOsc52ClipboardDefaultOnNotice).not.toHaveBeenCalled()
+  })
+
+  it.each(['onAutoClose', 'onDismiss'] as const)('consumes the notice on %s', async (callback) => {
+    await mountProbe(true)
+
+    toastInfoMock.mock.calls[0]?.[1]?.[callback]?.()
+
     expect(storeState.clearOsc52ClipboardDefaultOnNotice).toHaveBeenCalledTimes(1)
-    expect(toastInfoMock.mock.invocationCallOrder[0]).toBeLessThan(
-      storeState.clearOsc52ClipboardDefaultOnNotice.mock.invocationCallOrder[0] ?? Infinity
-    )
   })
 
   it('keeps the notice armed when the toast throws, so it is not burned unshown', async () => {
-    // Why this ordering matters: clearing first spends the profile's only notice on a
-    // launch where nothing was ever displayed, and nothing can re-arm it afterwards.
     toastInfoMock.mockImplementationOnce(() => {
       throw new Error('toast unavailable')
     })
@@ -128,6 +133,9 @@ describe('useOsc52ClipboardDefaultOnNotice', () => {
 
     options.action.onClick()
 
+    // Why assert the clear here: sonner's action path deletes the toast without firing
+    // onDismiss, so acting on the notice would otherwise leave it to re-toast next launch.
+    expect(storeState.clearOsc52ClipboardDefaultOnNotice).toHaveBeenCalledTimes(1)
     expect(storeState.setSettingsSearchQuery).toHaveBeenCalledWith('')
     expect(storeState.openSettingsTarget).toHaveBeenCalledWith({
       pane: 'terminal',
