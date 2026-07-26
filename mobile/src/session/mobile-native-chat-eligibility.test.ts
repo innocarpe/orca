@@ -3,7 +3,8 @@ import type { AgentStatusEntry } from '../../../src/shared/agent-status-types'
 import {
   canShowMobileNativeChat,
   isMobileNativeChatTranscriptReadable,
-  resolveMobileNativeChat
+  resolveMobileNativeChat,
+  shouldShowMobileNativeChatOverlay
 } from './mobile-native-chat-eligibility'
 
 function status(overrides: Partial<AgentStatusEntry> = {}): AgentStatusEntry {
@@ -108,5 +109,25 @@ describe('resolveMobileNativeChat', () => {
   it('canShowMobileNativeChat mirrors resolution', () => {
     expect(canShowMobileNativeChat({ type: 'terminal', launchAgent: 'claude' })).toBe(true)
     expect(canShowMobileNativeChat(null)).toBe(false)
+  })
+
+  // Why: Chat UI without a session id would cover the terminal with a blank
+  // transcript surface; keep the overlay off until the transcript is addressable (#10630).
+  it('only shows the chat overlay once a provider session id is known', () => {
+    expect(shouldShowMobileNativeChatOverlay(null)).toBe(false)
+    expect(
+      shouldShowMobileNativeChatOverlay({
+        agent: 'claude',
+        sessionId: null,
+        transcriptPath: null
+      })
+    ).toBe(false)
+    expect(
+      shouldShowMobileNativeChatOverlay({
+        agent: 'claude',
+        sessionId: 'sess-1',
+        transcriptPath: '/tmp/claude.jsonl'
+      })
+    ).toBe(true)
   })
 })

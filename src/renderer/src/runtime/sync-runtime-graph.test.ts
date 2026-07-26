@@ -434,6 +434,39 @@ describe('getRuntimeMobileSessionSyncKey', () => {
     expect(runtimeMobileSessionSyncKeysEqual(before, after)).toBe(false)
   })
 
+  // Why: Chat UI on mobile keys the transcript on providerSession; same-state
+  // session-id attaches must still invalidate the mobile sync key (#10630).
+  it('changes when providerSession identity attaches on an otherwise identical status', () => {
+    const sharedOverrides = makeSharedOverrides()
+    const paneKey = 'term-1:11111111-1111-4111-8111-111111111111'
+    const beforeAgentStatusByPaneKey = {
+      [paneKey]: makeAgentStatusEntry({ paneKey })
+    }
+    const afterAgentStatusByPaneKey = {
+      [paneKey]: makeAgentStatusEntry({
+        paneKey,
+        providerSession: { key: 'session_id', id: 'claude-session-1' }
+      })
+    }
+
+    const before = getRuntimeMobileSessionSyncKey(
+      makeState({
+        ...sharedOverrides,
+        agentStatusByPaneKey: beforeAgentStatusByPaneKey,
+        agentStatusEpoch: 1
+      })
+    )
+    const after = getRuntimeMobileSessionSyncKey(
+      makeState({
+        ...sharedOverrides,
+        agentStatusByPaneKey: afterAgentStatusByPaneKey,
+        agentStatusEpoch: 1
+      })
+    )
+
+    expect(runtimeMobileSessionSyncKeysEqual(before, after)).toBe(false)
+  })
+
   it('coalesces timestamp-only agent heartbeats inside the same freshness bucket', () => {
     const sharedOverrides = makeSharedOverrides()
     const paneKey = 'term-1:11111111-1111-4111-8111-111111111111'

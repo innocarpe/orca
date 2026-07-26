@@ -13,7 +13,11 @@ import {
   type AskAnswerSelection,
   type AskPrompt
 } from './mobile-native-chat-ask'
-import { type MobileNativeChatTab, resolveMobileNativeChat } from './mobile-native-chat-eligibility'
+import {
+  type MobileNativeChatTab,
+  resolveMobileNativeChat,
+  shouldShowMobileNativeChatOverlay
+} from './mobile-native-chat-eligibility'
 import { detectAgentPermission } from './mobile-native-chat-permission'
 import { parseAgentQuestion } from './mobile-native-chat-question'
 import { openMobileNativeChatFile } from './mobile-native-chat-open-file'
@@ -114,13 +118,14 @@ export function useMobileNativeChatController(args: {
     activeSessionTab && activeSessionTabId && isTabChatView(activeSessionTabId)
       ? resolveMobileNativeChat(activeSessionTab, nativeChatTranscriptIsLocalReadable)
       : null
-  const showNativeChat = activeChatResolution != null
+  const activeChatSessionId = activeChatResolution?.sessionId ?? null
+  // Why: without a provider session id Chat UI cannot subscribe to the transcript;
+  // keep the terminal visible instead of covering it with a permanent blank chat (#10630).
+  const showNativeChat = shouldShowMobileNativeChatOverlay(activeChatResolution)
   const showNativeChatRef = useRef(showNativeChat)
   showNativeChatRef.current = showNativeChat
   const activeChatAgentRef = useRef<string | null>(activeChatResolution?.agent ?? null)
   activeChatAgentRef.current = activeChatResolution?.agent ?? null
-
-  const activeChatSessionId = activeChatResolution?.sessionId ?? null
   const streamIdentity = `${hostId}\0${worktreeId}\0${activeSessionTabId ?? ''}\0${activeChatSessionId ?? ''}\0${activeHandleRef.current ?? ''}`
 
   const nativeChatSession = useMobileNativeChatSession({

@@ -525,7 +525,18 @@ function serializeRuntimeMobileAgentStatusEntry(
     // Why: include so a newly-captured AskUserQuestion prompt re-fires the mobile republish even when no other field changed.
     interactivePrompt: entry.interactivePrompt ?? null,
     lastAssistantMessage: entry.lastAssistantMessage ?? null,
-    interrupted: entry.interrupted ?? null
+    interrupted: entry.interrupted ?? null,
+    // Why: Chat UI on mobile reads the agent transcript via providerSession.id;
+    // omitting it dropped same-state session-id attaches and left chat blank (#10630).
+    providerSession: entry.providerSession
+      ? {
+          key: entry.providerSession.key,
+          id: entry.providerSession.id,
+          ...(entry.providerSession.transcriptPath
+            ? { transcriptPath: entry.providerSession.transcriptPath }
+            : {})
+        }
+      : null
   })
 }
 

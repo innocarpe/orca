@@ -64,3 +64,10 @@ export function canShowMobileNativeChat(
 ): boolean {
   return resolveMobileNativeChat(tab, nativeChatTranscriptIsLocalReadable) !== null
 }
+
+/** Chat overlay only when the transcript is addressable; otherwise keep the terminal visible. */
+export function shouldShowMobileNativeChatOverlay(
+  resolution: MobileNativeChatResolution | null
+): boolean {
+  return resolution != null && resolution.sessionId != null
+}

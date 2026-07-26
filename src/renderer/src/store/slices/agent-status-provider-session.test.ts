@@ -41,6 +41,38 @@ describe('recordAgentProviderSession', () => {
     )
   })
 
+  // Why: mobile Chat UI graph sync is gated on agentStatusEpoch; a late
+  // same-state providerSession attach must bump it so the session id ships (#10630).
+  it('bumps agentStatusEpoch when providerSession identity attaches on a same-state ping', () => {
+    const store = createTestStore()
+    store
+      .getState()
+      .setAgentStatus(
+        'tab-1:leaf-1',
+        { state: 'working', prompt: 'write tests', agentType: 'claude' },
+        'Claude',
+        { updatedAt: 10, stateStartedAt: 10 }
+      )
+    const epochBefore = store.getState().agentStatusEpoch
+
+    store
+      .getState()
+      .setAgentStatus(
+        'tab-1:leaf-1',
+        { state: 'working', prompt: 'write tests', agentType: 'claude' },
+        'Claude',
+        { updatedAt: 11, stateStartedAt: 10 },
+        undefined,
+        { providerSession: { key: 'session_id', id: 'claude-session-1' } }
+      )
+
+    expect(store.getState().agentStatusByPaneKey['tab-1:leaf-1']?.providerSession).toEqual({
+      key: 'session_id',
+      id: 'claude-session-1'
+    })
+    expect(store.getState().agentStatusEpoch).toBeGreaterThan(epochBefore)
+  })
+
   it('uses the session file as part of Pi resume ownership only', () => {
     const base = {
       paneKey: 'tab-1:leaf-1',

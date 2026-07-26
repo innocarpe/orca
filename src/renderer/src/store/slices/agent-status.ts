@@ -1907,8 +1907,17 @@ export const createAgentStatusSlice: StateCreator<AppState, [], [], AgentStatusS
             entry.subagents !== existing.subagents ||
             entry.providerSession !== existing.providerSession ||
             entry.interrupted !== existing.interrupted)
+        // Why: mobile Chat UI needs providerSession identity even on same-state working
+        // pings; without an epoch bump the graph sync can skip the mobile tab republish (#10630).
+        const providerSessionIdentityChanged =
+          (entry.providerSession?.id ?? null) !== (existing?.providerSession?.id ?? null) ||
+          (entry.providerSession?.transcriptPath ?? null) !==
+            (existing?.providerSession?.transcriptPath ?? null)
         const retentionRelevantChange =
-          sortRelevantChange || attributionChanged || doneRetentionFieldsChanged
+          sortRelevantChange ||
+          attributionChanged ||
+          doneRetentionFieldsChanged ||
+          providerSessionIdentityChanged
         // Why: a fresh status means the agent is live again — lift its one-shot retention suppressor.
         // Clone the map only when a suppressor exists, else every high-frequency ping churns the ref.
         const hasSuppressor = paneKey in s.retentionSuppressedPaneKeys
