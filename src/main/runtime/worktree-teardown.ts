@@ -4,6 +4,7 @@ import { listRegisteredPtys } from '../memory/pty-registry'
 import { isPathInsideOrEqual } from '../../shared/cross-platform-path'
 import { splitWorktreeId, splitWorktreeIdForFilesystem } from '../../shared/worktree-id'
 import { mapWithConcurrency } from '../../shared/map-with-concurrency'
+import { terminateWindowsSetupRunnersForWorktreeId } from '../windows-worktree-setup-runner-kill'
 
 // Why: normal inventories still coalesce into one process scan, while a stale
 // or pathological inventory cannot fan out unbounded provider/RPC shutdowns.
@@ -161,6 +162,9 @@ export async function killAllProcessesForWorktree(
       clearStoppedPtyState(ptyId, deps.onPtyStopped)
     }
   }
+
+  // Why: reparented setup-runner.cmd keeps Windows worktree dirs locked after PTY stop (#10629).
+  await terminateWindowsSetupRunnersForWorktreeId(worktreeId, { deadlineMs: deadline })
 
   return result
 }
