@@ -56,7 +56,16 @@ import {
   registerAppMenu,
   rebuildAppMenu
 } from './menu/register-app-menu'
-import { checkForUpdatesFromMenu, isQuittingForUpdate, resolveUpdateInstallMode } from './updater'
+import {
+  checkForRemoteServerUpdate,
+  checkForUpdatesFromMenu,
+  downloadRemoteServerUpdate,
+  getRemoteServerUpdaterSnapshot,
+  installRemoteServerUpdate,
+  isQuittingForUpdate,
+  resolveUpdateInstallMode
+} from './updater'
+import { configureRemoteServerUpdater } from './runtime/remote-server-updater'
 import type { TuiAgent, UpdateCheckOptions } from '../shared/types'
 import { recordUpdaterLifecycle } from './updater-lifecycle-diagnostics'
 import {
@@ -79,11 +88,19 @@ import {
 import { enableRendererHeapHeadroom } from './startup/renderer-heap-headroom'
 import { ensureVirtualDisplayForHeadlessServe } from './startup/ensure-virtual-display'
 import {
+  markGpuFallbackUserNotified,
   readActiveGpuFallbackMarker,
   writeGpuFallbackMarker,
   type GpuFallbackEnvironment,
   type WindowsGpuFallbackEnvironment
 } from './startup/gpu-fallback-marker'
+import {
+  applyWindowsSoftwareGpuFallback,
+  buildSoftwareGpuFallbackNotice,
+  isSoftwareGpuEnvRequested,
+  shouldPresentSoftwareGpuFallbackNotice,
+  type SoftwareGpuFallbackSource
+} from './startup/windows-software-gpu'
 import {
   DEFAULT_GPU_CRASH_FALLBACK_THRESHOLD,
   DEFAULT_GPU_CRASH_FALLBACK_WINDOW_MS,
@@ -150,7 +167,7 @@ import {
   ensureRealHomeCodexHookState,
   isRealHomeCodexHookLaneUsable
 } from './codex/codex-real-home-hook-install'
-import { setCodexTrustGrantTelemetry } from './codex/codex-hook-trust-grant'
+import { setCodexTrustGrantTelemetry } from './codex/codex-trust-grant-telemetry'
 import { startCodexSessionBackfillInBackground } from './codex/codex-session-backfill'
 import { startCodexSessionIndexHealInBackground } from './codex/codex-session-index-heal'
 import { createCodexSessionMigrationScheduler } from './codex/codex-session-migration-scheduler'
@@ -233,7 +250,6 @@ import { preserveAgentAuthBeforeRestart } from './agent-auth-restart-preservatio
 import { CliInstaller } from './cli/cli-installer'
 import { installLinuxBareOrcaDispatcher } from './cli/linux-bare-orca-dispatcher'
 import { reconcileManagedWslCliRegistrations } from './cli/wsl-cli-registration-reconciliation'
-import { selfHealRuntimeEnvironmentFocus } from './runtime-environment-focus-self-heal'
 
 let mainWindow: BrowserWindow | null = null
 /** Whether a manual app.quit() (Cmd+Q) is in progress; lets the close handler skip the running-process confirmation and go straight to close. */
@@ -253,6 +269,7 @@ let runtimeRpc: OrcaRuntimeRpcServer | null = null
 const serveReadinessPublisher = new ServeReadinessPublisher()
 let desktopRelayService: DesktopRelayService | null = null
 let desktopRelayStatus: RelayBrokerStatus = 'offline'
+let pendingUnpairedDeviceAuthFailure = false
 // Why: gates whether headless serve installs the offscreen browser backend (and advertises browser pane support).
 let headlessBrowserDisplayAvailable = false
 
@@ -282,6 +299,9 @@ const gpuCrashFallbackTracker = new GpuCrashFallbackTracker({
   threshold: DEFAULT_GPU_CRASH_FALLBACK_THRESHOLD
 })
 let gpuFallbackActiveThisLaunch = false
+let gpuFallbackSourceThisLaunch: SoftwareGpuFallbackSource | null = null
+let gpuFallbackMarkerAlreadyNotified = false
+let gpuFallbackNoticePresentedThisSession = false
 let localPtyStartupReady: Promise<void> = Promise.resolve()
 let localPtyProviderStartupReady: Promise<void> = Promise.resolve()
 const AGENT_STATE_CRASH_BREADCRUMB_MIN_INTERVAL_MS = 30_000
@@ -453,6 +473,12 @@ const devAgentHookEndpointNamespace = devInstanceIdentity.isDev
 installUncaughtPipeErrorGuard()
 // Why: expose the app version via process.env so main and the forked daemon can set TERM_PROGRAM_VERSION without importing electron.
 process.env.ORCA_APP_VERSION = app.getVersion()
+configureRemoteServerUpdater({
+  getSnapshot: getRemoteServerUpdaterSnapshot,
+  check: checkForRemoteServerUpdate,
+  download: downloadRemoteServerUpdate,
+  install: installRemoteServerUpdate
+})
 patchPackagedProcessPath()
 // Why: the sync seed above covers early IPC (homebrew/nix); the async login-shell probe below (packaged only) then adds the user's rc PATH.
 if (app.isPackaged && process.platform !== 'win32') {
@@ -673,7 +699,11 @@ function startTerminalRuntimeStartupServices(): Promise<void> {
     // Why: both desktop and headless serve must adopt the same persistent provider before creating terminals or a renderer.
     startDaemonPtyProvider: async (signal) => {
       logStartupMilestone('startup-service-start', { service: 'daemon-pty-provider' })
-      await initDaemonPtyProvider(signal)
+      // Why: only GUI-spawned macOS daemons watch for login-session death; a headless
+      // serve daemon must survive its spawning session ending (SSH disconnect).
+      await initDaemonPtyProvider(signal, {
+        macosLoginSessionWatch: process.platform === 'darwin' && !isServeMode
+      })
       logStartupMilestone('startup-service-done', { service: 'daemon-pty-provider' })
     },
     // Why: PTY spawn env reads ORCA_AGENT_HOOK_* from live server state, so the renderer awaits this before restored terminals reconnect.
@@ -1079,6 +1109,16 @@ function openMainWindow(): BrowserWindow {
   window.once('ready-to-show', () => {
     logStartupMilestone('ready-to-show')
     setImmediate(createSystemTrayDeferred)
+    // Why: inform once after first paint so software-GPU recovery is not silent (#10097 review).
+    setImmediate(() => {
+      void maybePresentSoftwareGpuFallbackNotice(window)
+    })
+  })
+  // Why: ready-to-show can stall on broken GPUs; the reveal fallback still emits show.
+  window.once('show', () => {
+    setImmediate(() => {
+      void maybePresentSoftwareGpuFallbackNotice(window)
+    })
   })
   const trayCreateFallback = setTimeout(createSystemTrayDeferred, TRAY_CREATE_FALLBACK_MS)
   trayCreateFallback.unref?.()
@@ -1345,21 +1385,87 @@ function getWindowsGpuFallbackEnvironment(): WindowsGpuFallbackEnvironment | nul
   return { ...environment, platform: 'win32' }
 }
 
-// Why: read the GPU-fallback marker before app.whenReady() so app.disableHardwareAcceleration() takes effect. Windows desktop only.
+// Why: software GPU flags must be set before app.whenReady(); marker is sticky for this build, ORCA_SOFTWARE_GPU opts in without a crash burst.
 function maybeApplyGpuFallbackForThisLaunch(): void {
   if (isServeMode || process.platform !== 'win32') {
     return
   }
-  const marker = readActiveGpuFallbackMarker(app.getPath('userData'), getGpuFallbackEnvironment())
-  if (!marker) {
+  const envRequested = isSoftwareGpuEnvRequested()
+  const marker = envRequested
+    ? null
+    : readActiveGpuFallbackMarker(app.getPath('userData'), getGpuFallbackEnvironment())
+  if (!envRequested && !marker) {
     return
   }
-  app.disableHardwareAcceleration()
-  app.commandLine.appendSwitch('disable-gpu')
+  // Why: #10093 — disable-gpu alone still crashes the GPU child on some virtual displays; in-process + SwiftShader is the known recovery path.
+  applyWindowsSoftwareGpuFallback(app)
   gpuFallbackActiveThisLaunch = true
+  gpuFallbackSourceThisLaunch = envRequested ? 'env' : 'marker'
+  gpuFallbackMarkerAlreadyNotified =
+    typeof marker?.userNotifiedAt === 'number' && Number.isFinite(marker.userNotifiedAt)
   recordCrashBreadcrumb('gpu_fallback_applied', {
-    crashesInWindow: marker.crashesInWindow
+    crashesInWindow: marker?.crashesInWindow ?? 0,
+    source: gpuFallbackSourceThisLaunch
   })
+}
+
+// Why: software GPU is a silent recovery path unless we tell the user once (marker sticky / env per session).
+async function maybePresentSoftwareGpuFallbackNotice(
+  targetWindow?: BrowserWindow | null
+): Promise<void> {
+  if (
+    !shouldPresentSoftwareGpuFallbackNotice({
+      active: gpuFallbackActiveThisLaunch,
+      source: gpuFallbackSourceThisLaunch,
+      alreadyPresentedThisSession: gpuFallbackNoticePresentedThisSession,
+      markerAlreadyNotified: gpuFallbackMarkerAlreadyNotified
+    }) ||
+    isQuitting
+  ) {
+    return
+  }
+  const source = gpuFallbackSourceThisLaunch
+  if (!source) {
+    return
+  }
+  gpuFallbackNoticePresentedThisSession = true
+  const notice = buildSoftwareGpuFallbackNotice(source)
+  const options = {
+    type: 'info' as const,
+    buttons: ['OK'],
+    defaultId: 0,
+    title: notice.title,
+    message: notice.message,
+    detail: notice.detail
+  }
+  try {
+    const window =
+      targetWindow && !targetWindow.isDestroyed()
+        ? targetWindow
+        : mainWindow && !mainWindow.isDestroyed()
+          ? mainWindow
+          : undefined
+    if (window) {
+      await dialog.showMessageBox(window, options)
+    } else {
+      await dialog.showMessageBox(options)
+    }
+  } catch (error) {
+    console.warn('[gpu-fallback] failed to present software GPU notice:', error)
+    // Why: allow a later show/ready-to-show retry if the first dialog attempt failed.
+    gpuFallbackNoticePresentedThisSession = false
+    return
+  }
+  if (source === 'marker') {
+    try {
+      if (markGpuFallbackUserNotified(app.getPath('userData'))) {
+        gpuFallbackMarkerAlreadyNotified = true
+      }
+    } catch (error) {
+      console.warn('[gpu-fallback] failed to persist notice acknowledgment:', error)
+    }
+  }
+  recordCrashBreadcrumb('gpu_fallback_notice_presented', { source })
 }
 
 // Why: a burst of GPU child crashes right after launch means HW acceleration is unusable — persist a build-scoped marker and relaunch into software rendering.
@@ -1818,7 +1924,6 @@ app.whenReady().then(async () => {
       `[claude-live-pty] Seeded ${persistedClaudePtyIds.length} persisted Claude session id(s) into the refresh gate`
     )
   }
-  selfHealRuntimeEnvironmentFocus({ store, userDataPath: app.getPath('userData') })
   applyAppIcon(store.getSettings().appIcon)
   if (shouldSuppressDevEducation({ isDev: is.dev })) {
     suppressDevEducationForStore(store)
@@ -1847,11 +1952,14 @@ app.whenReady().then(async () => {
   // Why: the trust-grant module is bundled into plain-node CLI entries where
   // the telemetry client cannot load, so the tracker is injected here instead
   // of imported there.
-  setCodexTrustGrantTelemetry(({ outcome, hostKind, reason }) => {
+  setCodexTrustGrantTelemetry(({ outcome, hostKind, lane, reason, errorClass, verifyClass }) => {
     track('codex_trust_grant', {
       outcome,
       host_kind: hostKind,
-      ...(reason !== undefined ? { fallback_reason: reason } : {})
+      lane,
+      ...(reason !== undefined ? { fallback_reason: reason } : {}),
+      ...(errorClass !== undefined ? { error_class: errorClass } : {}),
+      ...(verifyClass !== undefined ? { verify_class: verifyClass } : {})
     })
   })
   // Why: the error-tracking lane (telemetry-error-tracking.md) is its own
@@ -2253,6 +2361,11 @@ app.whenReady().then(async () => {
   })
   // Why: parallel E2E Electron instances would race the fixed port (EADDRINUSE); port 0 gives each a random OS-assigned port.
   const isE2E = Boolean(process.env.ORCA_E2E_USER_DATA_DIR)
+  const requestedE2EWsPort = process.env.ORCA_E2E_RUNTIME_WS_PORT
+  const e2eWsPort = requestedE2EWsPort === undefined ? 0 : Number(requestedE2EWsPort)
+  if (isE2E && (!Number.isInteger(e2eWsPort) || e2eWsPort < 0 || e2eWsPort > 65_535)) {
+    throw new Error(`Invalid ORCA_E2E_RUNTIME_WS_PORT value: ${requestedE2EWsPort}`)
+  }
   // Why: pin dev to 6769 so `pnpm dev` doesn't race packaged Orca on 6768 and fall back to a random port, breaking deterministic mobile pairing/repro (STA-1511).
   const devWsPort = is.dev && !isE2E ? 6769 : undefined
   let serveOptions: ServeOptions | null = null
@@ -2270,7 +2383,7 @@ app.whenReady().then(async () => {
     // Why: mobile pairing needs the stable pre-setName() path (getCanonicalUserDataPath), not a late app.getPath('userData') that drops paired devices across restarts.
     userDataPath: getCanonicalUserDataPath(),
     enableWebSocket: true,
-    ...(isE2E ? { wsPort: 0 } : {}),
+    ...(isE2E ? { wsPort: e2eWsPort } : {}),
     ...(devWsPort !== undefined ? { wsPort: devWsPort } : {}),
     ...(serveOptions?.wsPort !== undefined
       ? {
@@ -2281,7 +2394,29 @@ app.whenReady().then(async () => {
       : {}),
     webClientRoot: getBundledWebClientRoot()
   })
-  registerMobileHandlers(runtimeRpc, { getRelayStatus: () => desktopRelayStatus })
+  registerMobileHandlers(runtimeRpc, {
+    getRelayStatus: () => desktopRelayStatus,
+    consumePendingUnpairedDeviceAuthFailure: (webContentsId) => {
+      if (
+        !mainWindow ||
+        mainWindow.isDestroyed() ||
+        mainWindow.webContents.id !== webContentsId ||
+        !pendingUnpairedDeviceAuthFailure
+      ) {
+        return false
+      }
+      pendingUnpairedDeviceAuthFailure = false
+      return true
+    }
+  })
+  // Why: repeated direct auth failures otherwise look like a client that never connects; point users to re-pairing.
+  runtimeRpc.setOnUnpairedDeviceAuthFailure(() => {
+    // Why: runtime startup races renderer mount; retain the one-shot until the listener consumes it.
+    pendingUnpairedDeviceAuthFailure = true
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mobile:unpairedDeviceAuthFailure')
+    }
+  })
 
   startTerminalRuntimeStartupServices()
   app.on('activate', requestDesktopActivation)
