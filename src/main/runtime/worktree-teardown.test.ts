@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { listRegisteredPtysMock } = vi.hoisted(() => ({
-  listRegisteredPtysMock: vi.fn()
-}))
+const { listRegisteredPtysMock, terminateWindowsSetupRunnersForWorktreeIdMock } = vi.hoisted(
+  () => ({
+    listRegisteredPtysMock: vi.fn(),
+    terminateWindowsSetupRunnersForWorktreeIdMock: vi.fn()
+  })
+)
 
 vi.mock('../memory/pty-registry', () => ({
   listRegisteredPtys: listRegisteredPtysMock
+}))
+
+vi.mock('../windows-worktree-setup-runner-kill', () => ({
+  terminateWindowsSetupRunnersForWorktreeId: terminateWindowsSetupRunnersForWorktreeIdMock
 }))
 
 import { killAllProcessesForWorktree, WORKTREE_PROCESS_SWEEP_TIMEOUT_MS } from './worktree-teardown'
@@ -40,6 +47,8 @@ function createProviderStub(listProcesses: () => Promise<PtyProcessInfo[]>): IPt
 describe('killAllProcessesForWorktree', () => {
   beforeEach(() => {
     listRegisteredPtysMock.mockReset()
+    terminateWindowsSetupRunnersForWorktreeIdMock.mockReset()
+    terminateWindowsSetupRunnersForWorktreeIdMock.mockResolvedValue(0)
   })
 
   it('reaches daemon sessions and registry entries without a runtime', async () => {
@@ -886,5 +895,18 @@ describe('killAllProcessesForWorktree', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('sweeps Windows setup-runner.cmd trees after PTY stop (#10629)', async () => {
+    const worktreeId = 'repo-1::D:\\orca\\workspaces\\repo\\feature'
+    const localProvider = createProviderStub(async () => [])
+    listRegisteredPtysMock.mockReturnValue([])
+
+    await killAllProcessesForWorktree(worktreeId, { localProvider, timeoutMs: 5_000 })
+
+    expect(terminateWindowsSetupRunnersForWorktreeIdMock).toHaveBeenCalledWith(
+      worktreeId,
+      expect.objectContaining({ deadlineMs: expect.any(Number) })
+    )
   })
 })

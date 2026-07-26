@@ -18,6 +18,7 @@ import {
   verifyUnstoppedPtys,
   type UnstoppedPtyVerdict
 } from './unstopped-pty-verification'
+import { terminateWindowsSetupRunnersForWorktreeId } from '../windows-worktree-setup-runner-kill'
 
 // Why: normal inventories still coalesce into one process scan, while a stale
 // or pathological inventory cannot fan out unbounded provider/RPC shutdowns.
@@ -251,6 +252,9 @@ export async function killAllProcessesForWorktree(
       console.warn(`[worktree-teardown] forcing removal despite unstopped PTYs — ${summary}`)
     }
   }
+
+  // Why: reparented setup-runner.cmd keeps Windows worktree dirs locked after PTY stop (#10629).
+  await terminateWindowsSetupRunnersForWorktreeId(worktreeId, { deadlineMs: deadline })
 
   return { runtimeStopped: runtimeResult.stopped, providerStopped, registryStopped }
 }
