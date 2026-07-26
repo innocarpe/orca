@@ -177,8 +177,66 @@ function verifyWindowsProviderHandshake() {
   }
 }
 
+// Why: editable-text probes must not false-fail on explanatory comments or
+// false-pass when the required call only appears in a comment (#10569 CR).
+function stripPythonComments(source) {
+  let out = ''
+  let i = 0
+  const n = source.length
+  while (i < n) {
+    const ch = source[i]
+    const next = source[i + 1]
+    // Triple-quoted strings (keep contents so string literals still scan).
+    if ((ch === '"' || ch === "'") && next === ch && source[i + 2] === ch) {
+      const quote = ch.repeat(3)
+      out += quote
+      i += 3
+      while (i < n && source.slice(i, i + 3) !== quote) {
+        out += source[i]
+        i += 1
+      }
+      if (i < n) {
+        out += quote
+        i += 3
+      }
+      continue
+    }
+    // Single/double quoted strings.
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      out += quote
+      i += 1
+      while (i < n) {
+        const cur = source[i]
+        out += cur
+        i += 1
+        if (cur === '\\' && i < n) {
+          out += source[i]
+          i += 1
+          continue
+        }
+        if (cur === quote) {
+          break
+        }
+      }
+      continue
+    }
+    if (ch === '#') {
+      while (i < n && source[i] !== '\n') {
+        i += 1
+      }
+      continue
+    }
+    out += ch
+    i += 1
+  }
+  return out
+}
+
 function verifyNativeArgumentGuardrails() {
-  const linux = readFileSync(join(repoRoot, 'native/computer-use-linux/runtime.py'), 'utf8')
+  const linuxSource = readFileSync(join(repoRoot, 'native/computer-use-linux/runtime.py'), 'utf8')
+  // Why: comment-only mentions of forbidden/required probes must not drive the guard.
+  const linux = stripPythonComments(linuxSource)
   const macos = readFileSync(
     join(repoRoot, 'native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift'),
     'utf8'
