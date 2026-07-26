@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   hasPerModeTerminalColorOverrides,
+  mergeImportedTerminalColorOverrides,
   resetTerminalColorOverridesForMode,
   resolveTerminalColorOverridesForMode,
   updateTerminalColorOverrideKey
@@ -79,6 +80,20 @@ describe('updateTerminalColorOverrideKey', () => {
       terminalColorOverridesLight: { background: '#ffffff', foreground: '#111111' }
     })
   })
+
+  it('writes the dark bag when light matches dark so overrides do not disappear', () => {
+    const before = settings({
+      terminalUseSeparateLightTheme: false,
+      terminalColorOverrides: { background: '#111111' }
+    })
+    const updates = updateTerminalColorOverrideKey(before, 'light', 'background', '#0a0a0a')
+    expect(updates.terminalColorOverrides).toBeUndefined()
+    expect(updates.terminalColorOverridesDark).toEqual({ background: '#0a0a0a' })
+    expect(updates.terminalColorOverridesLight).toBeUndefined()
+    expect(
+      resolveTerminalColorOverridesForMode({ ...before, ...updates }, 'light')?.background
+    ).toBe('#0a0a0a')
+  })
 })
 
 describe('resetTerminalColorOverridesForMode', () => {
@@ -98,6 +113,42 @@ describe('resetTerminalColorOverridesForMode', () => {
     expect(updates.terminalColorOverrides).toBeUndefined()
     expect(updates.terminalColorOverridesDark).toBeUndefined()
     expect(updates.terminalColorOverridesLight).toEqual({ background: '#111111' })
+  })
+
+  it('clears the effective dark bag when light matches dark', () => {
+    const before = settings({
+      terminalUseSeparateLightTheme: false,
+      terminalColorOverridesDark: { background: '#0a0a0a' },
+      terminalColorOverridesLight: { background: '#ffffff' }
+    })
+    expect(resetTerminalColorOverridesForMode(before, 'light')).toEqual({
+      terminalColorOverridesDark: undefined
+    })
+  })
+})
+
+describe('mergeImportedTerminalColorOverrides', () => {
+  it('promotes the first import into a dark-only bag and clears legacy', () => {
+    const before = settings({ terminalColorOverrides: { foreground: '#e0e0e0' } })
+    const updates = mergeImportedTerminalColorOverrides(before, { background: '#1a1a1a' })
+    expect(updates).toEqual({
+      terminalColorOverrides: undefined,
+      terminalColorOverridesDark: { foreground: '#e0e0e0', background: '#1a1a1a' }
+    })
+    expect(resolveTerminalColorOverridesForMode({ ...before, ...updates }, 'light')).toBeUndefined()
+    expect(
+      resolveTerminalColorOverridesForMode({ ...before, ...updates }, 'dark')?.background
+    ).toBe('#1a1a1a')
+  })
+
+  it('merges into the existing dark bag when per-mode storage already exists', () => {
+    const before = settings({
+      terminalColorOverridesDark: { foreground: '#ccc' },
+      terminalColorOverridesLight: { background: '#fff' }
+    })
+    expect(mergeImportedTerminalColorOverrides(before, { red: '#f00' })).toEqual({
+      terminalColorOverridesDark: { foreground: '#ccc', red: '#f00' }
+    })
   })
 })
 
