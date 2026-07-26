@@ -106,8 +106,8 @@ describe('ZcodeHookService', () => {
     expect(removed.state).toBe('not_installed')
     const afterRemove = JSON.parse(readFileSync(configPath(), 'utf-8')) as Parsed
     expect(afterRemove.theme).toBe('dark')
-    // Why: install forced enabled=true; remove does not flip enabled back.
-    expect(afterRemove.hooks?.enabled).toBe(true)
+    // Why: install forced enabled=true; remove restores the pre-install value (false).
+    expect(afterRemove.hooks?.enabled).toBe(false)
     const remainingPre = afterRemove.hooks?.events?.PreToolUse ?? []
     expect(remainingPre.some((def) => def.hooks?.some((h) => h.command === 'echo user-hook'))).toBe(
       true

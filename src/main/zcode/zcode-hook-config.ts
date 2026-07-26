@@ -7,6 +7,7 @@ import {
 // Why: mirror Claude-compatible lifecycle events ZCode documents
 // (https://zcode.z.ai/en/docs/hooks) so Orca status tracks working/waiting/done.
 export const ZCODE_HOOK_EVENTS = [
+  'SessionStart',
   'UserPromptSubmit',
   'PreToolUse',
   'PostToolUse',
@@ -16,6 +17,9 @@ export const ZCODE_HOOK_EVENTS = [
 ] as const
 
 export type ZcodeHookEventName = (typeof ZCODE_HOOK_EVENTS)[number]
+
+// Why: apply() forces hooks.enabled=true; stash prior value so remove() can restore it.
+export const ORCA_PREVIOUS_HOOKS_ENABLED_KEY = 'orcaPreviousHooksEnabled'
 
 export type ZcodeHookCommand = {
   type?: string
@@ -131,6 +135,10 @@ export function applyManagedZcodeHooks(
   }
 
   // Why: ZCode only executes hooks when hooks.enabled is true at the config root.
+  // Capture pre-install value once so reinstall does not overwrite the original.
+  if (!(ORCA_PREVIOUS_HOOKS_ENABLED_KEY in hooksRoot)) {
+    hooksRoot[ORCA_PREVIOUS_HOOKS_ENABLED_KEY] = hooksRoot.enabled === true
+  }
   hooksRoot.enabled = true
   hooksRoot.events = events
   return { ...config, hooks: hooksRoot }
@@ -154,6 +162,11 @@ export function removeManagedZcodeHooks(config: ZcodeConfig, scriptFileName: str
   }
 
   hooksRoot.events = events
+  // Why: restore pre-install hooks.enabled when Orca forced it true for managed hooks.
+  if (ORCA_PREVIOUS_HOOKS_ENABLED_KEY in hooksRoot) {
+    hooksRoot.enabled = hooksRoot[ORCA_PREVIOUS_HOOKS_ENABLED_KEY] === true
+    delete hooksRoot[ORCA_PREVIOUS_HOOKS_ENABLED_KEY]
+  }
   return { ...config, hooks: hooksRoot }
 }
 

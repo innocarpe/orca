@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyManagedZcodeHooks,
   isZcodeHooksEnabled,
+  ORCA_PREVIOUS_HOOKS_ENABLED_KEY,
   readManagedZcodeHookEvents,
   removeManagedZcodeHooks,
   ZCODE_HOOK_EVENTS
@@ -42,6 +43,26 @@ describe('zcode-hook-config', () => {
     expect(pre).toHaveLength(1)
     expect(pre[0]?.hooks?.[0]?.command).toBe('echo keep-me')
     expect(readManagedZcodeHookEvents(removed, COMMAND).size).toBe(0)
+    expect(removed.hooks?.enabled).toBe(true)
+    expect(removed.hooks?.[ORCA_PREVIOUS_HOOKS_ENABLED_KEY]).toBeUndefined()
+  })
+
+  it('restores pre-install hooks.enabled on remove', () => {
+    const installed = applyManagedZcodeHooks(
+      { hooks: { enabled: false, events: {} } },
+      COMMAND,
+      SCRIPT
+    )
+    expect(installed.hooks?.enabled).toBe(true)
+    expect(installed.hooks?.[ORCA_PREVIOUS_HOOKS_ENABLED_KEY]).toBe(false)
+
+    // Why: reinstall must not overwrite the stashed original enabled value.
+    const reinstalled = applyManagedZcodeHooks(installed, COMMAND, SCRIPT)
+    expect(reinstalled.hooks?.[ORCA_PREVIOUS_HOOKS_ENABLED_KEY]).toBe(false)
+
+    const removed = removeManagedZcodeHooks(reinstalled, SCRIPT)
+    expect(removed.hooks?.enabled).toBe(false)
+    expect(removed.hooks?.[ORCA_PREVIOUS_HOOKS_ENABLED_KEY]).toBeUndefined()
   })
 
   it('is idempotent across reinstall', () => {
@@ -52,5 +73,11 @@ describe('zcode-hook-config', () => {
       const managed = defs.flatMap((d) => d.hooks ?? []).filter((h) => h.command === COMMAND)
       expect(managed).toHaveLength(1)
     }
+  })
+
+  it('tracks SessionStart among managed events', () => {
+    expect(ZCODE_HOOK_EVENTS).toContain('SessionStart')
+    const next = applyManagedZcodeHooks({}, COMMAND, SCRIPT)
+    expect(readManagedZcodeHookEvents(next, COMMAND).has('SessionStart')).toBe(true)
   })
 })
