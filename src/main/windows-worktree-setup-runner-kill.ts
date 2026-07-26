@@ -69,18 +69,14 @@ export function extractSetupRunnerPathsFromCommandLine(commandLine: string): str
   return paths
 }
 
-function worktreePathBasename(worktreePath: string): string | null {
-  const normalized = worktreePath.trim().replace(/[\\/]+$/g, '')
-  if (!normalized) {
-    return null
-  }
-  return normalized.split(/[\\/]/).findLast(Boolean)?.trim() || null
-}
-
 /**
  * True when a process CommandLine is running (or embedding) this worktree's
  * `setup-runner.cmd` — including the common linked-worktree gitdir location
  * under `.git/worktrees/<name>/orca/`.
+ *
+ * Identity is path-anchor based only (worktree path and optional gitdir). A
+ * basename-only `.git/worktrees/<name>/…` match would force-kill another
+ * repository's same-named linked worktree (#10629 review).
  */
 export function commandLineTargetsWorktreeSetupRunner(
   commandLine: string,
@@ -119,21 +115,6 @@ export function commandLineTargetsWorktreeSetupRunner(
   for (const anchor of anchors) {
     if (normalizedCommand.includes(anchor)) {
       return true
-    }
-  }
-
-  // Why: when `.git` is already gone we still recognize the linked-worktree
-  // gitdir shape that Orca wrote into the CommandLine at launch (#10629).
-  const basename = worktreePathBasename(worktreePath)
-  if (basename) {
-    const linkedMarker = `/.git/worktrees/${normalizeRuntimePathForComparison(basename)}/orca/setup-runner.cmd`
-    if (normalizedCommand.includes(linkedMarker)) {
-      return true
-    }
-    for (const runnerPath of runnerPaths) {
-      if (normalizeRuntimePathForComparison(runnerPath).includes(linkedMarker)) {
-        return true
-      }
     }
   }
 

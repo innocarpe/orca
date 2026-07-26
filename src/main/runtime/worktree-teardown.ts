@@ -254,7 +254,12 @@ export async function killAllProcessesForWorktree(
   }
 
   // Why: reparented setup-runner.cmd keeps Windows worktree dirs locked after PTY stop (#10629).
-  await terminateWindowsSetupRunnersForWorktreeId(worktreeId, { deadlineMs: deadline })
+  // Bound the sweep so a stalled process enumeration cannot escape the teardown deadline.
+  await settleBeforeDeadline(
+    () => terminateWindowsSetupRunnersForWorktreeId(worktreeId, { deadlineMs: deadline }),
+    0,
+    deadline
+  )
 
   return { runtimeStopped: runtimeResult.stopped, providerStopped, registryStopped }
 }

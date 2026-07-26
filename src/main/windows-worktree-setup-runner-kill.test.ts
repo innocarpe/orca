@@ -51,13 +51,24 @@ describe('commandLineTargetsWorktreeSetupRunner', () => {
     ).toBe(true)
   })
 
-  it('matches the linked-worktree basename heuristic without gitdir', () => {
+  it('matches linked-worktree setup-runner when the command references the gitdir anchor', () => {
+    expect(
+      commandLineTargetsWorktreeSetupRunner(
+        'C:\\Windows\\system32\\cmd.exe /c D:/repo/.git/worktrees/feature/orca/setup-runner.cmd',
+        worktreePath,
+        ['D:/repo/.git/worktrees/feature']
+      )
+    ).toBe(true)
+  })
+
+  it('does not match a same-named worktree under a different repo root', () => {
+    // Why: basename-only `.git/worktrees/feature/...` must not kill another repo's runner.
     expect(
       commandLineTargetsWorktreeSetupRunner(
         'C:\\Windows\\system32\\cmd.exe /c D:/other/repo/.git/worktrees/feature/orca/setup-runner.cmd',
         worktreePath
       )
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('matches setup-runner living under the worktree path itself', () => {
