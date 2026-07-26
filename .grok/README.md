@@ -29,19 +29,37 @@ Canonical copies live under **`.grok/skills/`** (tracked on fork `main`).
 | **Claude Code** | root `CLAUDE.md` / `Claude.md` → `@AGENTS.md` + contribution doc; skills via install into `.claude/skills/` |
 | **Codex CLI** | root `AGENTS.md` (product rules) + fallback `CLAUDE.md` / `codex.md` (see `~/.codex/config.toml` `project_doc_fallback_filenames`); skills via install into `.agents/skills/` |
 
-## Install (once per clone / after skill updates)
+## Install skills (primary)
 
 ```bash
 # From primary checkout (fork main):
+make agent-install
+# or:
 ./.grok/install-agent-skills.sh
 ```
 
-This symlinks (or copies) each skill into:
+## Worktrees always get the harness
 
-- `.claude/skills/<name>/` — Claude Code project skills
-- `.agents/skills/<name>/` — Codex project skills
+Upstream-based worktrees do **not** contain fork `.grok` history. Use the Makefile
+so every worktree is bootstrapped without polluting `fix/*` PR diffs:
 
-Both targets are gitignored; re-run after pulling harness updates.
+```bash
+# Create from upstream/main + wire Claude/Codex/Grok harness (local exclude)
+make worktree-add ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
+
+# Existing worktree
+make worktree-bootstrap DIR=../orca-worktrees/fix-10633
+
+# Remove (keeps remote branch)
+make worktree-rm ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
+```
+
+What bootstrap does (see `.grok/scripts/bootstrap-worktree.sh`):
+
+1. Symlinks `.grok`, `Makefile`, `codex.md` from primary when missing
+2. Adds **local git exclude** so those overlays never show in `git status` / cannot be accidental `git add` PR noise
+3. Installs skills into that worktree’s `.claude/skills` + `.agents/skills`
+4. Claude project rule: `.claude/rules/orca-contribution.md` (does not rewrite tracked `CLAUDE.md`)
 
 ## Fork-main only
 

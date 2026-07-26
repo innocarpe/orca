@@ -7,20 +7,35 @@
 #
 # Usage:
 #   ./.grok/install-agent-skills.sh
-#   ./.grok/install-agent-skills.sh --copy   # copy instead of symlink
+#   ./.grok/install-agent-skills.sh --copy
+#   ORCA_SKILL_INSTALL_ROOT=/path/to/worktree ./.grok/install-agent-skills.sh
+#
+# Env:
+#   ORCA_SKILL_INSTALL_ROOT  where to create .claude/skills and .agents/skills
+#                            (default: repo that owns this script)
+#   ORCA_PRIMARY             optional skill source override
 #
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/.grok/skills"
-MODE=symlink
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+MODE=symlink
 if [[ "${1:-}" == "--copy" ]]; then
   MODE=copy
 fi
 
+# Skill source: prefer primary if set, else the checkout that owns this script.
+if [[ -n "${ORCA_PRIMARY:-}" && -d "${ORCA_PRIMARY}/.grok/skills" ]]; then
+  SRC="${ORCA_PRIMARY}/.grok/skills"
+else
+  SRC="$SCRIPT_REPO/.grok/skills"
+fi
+
+INSTALL_ROOT="${ORCA_SKILL_INSTALL_ROOT:-$SCRIPT_REPO}"
+
 if [[ ! -d "$SRC" ]]; then
-  echo "error: missing $SRC" >&2
+  echo "error: missing skill source $SRC" >&2
   exit 1
 fi
 
@@ -32,18 +47,19 @@ install_one() {
   rm -rf "$dest"
   if [[ "$MODE" == "copy" ]]; then
     mkdir -p "$dest"
-    # Skills may include scripts/; copy the whole package.
     cp -R "$SRC/$name/." "$dest/"
   else
-    ln -s "$SRC/$name" "$dest"
+    # Absolute link so worktrees keep working if cwd changes.
+    ln -s "$(cd "$SRC/$name" && pwd)" "$dest"
   fi
   echo "  $dest"
 }
 
 echo "Installing skills from $SRC (mode=$MODE)"
+echo "  install root: $INSTALL_ROOT"
 
-CLAUDE_SKILLS="$ROOT/.claude/skills"
-AGENTS_SKILLS="$ROOT/.agents/skills"
+CLAUDE_SKILLS="$INSTALL_ROOT/.claude/skills"
+AGENTS_SKILLS="$INSTALL_ROOT/.agents/skills"
 
 echo "Claude Code → $CLAUDE_SKILLS"
 for skill_dir in "$SRC"/*/; do
@@ -61,7 +77,7 @@ done
 
 echo
 echo "Done. Entrypoints:"
-echo "  Claude: CLAUDE.md / Claude.md"
+echo "  Claude: CLAUDE.md + .claude/rules/ (after worktree bootstrap)"
 echo "  Codex:  AGENTS.md + codex.md / CLAUDE.md fallback"
-echo "  Grok:   .grok/skills (native)"
+echo "  Grok:   .grok/skills"
 echo "  Workflow SSOT: .grok/agent/orca-contribution.md"

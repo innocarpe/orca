@@ -52,16 +52,28 @@ Override with `ORCA_PRIMARY` if the primary checkout moves.
 
 ## New issue worktree
 
+**Preferred (harness auto-attached for Grok / Claude / Codex):**
+
 ```bash
 ORCA_PRIMARY="${ORCA_PRIMARY:-$HOME/Projects/OpenSources/orca}"
 cd "$ORCA_PRIMARY"
+make worktree-add ISSUE=<N> BRANCH=fix/<short-desc>
+cd "$HOME/Projects/OpenSources/orca-worktrees/fix-<N>"
+pnpm install   # each worktree needs its own install (Electron/native)
+```
+
+Manual equivalent:
+
+```bash
 git fetch upstream main
 git worktree add -b fix/<short-desc> \
   "$HOME/Projects/OpenSources/orca-worktrees/fix-<N>" \
   upstream/main
-cd "$HOME/Projects/OpenSources/orca-worktrees/fix-<N>"
-pnpm install   # each worktree needs its own install (Electron/native)
+make worktree-bootstrap DIR="$HOME/Projects/OpenSources/orca-worktrees/fix-<N>"
 ```
+
+Bootstrap is **local-only** (git exclude + symlinks). It does not add files to the
+`fix/*` commit that PRs to upstream.
 
 Vitest (desktop/shared):
 
