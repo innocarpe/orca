@@ -30808,6 +30808,9 @@ export class OrcaRuntimeService {
   browserCookieDelete: RuntimeBrowserCommands['browserCookieDelete'] =
     this.browserCommands.browserCookieDelete.bind(this.browserCommands)
 
+  browserCookieImport: RuntimeBrowserCommands['browserCookieImport'] =
+    this.browserCommands.browserCookieImport.bind(this.browserCommands)
+
   browserSetViewport: RuntimeBrowserCommands['browserSetViewport'] =
     this.browserCommands.browserSetViewport.bind(this.browserCommands)
 
