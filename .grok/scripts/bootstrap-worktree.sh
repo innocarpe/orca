@@ -5,9 +5,9 @@
 # Strategy:
 #   1. Symlink harness assets from ORCA_PRIMARY when missing (upstream worktrees).
 #   2. Install Claude/Codex skills into this worktree.
-#   3. Write excludes into the *worktree-private* git dir only
-#      ($COMMON/worktrees/<id>/info/exclude) — NEVER the shared common exclude,
-#      so primary fork main can still commit .grok/ and Makefile.
+#   3. Hide overlays via *worktree-private* core.excludesFile
+#      (requires extensions.worktreeConfig — enabled locally in this clone).
+#      Never write to the shared common exclude (that would hide .grok on primary).
 #
 # Usage:
 #   bootstrap-worktree.sh [WORKTREE_DIR]
@@ -39,31 +39,32 @@ resolve_primary() {
   die "ORCA_PRIMARY not set and no .grok/skills found (expected at $default)"
 }
 
-# Worktree-private exclude only (not the shared common exclude).
-ensure_worktree_exclude() {
-  local git_dir exclude
+# Per-worktree ignore file so overlays never appear in git status / accidental add.
+ensure_worktree_excludes() {
+  local git_dir common excl
   git_dir="$(git -C "$WT" rev-parse --git-dir)"
   if [[ "$git_dir" != /* ]]; then
     git_dir="$(cd "$WT" && cd "$git_dir" && pwd)"
   fi
-
-  # Primary checkout uses <repo>/.git — never write harness excludes there.
-  local common
   common="$(git -C "$WT" rev-parse --git-common-dir)"
   if [[ "$common" != /* ]]; then
     common="$(cd "$WT" && cd "$common" && pwd)"
   fi
+
+  # Primary checkout shares common==git-dir — never attach worktree excludes there.
   if [[ "$(cd "$git_dir" && pwd)" == "$(cd "$common" && pwd)" ]]; then
-    echo "  skip exclude (this is the primary checkout, not a linked worktree)"
+    echo "  skip worktree excludes (primary checkout)"
     return 0
   fi
 
-  exclude="$git_dir/info/exclude"
-  mkdir -p "$(dirname "$exclude")"
+  # Local clone setting only (not committed) — needed for git config --worktree.
+  git -C "$WT" config --file "$common/config" extensions.worktreeConfig true
 
-  cat >"$exclude" <<'EOF'
-# orca-agent-harness — worktree-private overlay (do not commit into fix/* PRs)
-# Source of truth: fork primary .grok/ (innocarpe main only)
+  excl="$git_dir/info/orca-agent.exclude"
+  mkdir -p "$(dirname "$excl")"
+  cat >"$excl" <<'EOF'
+# orca-agent-harness — worktree-private (do not commit into fix/* PRs)
+# Source of truth: fork primary .grok/ (innocarpe main)
 .grok
 .grok/
 /Makefile
@@ -71,7 +72,8 @@ ensure_worktree_exclude() {
 .claude/
 .agents/
 EOF
-  echo "  exclude ← $exclude (worktree-private)"
+  git -C "$WT" config --worktree core.excludesFile "$excl"
+  echo "  excludesFile ← $excl"
 }
 
 link_if_missing() {
@@ -106,7 +108,7 @@ echo "bootstrap-worktree"
 echo "  worktree: $WT"
 echo "  primary:  $PRIMARY"
 
-ensure_worktree_exclude
+ensure_worktree_excludes
 
 link_if_missing "$PRIMARY/.grok" "$WT/.grok"
 link_if_missing "$PRIMARY/Makefile" "$WT/Makefile"
@@ -123,4 +125,4 @@ else
 fi
 
 echo "bootstrap-worktree: ok"
-echo "  Overlays use worktree-private exclude — invisible to git status / not PR material."
+echo "  Harness overlays are worktree-private (git status clean; not PR material)."
