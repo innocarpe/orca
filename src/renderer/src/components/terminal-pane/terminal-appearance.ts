@@ -9,6 +9,7 @@ import {
   resolveEffectiveTerminalAppearance
 } from '@/lib/terminal-theme'
 import { buildFontFamily } from './layout-serialization'
+import { setTerminalEastAsianAmbiguousWidthMode } from '../../../shared/terminal-unicode-provider'
 import { guardParserHandler } from './terminal-parser-handler-guard'
 import { safeFit, safeFitAndThen } from '@/lib/pane-manager/pane-tree-ops'
 import {
@@ -227,7 +228,13 @@ export function applyTerminalAppearance(
     pane.terminal.options.cursorBlink = settings.terminalCursorBlink
     const paneSize = paneFontSizes.get(pane.id)
     pane.terminal.options.fontSize = paneSize ?? settings.terminalFontSize
-    pane.terminal.options.fontFamily = buildFontFamily(settings.terminalFontFamily)
+    // Why: keep the shared unicode provider and CJK font stack in lockstep with
+    // the opt-in wide ambiguous setting (#9958).
+    const eastAsianAmbiguousWide = settings.terminalEastAsianAmbiguousWidth === 'wide'
+    setTerminalEastAsianAmbiguousWidthMode(settings.terminalEastAsianAmbiguousWidth)
+    pane.terminal.options.fontFamily = buildFontFamily(settings.terminalFontFamily, {
+      eastAsianAmbiguousWide
+    })
     pane.terminal.options.fontWeight = terminalFontWeights.fontWeight
     pane.terminal.options.fontWeightBold = terminalFontWeights.fontWeightBold
     pane.terminal.options.scrollSensitivity = normalizeTerminalScrollSensitivity(
