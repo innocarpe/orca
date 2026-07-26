@@ -2672,6 +2672,15 @@
                   "7cf51f74fd": "Enable TUI clipboard writes in Terminal settings to copy from SSH, Zellij, tmux, Neovim, fzf, or Grok.",
                   "89eaa3e80b": "Terminal clipboard write blocked"
                 }
+              },
+              "default": {
+                "on": {
+                  "notice": {
+                    "title": "TUI clipboard writes are now on by default",
+                    "description": "Zellij, tmux, Neovim and other terminal programs can now copy to your clipboard. Turn it off in Terminal settings.",
+                    "action": "Open Setting"
+                  }
+                }
               }
             }
           },

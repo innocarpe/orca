@@ -2649,6 +2649,15 @@
                   "7cf51f74fd": "Habilita las escrituras al portapapeles TUI en los ajustes de Terminal para copiar desde SSH, Zellij, tmux, Neovim, fzf o Grok.",
                   "89eaa3e80b": "Escritura al portapapeles del terminal bloqueada"
                 }
+              },
+              "default": {
+                "on": {
+                  "notice": {
+                    "title": "La escritura del portapapeles desde TUI ahora está activada de forma predeterminada",
+                    "description": "Zellij, tmux, Neovim y otros programas de terminal ya pueden copiar a tu portapapeles. Desactívalo en la configuración de Terminal.",
+                    "action": "Abrir ajuste"
+                  }
+                }
               }
             }
           },

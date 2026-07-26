@@ -250,7 +250,8 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     // Why: default on so Zellij/tmux/nvim copy works out of the box. Query
     // replies stay disabled and payload size is capped in the OSC 52 handler.
     // This default only covers new profiles; existing ones persisted `false`
-    // and are flipped once by the stamp below (see persistence.ts).
+    // and are flipped once by the stamp below (shared/osc52-clipboard-settings.ts,
+    // applied by both the Electron store and the web client's localStorage store).
     terminalAllowOsc52Clipboard: true,
     terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true,
     claudeAgentTeamsMode: 'off',
@@ -488,6 +489,8 @@ export function getDefaultUIState(): PersistedUIState {
     setupGuideBrowserMilestoneLegacyComplete: false,
     browserImportHintHidden: false,
     trayMinimizeNoticeShown: false,
+    // Why: new profiles were never opted out, so they have nothing to be told about.
+    osc52ClipboardDefaultOnNoticePending: false,
     mobileEmulatorTabIntroDismissed: false,
     mobileEmulatorAgentSetupDismissed: false,
     // Why: only upgraded profiles saw the old ordering, so only they get the one-time notice.

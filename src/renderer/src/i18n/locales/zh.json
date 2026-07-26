@@ -2649,6 +2649,15 @@
                   "7cf51f74fd": "在终端设置中启用 TUI 剪贴板写入，以从 SSH、Zellij、tmux、Neovim、fzf 或 Grok 进行复制。",
                   "89eaa3e80b": "终端剪贴板写入被阻止"
                 }
+              },
+              "default": {
+                "on": {
+                  "notice": {
+                    "title": "TUI 剪贴板写入现已默认开启",
+                    "description": "Zellij、tmux、Neovim 等终端程序现在可以复制到你的剪贴板。可在 Terminal 设置中关闭。",
+                    "action": "打开设置"
+                  }
+                }
               }
             }
           },

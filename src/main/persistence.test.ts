@@ -2953,6 +2953,57 @@ describe('Store', () => {
     expect(store.getSettings().terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
   })
 
+  it('arms the one-shot notice when the OSC 52 flip overrides a persisted opt-out', async () => {
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: { terminalAllowOsc52Clipboard: false },
+      ui: {},
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().osc52ClipboardDefaultOnNoticePending).toBe(true)
+  })
+
+  it('leaves the OSC 52 notice disarmed for a profile that never opted out', async () => {
+    // Why: the notice explains an overridden choice; a fresh profile made no choice.
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {},
+      ui: {},
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().osc52ClipboardDefaultOnNoticePending).toBe(false)
+  })
+
+  it('keeps the OSC 52 notice armed until the renderer clears it', async () => {
+    // Why: the flip happens during load, before any window exists — a crash or a quit
+    // before the toast renders must not consume the only notice the user ever gets.
+    writeDataFile({
+      schemaVersion: 1,
+      repos: [],
+      worktreeMeta: {},
+      settings: {
+        terminalAllowOsc52Clipboard: true,
+        terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true
+      },
+      ui: { osc52ClipboardDefaultOnNoticePending: true },
+      githubCache: { pr: {}, issue: {} },
+      workspaceSession: {}
+    })
+
+    const store = await createStore()
+    expect(store.getUI().osc52ClipboardDefaultOnNoticePending).toBe(true)
+  })
+
   it('migrates the legacy Linux primary-selection default to enabled', async () => {
     await withPlatform('linux', async () => {
       writeDataFile({

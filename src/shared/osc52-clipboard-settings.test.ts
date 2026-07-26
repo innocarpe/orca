@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeOsc52ClipboardDefaultOn } from './osc52-clipboard-settings'
+import {
+  normalizeOsc52ClipboardDefaultOn,
+  osc52ClipboardDefaultOnFlipsPersistedOptOut
+} from './osc52-clipboard-settings'
 
 describe('normalizeOsc52ClipboardDefaultOn', () => {
   it('flips an unstamped profile on, because its `false` came from the old default', () => {
@@ -45,5 +48,31 @@ describe('normalizeOsc52ClipboardDefaultOn', () => {
       terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true
     })
     expect(normalizeOsc52ClipboardDefaultOn(optedOut)).toEqual(optedOut)
+  })
+})
+
+describe('osc52ClipboardDefaultOnFlipsPersistedOptOut', () => {
+  it('is true only when the migration overrides a persisted off', () => {
+    expect(
+      osc52ClipboardDefaultOnFlipsPersistedOptOut({ terminalAllowOsc52Clipboard: false })
+    ).toBe(true)
+  })
+
+  it('is false for a fresh profile, which was never opted out', () => {
+    // Why: a notice here would nag every new install about a setting they never touched.
+    expect(osc52ClipboardDefaultOnFlipsPersistedOptOut(undefined)).toBe(false)
+    expect(osc52ClipboardDefaultOnFlipsPersistedOptOut({})).toBe(false)
+    expect(osc52ClipboardDefaultOnFlipsPersistedOptOut({ terminalAllowOsc52Clipboard: true })).toBe(
+      false
+    )
+  })
+
+  it('is false once stamped, because that opt-out is honored rather than overridden', () => {
+    expect(
+      osc52ClipboardDefaultOnFlipsPersistedOptOut({
+        terminalAllowOsc52Clipboard: false,
+        terminalAllowOsc52ClipboardDefaultedOnForAllUsers: true
+      })
+    ).toBe(false)
   })
 })

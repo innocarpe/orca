@@ -77,7 +77,10 @@ import {
 } from '../../../shared/tui-agent-launch-defaults'
 import { normalizeAutoRenameBranchFromWorkDefaultOn } from '../../../shared/auto-rename-branch-from-work-settings'
 import { normalizeTerminalCursorStyleDefault } from '../../../shared/terminal-cursor-style-settings'
-import { normalizeOsc52ClipboardDefaultOn } from '../../../shared/osc52-clipboard-settings'
+import {
+  normalizeOsc52ClipboardDefaultOn,
+  osc52ClipboardDefaultOnFlipsPersistedOptOut
+} from '../../../shared/osc52-clipboard-settings'
 import { normalizeTerminalCustomThemes } from '../../../shared/terminal-custom-themes'
 import { normalizeUiLanguage } from '../../../shared/ui-language'
 import { normalizeUsagePercentageDisplay } from '../../../shared/usage-percentage-display'
@@ -3367,6 +3370,14 @@ function getStoredSettings(): GlobalSettings {
       const parsed = JSON.parse(rawStoredSettings) as unknown
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         writeJson(SETTINGS_STORAGE_KEY, migratedStored)
+        if (osc52ClipboardDefaultOnFlipsPersistedOptOut(stored)) {
+          // Why a raw merge, not readLocalWebUIState(): that path calls back into
+          // getStoredSettings(), and writing through it here would recurse.
+          writeJson(UI_STORAGE_KEY, {
+            ...readJson<Partial<PersistedUIState>>(UI_STORAGE_KEY, {}),
+            osc52ClipboardDefaultOnNoticePending: true
+          })
+        }
       }
     } catch {
       // Keep readJson's invalid-JSON fallback non-destructive.

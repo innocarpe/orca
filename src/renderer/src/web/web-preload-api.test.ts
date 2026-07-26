@@ -529,6 +529,37 @@ describe('web settings preload API', () => {
     expect(stored.terminalAllowOsc52ClipboardDefaultedOnForAllUsers).toBe(true)
   })
 
+  it('arms the OSC 52 notice in the web UI store when the flip overrides an opt-out', async () => {
+    const globals = installBrowserGlobals('Linux')
+    globals.storage.setItem(
+      'orca.web.settings.v1',
+      JSON.stringify({ terminalAllowOsc52Clipboard: false })
+    )
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+
+    await globals.window.api.settings.get()
+    const storedUi = JSON.parse(globals.storage.getItem('orca.web.ui.v1') ?? '{}') as {
+      osc52ClipboardDefaultOnNoticePending?: boolean
+    }
+
+    expect(storedUi.osc52ClipboardDefaultOnNoticePending).toBe(true)
+  })
+
+  it('does not arm the OSC 52 notice for a web profile that never opted out', async () => {
+    const globals = installBrowserGlobals('Linux')
+    globals.storage.setItem('orca.web.settings.v1', JSON.stringify({ terminalFontSize: 15 }))
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+
+    await globals.window.api.settings.get()
+    const storedUi = JSON.parse(globals.storage.getItem('orca.web.ui.v1') ?? '{}') as {
+      osc52ClipboardDefaultOnNoticePending?: boolean
+    }
+
+    expect(storedUi.osc52ClipboardDefaultOnNoticePending).not.toBe(true)
+  })
+
   it('preserves OSC 52 clipboard web opt-outs after migration', async () => {
     const globals = installBrowserGlobals('Linux')
     globals.storage.setItem(

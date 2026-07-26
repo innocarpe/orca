@@ -223,7 +223,10 @@ import {
   normalizeTuiAgentEnvRecord
 } from '../shared/tui-agent-launch-defaults'
 import { normalizeTerminalCursorStyleDefault } from '../shared/terminal-cursor-style-settings'
-import { normalizeOsc52ClipboardDefaultOn } from '../shared/osc52-clipboard-settings'
+import {
+  normalizeOsc52ClipboardDefaultOn,
+  osc52ClipboardDefaultOnFlipsPersistedOptOut
+} from '../shared/osc52-clipboard-settings'
 import { normalizeTerminalLineHeight } from '../shared/terminal-line-height-settings'
 import { normalizeUiLanguage } from '../shared/ui-language'
 import { normalizeBrowserPageZoomLevel } from '../shared/browser-page-zoom'
@@ -2912,6 +2915,9 @@ export class Store {
           : true
         // Why: the old off default persisted `false` for every profile, indistinguishable from a real opt-out — flip unmigrated profiles once (#10567).
         const migratedOsc52Clipboard = normalizeOsc52ClipboardDefaultOn(parsed.settings)
+        const osc52ClipboardNoticePending =
+          osc52ClipboardDefaultOnFlipsPersistedOptOut(parsed.settings) ||
+          parsed.ui?.osc52ClipboardDefaultOnNoticePending === true
         if (parsed.settings?.terminalAllowOsc52ClipboardDefaultedOnForAllUsers !== true) {
           this.loadNeedsSave = true
         }
@@ -3332,6 +3338,9 @@ export class Store {
                   : false,
               setupGuideBrowserMilestoneLegacyComplete:
                 parsed.ui?.setupGuideBrowserMilestoneLegacyComplete === true,
+              // Why persist rather than notify inline: the flip lands during load, before any
+              // window exists, and it must survive a crash before the user ever sees the notice.
+              osc52ClipboardDefaultOnNoticePending: osc52ClipboardNoticePending,
               sortBy: migrate ? ('smart' as const) : sort,
               showDotfilesByWorktree: normalizeShowDotfilesByWorktree(
                 parsed.ui?.showDotfilesByWorktree
@@ -5478,6 +5487,8 @@ export class Store {
       statusBarUsageMode: normalizeStatusBarUsageMode(this.state.ui?.statusBarUsageMode),
       // Why: strict boolean coercion so a missing/legacy value reads as false (first-run notice still fires).
       trayMinimizeNoticeShown: this.state.ui?.trayMinimizeNoticeShown === true,
+      osc52ClipboardDefaultOnNoticePending:
+        this.state.ui?.osc52ClipboardDefaultOnNoticePending === true,
       markdownTocPanelWidth: clampMarkdownTocPanelWidth(this.state.ui?.markdownTocPanelWidth),
       visibleWorkspaceHostIds: normalizeVisibleExecutionHostIds(
         this.state.ui?.visibleWorkspaceHostIds
