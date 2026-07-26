@@ -53,3 +53,15 @@ Source-control and review changes must consider GitLab and other supported git p
 Be mindful of the user's `gh` CLI API rate limit — batch requests where possible and avoid unnecessary calls. All code, commands, and scripts must be compatible with macOS, Linux, and Windows.
 
 ## Type Declarations: Prefer `.ts` Over `.d.ts`
+
+
+## Local contribution harness (innocarpe fork only)
+
+Product rules above apply to all Orca code. For **OSS contribution process** on this fork
+(primary + worktrees, dual-track PRs, free-issue cycle, SSOT BOARD/HISTORY), also load:
+
+- [`.grok/agent/orca-contribution.md`](./.grok/agent/orca-contribution.md)
+- Skills: `./.grok/install-agent-skills.sh` → Claude `.claude/skills/`, Codex `.agents/skills/`
+- Entrypoints: `CLAUDE.md` / `codex.md` (same contribution include)
+
+Do **not** include harness-only commits on `fix/*` branches that PR to **upstream**.

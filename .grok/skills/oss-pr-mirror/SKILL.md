@@ -41,11 +41,13 @@ This skill still **must**:
 | Remote | `origin` → fork |
 | Author | `innocarpe` |
 
-Location (project skill — **not** `~/.grok`):
+Location (project skill — **not** only `~/.grok`):
 
-- This skill lives at `<repo>/.grok/skills/oss-pr-mirror/`
-- Commit it on **fork `main` only**. Do **not** put these files on contribution branches that PR to upstream.
-- Worktrees on `fix/*` may not have this tree checked out; invoke scripts via the primary checkout path below.
+- Canonical path: `<repo>/.grok/skills/oss-pr-mirror/`
+- Claude Code / Codex: run `<repo>/.grok/install-agent-skills.sh` so this package is linked into `.claude/skills/` and `.agents/skills/` (those dirs are gitignored by upstream).
+- Commit harness on **fork `main` only**. Do **not** put these files on contribution branches that PR to upstream.
+- Worktrees on `fix/*` may not have `.grok` checked out; invoke scripts via the primary checkout path below.
+- Full multi-agent overview: [`.grok/README.md`](../../README.md)
 
 Local SSOT (gitignore):
 
