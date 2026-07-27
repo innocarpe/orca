@@ -40,13 +40,14 @@ describe('terminal input bounds', () => {
     expect(chunks).toEqual(['x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES), 'x'])
   })
 
-  it('uses smaller chunks and a real gap on Windows for ConPTY pacing (#10416)', () => {
-    expect(getTerminalInputChunkMaxBytes('win32')).toBe(TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32)
+  it('uses the same chunk budget on all platforms (no Windows ConPTY pacing)', () => {
+    // Why: #10416 truncation was not reproduced; 1 KiB/16 ms pacing is not shipped.
+    expect(getTerminalInputChunkMaxBytes('win32')).toBe(TERMINAL_INPUT_CHUNK_MAX_BYTES)
     expect(getTerminalInputChunkMaxBytes('darwin')).toBe(TERMINAL_INPUT_CHUNK_MAX_BYTES)
-    expect(getTerminalInputChunkGapMs('win32')).toBe(TERMINAL_INPUT_CHUNK_GAP_MS_WIN32)
+    expect(getTerminalInputChunkGapMs('win32')).toBe(0)
     expect(getTerminalInputChunkGapMs('linux')).toBe(TERMINAL_INPUT_CHUNK_GAP_MS)
-    expect(TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32).toBeLessThan(TERMINAL_INPUT_CHUNK_MAX_BYTES)
-    expect(TERMINAL_INPUT_CHUNK_GAP_MS_WIN32).toBeGreaterThan(TERMINAL_INPUT_CHUNK_GAP_MS)
+    expect(TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32).toBe(TERMINAL_INPUT_CHUNK_MAX_BYTES)
+    expect(TERMINAL_INPUT_CHUNK_GAP_MS_WIN32).toBe(TERMINAL_INPUT_CHUNK_GAP_MS)
   })
 
   it('iterates chunks lazily without prebuilding every terminal input chunk', () => {

@@ -5,27 +5,26 @@ import {
 } from './clipboard-text'
 
 export const TERMINAL_INPUT_CHUNK_MAX_BYTES = 16 * 1024
-// Why: #10416 reports ConPTY loss with 16 KiB/setTimeout(0); 1 KiB per
-// 16 ms caps each burst to one 60 Hz host-drain interval.
-export const TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32 = 1024
 export const TERMINAL_INPUT_CHUNK_GAP_MS = 0
-export const TERMINAL_INPUT_CHUNK_GAP_MS_WIN32 = 16
+// Why: #10416 silent truncation was never reproduced on real ConPTY (see #10504
+// review); keep win32 aliases equal to the shared budget so host-aware call sites
+// still compile without reintroducing 1 KiB / 16 ms pacing cost.
+export const TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32 = TERMINAL_INPUT_CHUNK_MAX_BYTES
+export const TERMINAL_INPUT_CHUNK_GAP_MS_WIN32 = TERMINAL_INPUT_CHUNK_GAP_MS
 export const TERMINAL_INPUT_MAX_BYTES = 16 * 1024 * 1024
 export const TERMINAL_INPUT_TOO_LARGE_ERROR =
   'Terminal input is too large for a safe terminal send.'
 
-/** Platform-aware chunk size for paced PTY writes (inject / terminal send). */
+/** Chunk size for PTY writes (inject / terminal send). `platform` reserved for host-aware callers. */
 export function getTerminalInputChunkMaxBytes(
-  platform: NodeJS.Platform = process.platform
+  _platform: NodeJS.Platform = process.platform
 ): number {
-  return platform === 'win32'
-    ? TERMINAL_INPUT_CHUNK_MAX_BYTES_WIN32
-    : TERMINAL_INPUT_CHUNK_MAX_BYTES
+  return TERMINAL_INPUT_CHUNK_MAX_BYTES
 }
 
-/** Gap between PTY input chunks so TUI hosts can drain without dropping. */
-export function getTerminalInputChunkGapMs(platform: NodeJS.Platform = process.platform): number {
-  return platform === 'win32' ? TERMINAL_INPUT_CHUNK_GAP_MS_WIN32 : TERMINAL_INPUT_CHUNK_GAP_MS
+/** Gap between PTY input chunks; 0 skips the timer (all platforms after #10504 review). */
+export function getTerminalInputChunkGapMs(_platform: NodeJS.Platform = process.platform): number {
+  return TERMINAL_INPUT_CHUNK_GAP_MS
 }
 
 export function getTerminalInputByteLength(text: string): number {
