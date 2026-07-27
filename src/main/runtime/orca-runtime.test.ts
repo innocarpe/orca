@@ -15611,29 +15611,41 @@ describe('OrcaRuntimeService', () => {
   })
 
   it('writes large terminal input in 16 KiB chunks without inter-chunk delay', async () => {
-    const writes: string[] = []
-    const runtime = new OrcaRuntimeService(store)
-    runtime.setPtyController({
-      spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
-      write: (_ptyId, data) => {
-        writes.push(data)
-        return true
-      },
-      kill: () => true,
-      getForegroundProcess: async () => null
-    })
-    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+    vi.useFakeTimers()
+    try {
+      const writes: string[] = []
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+        write: (_ptyId, data) => {
+          writes.push(data)
+          return true
+        },
+        kill: () => true,
+        getForegroundProcess: async () => null
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
 
-    await runtime.sendTerminal(handle, { text: 'x' })
-    expect(writes).toEqual(['x'])
+      await runtime.sendTerminal(handle, { text: 'x' })
+      expect(writes).toEqual(['x'])
+      expect(vi.getTimerCount()).toBe(0)
 
-    writes.length = 0
-    const text = 'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
-    await runtime.sendTerminal(handle, { text })
-    expect(writes).toEqual([
-      'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES),
-      'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES)
-    ])
+      writes.length = 0
+      const text = 'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
+      // Why: flush microtasks only — advancing timers would let a reintroduced gap pass this test.
+      const send = runtime.sendTerminal(handle, { text })
+      for (let i = 0; i < 32 && writes.length < 2; i += 1) {
+        await Promise.resolve()
+      }
+      expect(vi.getTimerCount()).toBe(0)
+      expect(writes).toEqual([
+        'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES),
+        'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES)
+      ])
+      await send
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('serializes concurrent terminal sends per PTY', async () => {
