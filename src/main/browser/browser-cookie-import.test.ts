@@ -545,7 +545,12 @@ describe('importCookiesFromBrowser Chromium', () => {
       expect(powershellCall![2]).toEqual(expect.objectContaining({ windowsHide: true }))
     } finally {
       platformSpy.mockRestore()
-      process.env.LOCALAPPDATA = previousLocalAppData
+      // Why: assigning undefined sets the string "undefined" and leaks into later tests.
+      if (previousLocalAppData === undefined) {
+        delete process.env.LOCALAPPDATA
+      } else {
+        process.env.LOCALAPPDATA = previousLocalAppData
+      }
     }
   })
 
