@@ -939,6 +939,7 @@ export class AgentHookServer {
       }
       if (!enriched.providerSessionOnly) {
         statuses.push({
+          paneKey,
           state: enriched.payload.state,
           receivedAt: enriched.receivedAt,
           observedInCurrentRuntime: this.runtimeObservedStatusPaneKeys.has(paneKey)

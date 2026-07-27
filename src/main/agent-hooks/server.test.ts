@@ -2332,6 +2332,9 @@ describe('AgentHookServer listener replay', () => {
 
       expect(secondServer.getStatusChangeSnapshot()).toEqual([
         expect.objectContaining({
+          // Why: per-pane consumers (stats bridge, awake) key off paneKey; dropping it
+          // collapses every agent onto one session key instead of failing loudly.
+          paneKey: PANE,
           state: 'working',
           observedInCurrentRuntime: false
         })
