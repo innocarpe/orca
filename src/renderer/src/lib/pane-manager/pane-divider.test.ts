@@ -594,8 +594,9 @@ describe('divider double-click equalize (#9644)', () => {
     createDivider(true, {}, { refitPanesUnder, onLayoutChanged })
     listeners.get('dblclick')?.(new Event('dblclick') as unknown as Event)
 
-    expect(previousPane.style.flex).toBe('1 1 0%')
-    expect(nextPane.style.flex).toBe('1 1 0%')
+    // Why: pair weight 3+1=4 → each half is 2 so other panes in a group keep space.
+    expect(previousPane.style.flex).toBe('2 1 0%')
+    expect(nextPane.style.flex).toBe('2 1 0%')
     expect(refitPanesUnder).toHaveBeenCalledWith(previousPane)
     expect(refitPanesUnder).toHaveBeenCalledWith(nextPane)
     expect(onLayoutChanged).toHaveBeenCalled()
