@@ -17100,10 +17100,8 @@ export class OrcaRuntimeService {
       }
       await options.afterWrite?.(ptyId)
       chunk = chunks.next()
-      // Why: non-Windows gap is 0 — skip the timer so we do not force an event-loop turn per chunk.
+      // Why: gap 0 skips the timer so multi-chunk sends do not force a delay per chunk.
       if (!chunk.done && chunkGapMs > 0) {
-        // Why: Windows ConPTY needs a real gap, not just setTimeout(0), or long
-        // injects are silently truncated to a tail fragment (#10416).
         await this.waitForTerminalInputGap(queue, chunkGapMs)
       }
     }
@@ -17135,7 +17133,7 @@ export class OrcaRuntimeService {
         }
         wrotePasteBytes = true
         chunk = chunks.next()
-        // Why: non-Windows gap is 0 — skip the timer so we do not force an event-loop turn per chunk.
+        // Why: gap 0 skips the timer so multi-chunk pastes do not force a delay per chunk.
         if (!chunk.done && chunkGapMs > 0) {
           await this.waitForTerminalInputGap(queue, chunkGapMs)
         }

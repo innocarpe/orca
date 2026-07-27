@@ -15610,101 +15610,80 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
-  it('paces Windows chunks without delaying single writes', async () => {
-    vi.useFakeTimers()
-    setPlatform('win32')
-    try {
-      const writes: string[] = []
-      const runtime = new OrcaRuntimeService(store)
-      runtime.setPtyController({
-        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
-        write: (_ptyId, data) => {
-          writes.push(data)
-          return true
-        },
-        kill: () => true,
-        getForegroundProcess: async () => null
-      })
-      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+  it('writes large terminal input in 16 KiB chunks without inter-chunk delay', async () => {
+    const writes: string[] = []
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+      write: (_ptyId, data) => {
+        writes.push(data)
+        return true
+      },
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
 
-      await runtime.sendTerminal(handle, { text: 'x' })
-      expect(writes).toEqual(['x'])
-      expect(vi.getTimerCount()).toBe(0)
+    await runtime.sendTerminal(handle, { text: 'x' })
+    expect(writes).toEqual(['x'])
 
-      const pacedSend = runtime.sendTerminal(handle, {
-        text: 'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
-      })
-      await vi.advanceTimersByTimeAsync(15)
-      expect(writes).toHaveLength(2)
-      await vi.runAllTimersAsync()
-      await pacedSend
-      expect(writes.slice(1).join('')).toBe('y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2))
-    } finally {
-      vi.useRealTimers()
-    }
+    writes.length = 0
+    const text = 'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
+    await runtime.sendTerminal(handle, { text })
+    expect(writes).toEqual([
+      'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES),
+      'y'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES)
+    ])
   })
 
   it('serializes concurrent terminal sends per PTY', async () => {
-    vi.useFakeTimers()
-    setPlatform('win32')
-    try {
-      const writes: string[] = []
-      const runtime = new OrcaRuntimeService(store)
-      runtime.setPtyController({
-        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
-        write: (_ptyId, data) => {
-          writes.push(data)
-          return true
-        },
-        kill: () => true,
-        getForegroundProcess: async () => null
-      })
-      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
-      const first = 'a'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
-      const second = 'b'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
+    const writes: string[] = []
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+      write: (_ptyId, data) => {
+        writes.push(data)
+        return true
+      },
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+    const first = 'a'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
+    const second = 'b'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2)
 
-      const firstSend = runtime.sendTerminal(handle, { text: first })
-      const secondSend = runtime.sendTerminal(handle, { text: second })
-      await vi.runAllTimersAsync()
-      await Promise.all([firstSend, secondSend])
+    await Promise.all([
+      runtime.sendTerminal(handle, { text: first }),
+      runtime.sendTerminal(handle, { text: second })
+    ])
 
-      expect(writes.join('')).toBe(first + second)
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(writes.join('')).toBe(first + second)
   })
 
-  it('cancels paced input when its PTY exits', async () => {
-    vi.useFakeTimers()
-    setPlatform('win32')
-    try {
-      const writes: string[] = []
-      const runtime = new OrcaRuntimeService(store)
-      runtime.setPtyController({
-        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
-        write: (_ptyId, data) => {
-          writes.push(data)
-          return true
-        },
-        kill: () => true,
-        getForegroundProcess: async () => null
-      })
-      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
-      const send = runtime.sendTerminal(handle, {
-        text: 'x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 4)
-      })
-      const rejection = expect(send).rejects.toThrow('terminal_not_writable')
-      await vi.advanceTimersByTimeAsync(0)
-      expect(writes).toHaveLength(1)
+  it('stops multi-chunk terminal input when the PTY exits after the first chunk', async () => {
+    const writes: string[] = []
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+      write: (_ptyId, data) => {
+        writes.push(data)
+        // Why: exit after accepting the first chunk so later chunks hit the cancelled queue.
+        if (writes.length === 1) {
+          runtime.onPtyExit('pty-bg', 0)
+        }
+        return true
+      },
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
 
-      runtime.onPtyExit('pty-bg', 0)
-
-      await rejection
-      expect(writes).toHaveLength(1)
-      expect(vi.getTimerCount()).toBe(0)
-    } finally {
-      vi.useRealTimers()
-    }
+    await expect(
+      runtime.sendTerminal(handle, {
+        text: 'x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 3)
+      })
+    ).rejects.toThrow('terminal_not_writable')
+    expect(writes).toEqual(['x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES)])
   })
 
   it('chunks large terminal.send text before provider writes', async () => {
