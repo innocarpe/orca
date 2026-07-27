@@ -59,7 +59,11 @@ import { MobileDriverOverlay } from './MobileDriverOverlay'
 import { stripSshReconnectOwnedErrorLines, TerminalErrorToast } from './TerminalErrorToast'
 import { TerminalSessionStateSaveFailureDialog } from './TerminalSessionStateSaveFailureDialog'
 import TerminalContextMenu from './TerminalContextMenu'
-import TerminalPaneHeaderOverlay from './TerminalPaneHeaderOverlay'
+import TerminalPaneHeaderOverlay, { type PaneTitleOverlayRect } from './TerminalPaneHeaderOverlay'
+import {
+  arePaneTitleOverlayRectsEqual,
+  clearPaneTitleOverlayRects
+} from './pane-title-overlay-rects'
 import NativeChatView from '../native-chat/NativeChatView'
 import { shouldSuppressNativeChatExitForPane } from '../native-chat/native-chat-pending'
 import {
@@ -245,12 +249,6 @@ type TerminalPaneProps = {
   onCloseTab: () => void
 }
 
-type PaneTitleOverlayRect = {
-  left: number
-  top: number
-  width: number
-}
-
 type TerminalQuickCommandEditorDialogProps = {
   command: TerminalQuickCommand
   onOpenChange: (open: boolean) => void
@@ -279,24 +277,6 @@ function TerminalQuickCommandEditorDialog({
 function formatClipboardImagePasteError(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error)
   return `Image paste failed: ${detail}`
-}
-
-function arePaneTitleOverlayRectsEqual(
-  a: Record<number, PaneTitleOverlayRect>,
-  b: Record<number, PaneTitleOverlayRect>
-): boolean {
-  const aKeys = Object.keys(a)
-  const bKeys = Object.keys(b)
-  if (aKeys.length !== bKeys.length) {
-    return false
-  }
-  return aKeys.every((key) => {
-    const paneId = Number(key)
-    const left = Math.abs((a[paneId]?.left ?? 0) - (b[paneId]?.left ?? 0))
-    const top = Math.abs((a[paneId]?.top ?? 0) - (b[paneId]?.top ?? 0))
-    const width = Math.abs((a[paneId]?.width ?? 0) - (b[paneId]?.width ?? 0))
-    return left < 0.5 && top < 0.5 && width < 0.5
-  })
 }
 
 export default function TerminalPane({
@@ -2379,7 +2359,7 @@ export default function TerminalPane({
     const manager = managerRef.current
     const container = containerRef.current
     if (!manager || !container) {
-      setPaneTitleOverlayRects({})
+      setPaneTitleOverlayRects(clearPaneTitleOverlayRects)
       return
     }
     const containerRect = container.getBoundingClientRect()
@@ -2404,7 +2384,7 @@ export default function TerminalPane({
     const manager = managerRef.current
     const container = containerRef.current
     if (!manager || !container) {
-      setPaneTitleOverlayRects({})
+      setPaneTitleOverlayRects(clearPaneTitleOverlayRects)
       return
     }
 
