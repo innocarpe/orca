@@ -44,6 +44,7 @@ import { translate } from '@/i18n/i18n'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { copyTerminalHandleForPane } from './terminal-handle-copy'
 import { runCopyPaneId, runTerminalCopy } from './terminal-copy-rejection-guards'
+import { copyTerminalSelection } from './terminal-selection-copy'
 
 const CLOSE_ALL_CONTEXT_MENUS_EVENT = 'orca-close-all-context-menus'
 
@@ -525,12 +526,14 @@ export function useTerminalPaneContextMenu({
       if (!clickedPane) {
         return
       }
-      const selection = clickedPane.terminal.getSelection()
-      if (selection) {
-        void window.api.ui.writeClipboardText(selection).catch(() => {
+      if (clickedPane.terminal.getSelection()) {
+        void copyTerminalSelection({
+          terminal: clickedPane.terminal,
+          writeClipboardText: window.api.ui.writeClipboardText,
+          clearSelectionOnSuccess: true
+        }).catch(() => {
           /* ignore clipboard write failures */
         })
-        clickedPane.terminal.clearSelection()
       } else {
         void pasteResolvedPane('right-click')
       }

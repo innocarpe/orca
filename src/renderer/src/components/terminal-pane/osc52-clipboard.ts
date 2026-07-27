@@ -40,6 +40,8 @@ export type Osc52ClipboardRequestOptions = {
   allowClipboardWrite: boolean
   writeClipboardText: (text: string) => Promise<void>
   onBlockedWrite?: () => void
+  /** Called when the host clipboard write rejects after an OSC 52 write request. */
+  onWriteFailure?: () => void
 }
 
 const MAX_OSC52_BASE64_CHARS = 128 * 1024
@@ -80,6 +82,7 @@ export function createOsc52OscHandler(deps: {
   getReplaying: () => boolean
   writeClipboardText: (text: string) => Promise<void>
   showBlockedWriteToast: () => void
+  showWriteFailedToast?: () => void
 }): (data: string) => boolean {
   // Why coalesce: each sequence is only ~15 bytes, so one hostile chunk can fire a
   // million parser callbacks — each a main-process clipboard write. Only the last of
@@ -87,6 +90,9 @@ export function createOsc52OscHandler(deps: {
   // flood to roughly one write per xterm parse yield, not to one write overall.
   let pendingText: string | null = null
   let flushScheduled = false
+  const reportWriteFailure = (): void => {
+    deps.showWriteFailedToast?.()
+  }
   const writeCoalesced = (text: string): Promise<void> => {
     pendingText = text
     if (!flushScheduled) {
@@ -99,12 +105,14 @@ export function createOsc52OscHandler(deps: {
           // Why try/catch and not just .catch(): the write moved out of the guarded
           // parser handler into a microtask, where a sync throw (or a preload that
           // never installed writeClipboardText) would surface as an uncaught error.
+          // Surface a toast so TUI "Copied" is not the last word when the host write
+          // never lands (#8977 / #5611).
           try {
             void deps.writeClipboardText(next)?.catch(() => {
-              /* ignore clipboard write failures */
+              reportWriteFailure()
             })
           } catch {
-            /* ignore clipboard write failures */
+            reportWriteFailure()
           }
         }
       })
@@ -120,7 +128,8 @@ export function createOsc52OscHandler(deps: {
     return handleOsc52ClipboardRequest(data, {
       allowClipboardWrite: gate.allowClipboardWrite,
       writeClipboardText: writeCoalesced,
-      onBlockedWrite: gate.shouldSurfaceBlockedWrite ? deps.showBlockedWriteToast : undefined
+      onBlockedWrite: gate.shouldSurfaceBlockedWrite ? deps.showBlockedWriteToast : undefined,
+      onWriteFailure: deps.showWriteFailedToast
     })
   }
 }
@@ -140,7 +149,9 @@ export function handleOsc52ClipboardRequest(
   }
 
   void options.writeClipboardText(parsed.text).catch(() => {
-    /* ignore clipboard write failures */
+    // Why: a TUI yank that reports success but never reached the OS clipboard
+    // must surface a toast, not silently no-op (#8977 / #5611).
+    options.onWriteFailure?.()
   })
   return true
 }

@@ -168,6 +168,20 @@ describe('handleOsc52ClipboardRequest', () => {
 
     expect(onBlockedWrite).not.toHaveBeenCalled()
   })
+
+  it('surfaces host clipboard write failures for OSC 52 requests', async () => {
+    const onWriteFailure = vi.fn()
+
+    handleOsc52ClipboardRequest(`c;${b64('from tui')}`, {
+      allowClipboardWrite: true,
+      writeClipboardText: vi
+        .fn<(text: string) => Promise<void>>()
+        .mockRejectedValue(new Error('clipboard unchanged')),
+      onWriteFailure
+    })
+
+    await vi.waitFor(() => expect(onWriteFailure).toHaveBeenCalledTimes(1))
+  })
 })
 
 describe('createOsc52OscHandler', () => {
@@ -183,13 +197,15 @@ describe('createOsc52OscHandler', () => {
       overrides.writeClipboardText ??
       vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
     const showBlockedWriteToast = vi.fn()
+    const showWriteFailedToast = vi.fn()
     const handler = createOsc52OscHandler({
       getSettingEnabled: () => settingEnabled,
       getReplaying: () => overrides.replaying ?? false,
       writeClipboardText,
-      showBlockedWriteToast
+      showBlockedWriteToast,
+      showWriteFailedToast
     })
-    return { handler, writeClipboardText, showBlockedWriteToast }
+    return { handler, writeClipboardText, showBlockedWriteToast, showWriteFailedToast }
   }
 
   it('writes through to the clipboard for a live pane', async () => {
@@ -267,7 +283,7 @@ describe('createOsc52OscHandler', () => {
     expect(writeClipboardText).toHaveBeenCalledWith('copy me')
   })
 
-  it('swallows a rejected clipboard write rather than leaking an unhandled rejection', async () => {
+  it('surfaces a rejected clipboard write without leaking an unhandled rejection', async () => {
     // Why the listener: an unhandled rejection here does not fail this suite on its own,
     // so without it the `.catch` on the coalesced write is deletable with nothing going red.
     const unhandled: unknown[] = []
@@ -276,6 +292,7 @@ describe('createOsc52OscHandler', () => {
     }
     process.on('unhandledRejection', record)
     const written: string[] = []
+    const showWriteFailedToast = vi.fn()
     try {
       // Why not vi.fn here: the spy tracks settled results, which marks the rejection
       // handled and hides exactly the leak this test exists to catch.
@@ -286,7 +303,8 @@ describe('createOsc52OscHandler', () => {
           written.push(text)
           return Promise.reject(new Error('denied by OS'))
         },
-        showBlockedWriteToast: vi.fn()
+        showBlockedWriteToast: vi.fn(),
+        showWriteFailedToast
       })
 
       expect(handler(`c;${b64('copy me')}`)).toBe(true)
@@ -297,6 +315,21 @@ describe('createOsc52OscHandler', () => {
 
     expect(written).toEqual(['copy me'])
     expect(unhandled).toEqual([])
+    expect(showWriteFailedToast).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces a synchronous clipboard bridge throw as a failed write toast', async () => {
+    const { handler, showWriteFailedToast } = setup({
+      writeClipboardText: vi.fn<(text: string) => Promise<void>>(() => {
+        throw new Error('clipboard unavailable')
+      })
+    })
+
+    expect(handler(`c;${b64('copy me')}`)).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(showWriteFailedToast).toHaveBeenCalledTimes(1)
   })
 
   it('keeps coalescing after a failed write instead of wedging the pane', async () => {

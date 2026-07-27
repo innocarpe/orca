@@ -35,6 +35,7 @@ import {
 } from './clipboard-remote-file-copy'
 import { saveClipboardImageBufferInRuntime } from './clipboard-runtime-image-upload'
 import { readWindowsClipboardImageFileAsPng } from './clipboard-windows-image-file'
+import { writeClipboardTextAndVerify } from './clipboard-text-write-verify'
 import { isDashboardPopoutRenderer } from './dashboard-popout-window'
 
 let trustedClipboardRendererWebContentsId: number | null = null
@@ -157,11 +158,11 @@ export function registerClipboardHandlers(store: Store): void {
   )
   ipcMain.handle('clipboard:writeText', async (event, text: string) => {
     assertTrustedClipboardTextSender(event)
-    return clipboard.writeText(await assertClipboardTextWriteWithinLimitWithYield(text))
+    return writeClipboardTextAndVerify(await assertClipboardTextWriteWithinLimitWithYield(text))
   })
   ipcMain.handle('clipboard:writeSelectionText', async (event, text: string) => {
     assertTrustedClipboardSender(event)
-    return clipboard.writeText(
+    return writeClipboardTextAndVerify(
       await assertClipboardTextWriteWithinLimitWithYield(text),
       'selection'
     )

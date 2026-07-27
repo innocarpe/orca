@@ -69,7 +69,11 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { applyExpandedLayoutTo, restoreExpandedLayoutFrom } from './expand-collapse'
 import { applyTerminalAppearance } from './terminal-appearance'
 import { createOsc52OscHandler } from './osc52-clipboard'
-import { showOsc52ClipboardBlockedToast } from './osc52-clipboard-blocked-toast'
+import {
+  showOsc52ClipboardBlockedToast,
+  showOsc52ClipboardFailedToast
+} from './osc52-clipboard-blocked-toast'
+import { copyTerminalSelection } from './terminal-selection-copy'
 import { parseOsc7 } from './parse-osc7'
 import { guardParserHandler } from './terminal-parser-handler-guard'
 import { resolveTerminalJisYenInput } from './terminal-jis-yen-input'
@@ -778,7 +782,8 @@ export function useTerminalPaneLifecycle({
               getSettingEnabled: () => settingsRef.current?.terminalAllowOsc52Clipboard,
               getReplaying: () => isPaneReplaying(replayingPanesRef, pane.id),
               writeClipboardText: (text) => window.api.ui.writeClipboardText(text),
-              showBlockedWriteToast: showOsc52ClipboardBlockedToast
+              showBlockedWriteToast: showOsc52ClipboardBlockedToast,
+              showWriteFailedToast: showOsc52ClipboardFailedToast
             })
           )
         )
@@ -1027,11 +1032,10 @@ export function useTerminalPaneLifecycle({
           if (!shouldWriteClipboard) {
             return
           }
-          const selection = pane.terminal.getSelection()
-          if (!selection) {
-            return
-          }
-          void window.api.ui.writeClipboardText(selection).catch(() => {
+          void copyTerminalSelection({
+            terminal: pane.terminal,
+            writeClipboardText: window.api.ui.writeClipboardText
+          }).catch(() => {
             /* ignore clipboard write failures */
           })
         })
