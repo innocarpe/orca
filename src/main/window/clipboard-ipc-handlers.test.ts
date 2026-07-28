@@ -224,7 +224,6 @@ describe('registerClipboardHandlers', () => {
   })
 
   it('registers normal and selection text clipboard IPC handlers', async () => {
-    // Why: write verification reads back; keep mocks in lockstep with writes.
     const values = { standard: 'standard text', selection: 'selection text' }
     clipboardReadTextMock.mockImplementation((type?: string) =>
       type === 'selection' ? values.selection : values.standard
@@ -498,7 +497,6 @@ describe('registerClipboardHandlers', () => {
   it('yields before writing large text clipboard IPC payloads', async () => {
     vi.useFakeTimers()
     const text = 'é'.repeat(300_000)
-    // Why: write verification reads back; mock must reflect a successful write.
     clipboardWriteTextMock.mockImplementation((value: string) => {
       clipboardReadTextMock.mockReturnValue(value)
     })

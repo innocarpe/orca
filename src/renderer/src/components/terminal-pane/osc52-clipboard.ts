@@ -40,7 +40,6 @@ export type Osc52ClipboardRequestOptions = {
   allowClipboardWrite: boolean
   writeClipboardText: (text: string) => Promise<void>
   onBlockedWrite?: () => void
-  /** Called when the host clipboard write rejects after an OSC 52 write request. */
   onWriteFailure?: () => void
 }
 
@@ -105,8 +104,7 @@ export function createOsc52OscHandler(deps: {
           // Why try/catch and not just .catch(): the write moved out of the guarded
           // parser handler into a microtask, where a sync throw (or a preload that
           // never installed writeClipboardText) would surface as an uncaught error.
-          // Surface a toast so TUI "Copied" is not the last word when the host write
-          // never lands (#8977 / #5611).
+          // Report the otherwise invisible host failure.
           try {
             void deps.writeClipboardText(next)?.catch(() => {
               reportWriteFailure()
@@ -149,8 +147,6 @@ export function handleOsc52ClipboardRequest(
   }
 
   void options.writeClipboardText(parsed.text).catch(() => {
-    // Why: a TUI yank that reports success but never reached the OS clipboard
-    // must surface a toast, not silently no-op (#8977 / #5611).
     options.onWriteFailure?.()
   })
   return true

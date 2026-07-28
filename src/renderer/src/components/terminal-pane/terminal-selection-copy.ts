@@ -6,9 +6,6 @@ type TerminalSelectionCopyOptions = {
   clearSelectionOnSuccess?: boolean
 }
 
-// Why: route every terminal copy path through one helper so a clipboard write
-// failure rejects instead of being swallowed — callers can then withhold their
-// "Copied" success UI rather than lying about an unchanged clipboard (#8977 / #5611).
 export async function copyTerminalSelection({
   terminal,
   writeClipboardText,
@@ -20,8 +17,7 @@ export async function copyTerminalSelection({
   }
 
   await writeClipboardText(selection)
-  // Why: only drop the xterm selection once the write resolved, so a failed
-  // copy leaves the text selected for the user to retry.
+  // Keep failed-copy text selected for retry.
   if (clearSelectionOnSuccess) {
     terminal.clearSelection()
   }

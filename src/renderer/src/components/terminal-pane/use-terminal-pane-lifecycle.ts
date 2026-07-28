@@ -72,7 +72,7 @@ import { createOsc52OscHandler } from './osc52-clipboard'
 import {
   showOsc52ClipboardBlockedToast,
   showOsc52ClipboardFailedToast
-} from './osc52-clipboard-blocked-toast'
+} from './osc52-clipboard-toast'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { parseOsc7 } from './parse-osc7'
 import { guardParserHandler } from './terminal-parser-handler-guard'

@@ -162,7 +162,7 @@ export function registerClipboardHandlers(store: Store): void {
   })
   ipcMain.handle('clipboard:writeSelectionText', async (event, text: string) => {
     assertTrustedClipboardSender(event)
-    return writeClipboardTextAndVerify(
+    return clipboard.writeText(
       await assertClipboardTextWriteWithinLimitWithYield(text),
       'selection'
     )

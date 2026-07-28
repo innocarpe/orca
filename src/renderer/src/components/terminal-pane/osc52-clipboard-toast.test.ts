@@ -5,7 +5,7 @@ import ja from '@/i18n/locales/ja.json'
 import ko from '@/i18n/locales/ko.json'
 import zh from '@/i18n/locales/zh.json'
 import { OSC52_CLIPBOARD_SETTING_ID } from './osc52-clipboard-setting-anchor'
-import type * as Osc52ClipboardBlockedToastModule from './osc52-clipboard-blocked-toast'
+import type * as Osc52ClipboardToastModule from './osc52-clipboard-toast'
 
 const { toastInfoMock, toastErrorMock, storeMock } = vi.hoisted(() => ({
   toastInfoMock: vi.fn(),
@@ -30,8 +30,8 @@ vi.mock('@/store', () => ({
   }
 }))
 
-async function importToastModule(): Promise<typeof Osc52ClipboardBlockedToastModule> {
-  return import('./osc52-clipboard-blocked-toast')
+async function importToastModule(): Promise<typeof Osc52ClipboardToastModule> {
+  return import('./osc52-clipboard-toast')
 }
 
 describe('showOsc52ClipboardBlockedToast', () => {
