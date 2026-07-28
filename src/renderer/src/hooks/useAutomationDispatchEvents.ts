@@ -6,6 +6,10 @@ import { launchAgentBackgroundSession } from '@/lib/launch-agent-background-sess
 import { submitPromptToAgentPty } from '@/lib/agent-paste-draft'
 import { findReusableAutomationSession } from '@/lib/automation-session-reuse'
 import { observeExistingAutomationSession } from '@/lib/automation-session-observer'
+import {
+  createAutomationAgentSessionTracker,
+  noteAutomationAgentStatus
+} from '@/lib/automation-agent-session-attribution'
 import { launchWorktreeBackgroundTerminals } from '@/lib/launch-worktree-background-terminals'
 import { useAppStore } from '@/store'
 import type {
@@ -302,6 +306,9 @@ export function useAutomationDispatchEvents(): void {
           let pendingExitCode: number | null = null
           let pendingDone = false
           let completionMarked = false
+          // Why: bind completion to the primary provider session so nested same-pane
+          // agents (SessionStart `claude -p`) cannot finalize the run early (#10999).
+          const agentSessionTracker = createAutomationAgentSessionTracker()
           let unsubscribeAgentStatus = (): void => {}
           let unsubscribeSessionObserver = (): void => {}
           let releaseReuseDispatchTab = (): void => {}
@@ -404,25 +411,28 @@ export function useAutomationDispatchEvents(): void {
             startedAfter: number,
             options?: { requireWorkingAfterStart?: boolean }
           ): void => {
-            let sawWorkingAfterStart = false
             const checkCurrentStatus = (): void => {
               const { agentStatusByPaneKey } = useAppStore.getState()
               for (const [paneKey, entry] of Object.entries(agentStatusByPaneKey)) {
                 if (paneKey !== targetPaneKey || entry.updatedAt < startedAfter) {
                   continue
                 }
-                if (entry.state === 'working') {
-                  sawWorkingAfterStart = true
-                }
                 if (
-                  entry.state === 'done' &&
-                  (!options?.requireWorkingAfterStart || sawWorkingAfterStart)
+                  !noteAutomationAgentStatus(
+                    agentSessionTracker,
+                    {
+                      state: entry.state,
+                      providerSession: entry.providerSession
+                    },
+                    options
+                  )
                 ) {
-                  latestAssistantMessage =
-                    entry.lastAssistantMessage?.trim() || latestAssistantMessage
-                  handleAgentDone()
-                  return
+                  continue
                 }
+                latestAssistantMessage =
+                  entry.lastAssistantMessage?.trim() || latestAssistantMessage
+                handleAgentDone()
+                return
               }
             }
             // Why: Codex/Claude completion normally arrives through the global
@@ -453,15 +463,35 @@ export function useAutomationDispatchEvents(): void {
                   if (!submitted) {
                     cleanupRunObservers()
                   } else {
-                    let reuseSawWorking = false
-                    const handleReusableAgentStatus = (payload: { state: string }): void => {
-                      if (payload.state === 'working') {
-                        reuseSawWorking = true
+                    const handleReusableAgentStatus = (payload: {
+                      state: 'working' | 'blocked' | 'waiting' | 'done'
+                      lastAssistantMessage?: string
+                    }): void => {
+                      // OSC payloads lack providerSession; once the store path has
+                      // bound a primary session, only that path may finalize.
+                      if (payload.state !== 'done') {
+                        noteAutomationAgentStatus(agentSessionTracker, {
+                          state: payload.state
+                        })
+                        latestAssistantMessage =
+                          payload.lastAssistantMessage?.trim() || latestAssistantMessage
                         return
                       }
-                      if (payload.state === 'done' && reuseSawWorking) {
-                        handleAgentDone()
+                      if (agentSessionTracker.boundFingerprint) {
+                        return
                       }
+                      if (
+                        !noteAutomationAgentStatus(
+                          agentSessionTracker,
+                          { state: 'done' },
+                          { requireWorkingAfterStart: true }
+                        )
+                      ) {
+                        return
+                      }
+                      latestAssistantMessage =
+                        payload.lastAssistantMessage?.trim() || latestAssistantMessage
+                      handleAgentDone()
                     }
                     const reuseCompletionStartedAt = Date.now()
                     unsubscribeSessionObserver = await observeExistingAutomationSession({
@@ -472,8 +502,6 @@ export function useAutomationDispatchEvents(): void {
                         outputSnapshotBuffer.append(chunk)
                       },
                       onAgentStatus: (payload) => {
-                        latestAssistantMessage =
-                          payload.lastAssistantMessage?.trim() || latestAssistantMessage
                         handleReusableAgentStatus(payload)
                       },
                       onExit: (code) => {
@@ -526,11 +554,24 @@ export function useAutomationDispatchEvents(): void {
               outputSnapshotBuffer.append(chunk)
             },
             onAgentStatus: (payload) => {
-              latestAssistantMessage =
-                payload.lastAssistantMessage?.trim() || latestAssistantMessage
+              // OSC payloads lack providerSession; once hooks bound a primary
+              // session, wait for store-attributed done instead of any pane done.
               if (payload.state !== 'done') {
+                noteAutomationAgentStatus(agentSessionTracker, {
+                  state: payload.state
+                })
+                latestAssistantMessage =
+                  payload.lastAssistantMessage?.trim() || latestAssistantMessage
                 return
               }
+              if (agentSessionTracker.boundFingerprint) {
+                return
+              }
+              if (!noteAutomationAgentStatus(agentSessionTracker, { state: 'done' })) {
+                return
+              }
+              latestAssistantMessage =
+                payload.lastAssistantMessage?.trim() || latestAssistantMessage
               handleAgentDone()
             },
             onExit: (_ptyId, code) => {

@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockLaunchAgentBackgroundSession = vi.fn()
 const mockLaunchWorktreeBackgroundTerminals = vi.fn()
+const mockSubmitPromptToAgentTab = vi.fn()
+const mockSubmitPromptToAgentPty = vi.fn()
 const mockFindReusableAutomationSession = vi.fn()
 const mockObserveExistingAutomationSession = vi.fn()
 const mockCreateWorktree = vi.fn()
@@ -124,7 +126,10 @@ vi.mock('@/lib/launch-worktree-background-terminals', () => ({
   launchWorktreeBackgroundTerminals: mockLaunchWorktreeBackgroundTerminals
 }))
 
-vi.mock('@/lib/agent-paste-draft', () => ({}))
+vi.mock('@/lib/agent-paste-draft', () => ({
+  submitPromptToAgentTab: mockSubmitPromptToAgentTab,
+  submitPromptToAgentPty: mockSubmitPromptToAgentPty
+}))
 
 vi.mock('@/lib/automation-session-reuse', () => ({
   findReusableAutomationSession: mockFindReusableAutomationSession
@@ -150,18 +155,55 @@ vi.mock('@/lib/browser-uuid', () => ({
   createBrowserUuid: () => 'create-request-id'
 }))
 
+const agentStatusListeners = new Set<() => void>()
+
 vi.mock('@/store', () => ({
   useAppStore: {
     getState: () => state,
-    subscribe: vi.fn(() => () => {})
+    subscribe: (listener: () => void) => {
+      agentStatusListeners.add(listener)
+      return () => {
+        agentStatusListeners.delete(listener)
+      }
+    }
   }
 }))
+
+const AUTOMATION_PANE_KEY = 'agent-tab:7c6fb4e5-3bf1-4ff4-8259-03f7ae81c40d'
+
+function publishAgentStatus(
+  entry: {
+    state: 'working' | 'blocked' | 'waiting' | 'done'
+    updatedAt?: number
+    lastAssistantMessage?: string
+    providerSession?: { key: 'session_id' | 'conversation_id'; id: string }
+  },
+  paneKey = AUTOMATION_PANE_KEY
+): void {
+  state.agentStatusByPaneKey = {
+    ...state.agentStatusByPaneKey,
+    [paneKey]: {
+      state: entry.state,
+      prompt: '',
+      updatedAt: entry.updatedAt ?? Date.now(),
+      stateStartedAt: entry.updatedAt ?? Date.now(),
+      paneKey,
+      stateHistory: [],
+      ...(entry.lastAssistantMessage ? { lastAssistantMessage: entry.lastAssistantMessage } : {}),
+      ...(entry.providerSession ? { providerSession: entry.providerSession } : {})
+    }
+  }
+  for (const listener of agentStatusListeners) {
+    listener()
+  }
+}
 
 describe('useAutomationDispatchEvents setup launch', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.unstubAllGlobals()
     vi.clearAllMocks()
+    agentStatusListeners.clear()
     state.activeView = 'terminal'
     state.activeWorktreeId = 'wt-active'
     state.activeTabId = 'tab-active'
@@ -177,7 +219,7 @@ describe('useAutomationDispatchEvents setup launch', () => {
     mockLaunchWorktreeBackgroundTerminals.mockResolvedValue(undefined)
     mockLaunchAgentBackgroundSession.mockResolvedValue({
       tabId: 'agent-tab',
-      paneKey: 'agent-tab:7c6fb4e5-3bf1-4ff4-8259-03f7ae81c40d',
+      paneKey: AUTOMATION_PANE_KEY,
       ptyId: 'agent-pty',
       startupPlan: {},
       terminalOwnership: {
@@ -683,5 +725,109 @@ describe('useAutomationDispatchEvents setup launch', () => {
 
     expect(mockReleaseTerminalOwnership).toHaveBeenCalledOnce()
     expect(mockFinalizeTerminalOwnership).not.toHaveBeenCalled()
+  })
+
+  it('does not finalize when a nested same-pane session reports done', async () => {
+    await registerAndDispatch()
+
+    publishAgentStatus({
+      state: 'working',
+      providerSession: { key: 'session_id', id: 'primary-session' },
+      lastAssistantMessage: 'primary working'
+    })
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'nested-session' },
+      lastAssistantMessage: 'nested SessionStart output'
+    })
+
+    await vi.waitFor(() =>
+      expect(mockMarkDispatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'dispatched' })
+      )
+    )
+    expect(
+      mockMarkDispatchResult.mock.calls.some(([result]) => result.status === 'completed')
+    ).toBe(false)
+    expect(mockFinalizeTerminalOwnership).not.toHaveBeenCalled()
+  })
+
+  it('finalizes when the bound primary session reports done after nested noise', async () => {
+    await registerAndDispatch()
+
+    publishAgentStatus({
+      state: 'working',
+      providerSession: { key: 'session_id', id: 'primary-session' }
+    })
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'nested-session' },
+      lastAssistantMessage: 'nested SessionStart output'
+    })
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'primary-session' },
+      lastAssistantMessage: 'primary digest'
+    })
+
+    await vi.waitFor(() => expect(mockFinalizeTerminalOwnership).toHaveBeenCalledOnce())
+    expect(
+      mockMarkDispatchResult.mock.calls.some(
+        ([result]) => result.status === 'completed' && result.outputSnapshot !== undefined
+      )
+    ).toBe(true)
+  })
+
+  it('attributes reuse-session completion by primary provider session', async () => {
+    const existingWorktree = {
+      id: 'wt-existing',
+      repoId: 'repo-1',
+      displayName: 'Existing workspace',
+      path: '/repo/existing'
+    }
+    state.allWorktrees.mockReturnValue([existingWorktree])
+    mockFindReusableAutomationSession.mockReturnValue({
+      tabId: 'reuse-tab',
+      paneKey: AUTOMATION_PANE_KEY,
+      ptyId: 'reuse-pty'
+    })
+    mockSubmitPromptToAgentPty.mockResolvedValue(true)
+    mockObserveExistingAutomationSession.mockResolvedValue(() => {})
+
+    await registerAndDispatch(
+      makeAutomation({
+        reuseSession: true,
+        workspaceMode: 'existing',
+        workspaceId: existingWorktree.id
+      })
+    )
+
+    expect(mockSubmitPromptToAgentPty).toHaveBeenCalled()
+    expect(mockObserveExistingAutomationSession).toHaveBeenCalled()
+    expect(mockLaunchAgentBackgroundSession).not.toHaveBeenCalled()
+
+    publishAgentStatus({
+      state: 'working',
+      providerSession: { key: 'session_id', id: 'reuse-primary' }
+    })
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'reuse-nested' },
+      lastAssistantMessage: 'nested should not win'
+    })
+    expect(
+      mockMarkDispatchResult.mock.calls.some(([result]) => result.status === 'completed')
+    ).toBe(false)
+
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'reuse-primary' },
+      lastAssistantMessage: 'reuse primary done'
+    })
+    await vi.waitFor(() =>
+      expect(mockMarkDispatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed' })
+      )
+    )
   })
 })
