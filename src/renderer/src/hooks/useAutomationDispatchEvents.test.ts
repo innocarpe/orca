@@ -215,6 +215,8 @@ describe('useAutomationDispatchEvents setup launch', () => {
     vi.unstubAllGlobals()
     vi.clearAllMocks()
     agentStatusListeners.clear()
+    // Why: leftover pane status can pass the startedAfter filter on the same ms and flake.
+    state.agentStatusByPaneKey = {}
     state.activeView = 'terminal'
     state.activeWorktreeId = 'wt-active'
     state.activeTabId = 'tab-active'
@@ -223,7 +225,6 @@ describe('useAutomationDispatchEvents setup launch', () => {
     state.folderWorkspaces = []
     state.projectGroups = []
     state.worktreesByRepo = {}
-    state.agentStatusByPaneKey = {}
     latestStoreSubscriber = null
     state.allWorktrees.mockReturnValue([])
     state.getKnownWorktreeById.mockReturnValue(undefined)
@@ -931,6 +932,38 @@ describe('useAutomationDispatchEvents setup launch', () => {
       mockMarkDispatchResult.mock.calls.some(([result]) => result.status === 'completed')
     ).toBe(false)
     expect(mockFinalizeTerminalOwnership).not.toHaveBeenCalled()
+  })
+
+  it('ignores nested done that arrives before any working bind', async () => {
+    await registerAndDispatch()
+
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'nested-session' },
+      lastAssistantMessage: 'nested SessionStart output'
+    })
+
+    await vi.waitFor(() =>
+      expect(mockMarkDispatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'dispatched' })
+      )
+    )
+    expect(
+      mockMarkDispatchResult.mock.calls.some(([result]) => result.status === 'completed')
+    ).toBe(false)
+    expect(mockFinalizeTerminalOwnership).not.toHaveBeenCalled()
+
+    publishAgentStatus({
+      state: 'working',
+      providerSession: { key: 'session_id', id: 'primary-session' }
+    })
+    publishAgentStatus({
+      state: 'done',
+      providerSession: { key: 'session_id', id: 'primary-session' },
+      lastAssistantMessage: 'primary digest'
+    })
+
+    await vi.waitFor(() => expect(mockFinalizeTerminalOwnership).toHaveBeenCalledOnce())
   })
 
   it('finalizes when the bound primary session reports done after nested noise', async () => {
