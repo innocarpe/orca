@@ -99,6 +99,9 @@ export function getAgentLabel(title: string): string | null {
   if (titleHasAgentName(title, 'mimo')) {
     return 'MiMo Code'
   }
+  if (titleHasAgentName(title, 'qwen')) {
+    return 'Qwen Code'
+  }
   if (titleHasAgentName(title, 'aider')) {
     return 'Aider'
   }

@@ -42,6 +42,8 @@ describe('resolveExplicitTerminalTitleAgentType', () => {
     expect(resolveExplicitTerminalTitleAgentType('⠋ Codex')).toBe('codex')
     expect(resolveExplicitTerminalTitleAgentType('✦ Gemini CLI')).toBe('gemini')
     expect(resolveExplicitTerminalTitleAgentType('MiMo Code')).toBe('mimo-code')
+    expect(resolveExplicitTerminalTitleAgentType('Qwen Code')).toBe('qwen-code')
+    expect(resolveExplicitTerminalTitleAgentType('⠋ Qwen Code')).toBe('qwen-code')
     expect(resolveExplicitTerminalTitleAgentType('⠋ OpenClaude')).toBe('openclaude')
     expect(resolveExplicitTerminalTitleAgentType('OMP')).toBe('omp')
   })
@@ -122,6 +124,16 @@ describe('resolveTerminalTitleAgentType', () => {
       'claude'
     )
     expect(resolveTerminalTitleAgentType('⠋ Codex: fix cursor offsets')).toBe('codex')
+  })
+
+  // Why: Qwen Code is hook-less; sidebar tracking depends on title identity resolving
+  // to qwen-code before Claude's braille-spinner heuristic claims the frame.
+  it('maps Qwen Code product titles to qwen-code', () => {
+    expect(resolveTerminalTitleAgentType('Qwen Code')).toBe('qwen-code')
+    expect(resolveTerminalTitleAgentType('⠋ Qwen Code')).toBe('qwen-code')
+    expect(resolveTerminalTitleAgentType('qwen ready')).toBe('qwen-code')
+    expect(getSharedAgentLabel('Qwen Code')).toBe('Qwen Code')
+    expect(getSharedAgentLabel('⠋ Qwen Code')).toBe('Qwen Code')
   })
 })
 
