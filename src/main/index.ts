@@ -2206,16 +2206,23 @@ void app.whenReady().then(async () => {
   stats = new StatsCollector()
   // Why: lifetime "Agents spawned" / "Time agents worked" only heard OSC titles via
   // AgentDetector; modern agents report status through hooks, so feed that stream
-  // into StatsCollector too (#10201). Keys are pane-scoped with a hook: prefix so
-  // they never collide with residual OSC ptyId sessions.
+  // into StatsCollector too (#10201). Both producers watch the same pane, so the
+  // bridge borrows the pane's live ptyId as its session key and the collector
+  // counts whichever one opens the session first.
   {
-    const bridge = createHookStatusStatsBridge(stats)
-    // Why: subscribeStatusChanges does not replay existing rows; seed so panes already
-    // working at startup still open a stats session without waiting for another event.
-    bridge.apply(agentHookServer.getStatusChangeSnapshot())
-    unsubscribeHookStatusStatsBridge = agentHookServer.subscribeStatusChanges((statuses) => {
+    const bridge = createHookStatusStatsBridge(stats, {
+      resolvePtyId: (paneKey) => runtime?.getTerminalPtyIdForPaneKey(paneKey) ?? null
+    })
+    const unsubscribe = agentHookServer.subscribeStatusChanges((statuses) => {
       bridge.apply(statuses)
     })
+    unsubscribeHookStatusStatsBridge = () => {
+      unsubscribe()
+      // Why: an empty snapshot closes every hook-opened session through the
+      // bridge's staleness bound. Without it stats.flush() below credits a pane
+      // stuck at 'working' since a killed agent with wall-clock time to quit.
+      bridge.apply([])
+    }
   }
   claudeUsage = new ClaudeUsageStore(store)
   codexUsage = new CodexUsageStore(store)

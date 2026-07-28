@@ -15971,6 +15971,13 @@ export class OrcaRuntimeService {
     return leaf?.worktreeId ?? this.getPtyRecordForPaneKey(paneKey)?.worktreeId ?? null
   }
 
+  /** PTY currently backing a pane. Lets pane-keyed consumers (the hook status
+   *  stats bridge) share PTY-scoped identity with the OSC AgentDetector so one
+   *  physical agent is not counted twice. */
+  getTerminalPtyIdForPaneKey(paneKey: string): string | null {
+    return this.getPtyRecordForPaneKey(paneKey)?.ptyId ?? null
+  }
+
   /** Read-only context of the worktree the user is focused on, for plugin
    *  panels (workspace.readContext). Prefers the persisted session focus and
    *  falls back to the last-focused pane's worktree; null when neither

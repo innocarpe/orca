@@ -5,6 +5,9 @@ import type { StatsEvent, StatsAggregates } from './types'
 import { loadStatsFile, STATS_SCHEMA_VERSION } from './stats-file-loader'
 import { StatsSnapshotWriter } from './stats-snapshot-writer'
 
+/** Which producer opened an agent session: legacy OSC titles, or the hook pipeline. */
+export type AgentSessionSource = 'osc' | 'hook'
+
 const MAX_EVENTS = 10_000
 // Why: countedPRs is a deduplication registry that grows with every PR created
 // through Orca. Without a cap, a heavily-used instance accumulates thousands of
@@ -35,7 +38,9 @@ function getStatsFile(): string {
 export class StatsCollector {
   private events: StatsEvent[]
   private aggregates: StatsAggregates
-  private liveAgents = new Map<string, number>() // ptyId → startTimestamp
+  // ptyId → the open session. `source` is the producer that currently owns the
+  // session's boundaries; see onAgentStart/onAgentStop.
+  private liveAgents = new Map<string, { startedAt: number; source: AgentSessionSource }>()
   private writeTimer: ReturnType<typeof setTimeout> | null = null
   private readonly snapshotWriter = new StatsSnapshotWriter(getStatsFile)
   /** Set by flushAsync so the quit flush is the final write; see scheduleSave. */
@@ -73,8 +78,26 @@ export class StatsCollector {
 
   // ── Agent lifecycle (AgentDetector OSC path + hook-status bridge) ─
 
-  onAgentStart(ptyId: string, at: number, repoId?: string, worktreeId?: string): void {
-    this.liveAgents.set(ptyId, at)
+  onAgentStart(
+    ptyId: string,
+    at: number,
+    repoId?: string,
+    worktreeId?: string,
+    source: AgentSessionSource = 'osc'
+  ): void {
+    const live = this.liveAgents.get(ptyId)
+    if (live) {
+      // Why: two producers watch the same pane — the OSC AgentDetector and the
+      // hook-status bridge, which reuses the pane's ptyId as its session key. A
+      // second start would double both totalAgentsSpawned and totalAgentTimeMs.
+      // The hook stream still takes over the boundaries: it sees the agent's real
+      // turn end, while an OSC title can flip to idle mid-turn.
+      if (source === 'hook') {
+        live.source = 'hook'
+      }
+      return
+    }
+    this.liveAgents.set(ptyId, { startedAt: at, source })
     this.record({
       type: 'agent_start',
       at,
@@ -84,13 +107,22 @@ export class StatsCollector {
     })
   }
 
-  onAgentStop(ptyId: string, at: number): void {
-    const startAt = this.liveAgents.get(ptyId)
-    if (startAt === undefined) {
+  onAgentStop(ptyId: string, at: number, source: AgentSessionSource = 'osc'): void {
+    const live = this.liveAgents.get(ptyId)
+    if (live === undefined) {
+      return
+    }
+    // Why: only the owning producer sets the end boundary. An OSC idle title
+    // stops at lastMeaningfulOutputAt, which collapses to the session start when
+    // the agent emitted nothing printable — letting that truncate a turn the
+    // hooks are still reporting would rebuild the near-zero numbers this exists
+    // to fix. flush() replays each session's own source so shutdown still closes
+    // every straggler.
+    if (live.source !== source) {
       return
     }
     this.liveAgents.delete(ptyId)
-    const durationMs = Math.max(0, at - startAt)
+    const durationMs = Math.max(0, at - live.startedAt)
     this.aggregates.totalAgentTimeMs += durationMs
     this.record({
       type: 'agent_stop',
@@ -165,9 +197,9 @@ export class StatsCollector {
     const now = Date.now()
     // Why snapshot keys: onAgentStop mutates liveAgents, so we snapshot
     // the keys first to avoid iterator invalidation.
-    const livePtyIds = Array.from(this.liveAgents.keys())
-    for (const ptyId of livePtyIds) {
-      this.onAgentStop(ptyId, now)
+    const liveSessions = Array.from(this.liveAgents.entries())
+    for (const [ptyId, session] of liveSessions) {
+      this.onAgentStop(ptyId, now, session.source)
     }
   }
 
