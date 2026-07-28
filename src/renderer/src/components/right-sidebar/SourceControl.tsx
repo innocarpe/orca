@@ -4931,7 +4931,11 @@ function SourceControlInner(): React.JSX.Element {
       // refetch even when porcelain area/status signatures are unchanged.
       await refreshActiveGitStatus()
       useAppStore.setState((state) => ({
-        openFiles: applyManualSourceControlDiffReload(state.openFiles, activeWorktreeId)
+        openFiles: applyManualSourceControlDiffReload(
+          state.openFiles,
+          activeWorktreeId,
+          state.editorViewMode
+        )
       }))
       await Promise.all([refreshBranchCompare(), refreshGitHistory()])
     } catch (error) {

@@ -502,7 +502,8 @@ export function useEditorPanelContentState({
       return
     }
     const current = openFilesRef.current.find((f) => f.id === activeFile.id)
-    if (!current || !isReloadableSingleFileDiffTab(current)) {
+    // Why: edit-mode Changes tabs also bump this nonce on manual SC refresh.
+    if (!current || !(isReloadableSingleFileDiffTab(current) || isChangesMode)) {
       return
     }
     setDiffContents((prev) => {
@@ -514,7 +515,7 @@ export function useEditorPanelContentState({
       return next
     })
     void loadDiffContent(current, { force: true })
-  }, [activeFile?.diffContentReloadNonce, activeFile?.id, loadDiffContent])
+  }, [activeFile?.diffContentReloadNonce, activeFile?.id, isChangesMode, loadDiffContent])
 
   useEffect(() => {
     const nonce = activeFile?.fileContentReloadNonce
