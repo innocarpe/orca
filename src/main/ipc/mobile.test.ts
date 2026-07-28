@@ -65,7 +65,11 @@ describe('registerMobileHandlers', () => {
         { family: 'IPv4', internal: false, address: '198.18.0.1' },
         { family: 'IPv4', internal: false, address: '198.19.255.254' }
       ],
-      en0: [{ family: 'IPv4', internal: false, address: '192.168.50.238' }]
+      en0: [
+        { family: 'IPv4', internal: false, address: '192.168.50.238' },
+        { family: 'IPv4', internal: false, address: '198.17.255.254' },
+        { family: 'IPv4', internal: false, address: '198.20.0.1' }
+      ]
     })
     const createMobilePairingOffer = vi.fn().mockResolvedValue({
       available: true,
@@ -78,7 +82,11 @@ describe('registerMobileHandlers', () => {
     registerMobileHandlers({ createMobilePairingOffer } as never)
 
     expect(handlers.get('mobile:listNetworkInterfaces')?.()).toEqual({
-      interfaces: [{ name: 'en0', address: '192.168.50.238' }]
+      interfaces: [
+        { name: 'en0', address: '192.168.50.238' },
+        { name: 'en0', address: '198.17.255.254' },
+        { name: 'en0', address: '198.20.0.1' }
+      ]
     })
 
     await handlers.get('mobile:getPairingQR')?.(null, {})
