@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -80,6 +81,47 @@ describe('DroidHookService', () => {
       expect(config.hooks.PreToolUse[0].hooks[0].command).toContain(join(homeDir, '.orca'))
     }
     expect(config.hooks.PreToolUse[0].hooks[0].command).not.toContain(userDataDir)
+  })
+
+  // Why: Factory paints a "Hooks <Event>" chat block for every exit-0 command
+  // hook unless stdout is suppressOutput JSON (#11122). Status posts still run.
+  it('emits Factory suppressOutput JSON so Orca status hooks stay out of the Droid TUI', () => {
+    expect(new DroidHookService().install().state).toBe('installed')
+
+    const scriptFileName = process.platform === 'win32' ? 'droid-hook.cmd' : 'droid-hook.sh'
+    const scriptPath = join(homeDir, '.orca', 'agent-hooks', scriptFileName)
+    const script = readFileSync(scriptPath, 'utf8')
+    expect(script).toContain('{"suppressOutput":true}')
+    if (process.platform === 'win32') {
+      expect(script).toMatch(/echo \{"suppressOutput":true\}[\s\S]*exit \/b 0/)
+      expect(script).toContain(':orca_agent_hook_drain_stdin')
+      return
+    }
+
+    expect(script).toMatch(/trap .*suppressOutput.*EXIT/)
+    // Why: execute early-exit and happy-path branches so a broken trap quote
+    // cannot ship even if the source still contains the JSON literal.
+    for (const [label, env, input] of [
+      ['empty-payload', {}, ''],
+      ['missing-env', {}, '{"hook_event_name":"Stop"}'],
+      [
+        'full-env',
+        {
+          ORCA_AGENT_HOOK_PORT: '1',
+          ORCA_AGENT_HOOK_TOKEN: 't',
+          ORCA_PANE_KEY: 'p'
+        },
+        '{"hook_event_name":"Stop"}'
+      ]
+    ] as const) {
+      const result = spawnSync('/bin/sh', [scriptPath], {
+        input,
+        encoding: 'utf8',
+        env: { ...process.env, ...env }
+      })
+      expect(result.status, label).toBe(0)
+      expect(result.stdout.trim(), label).toBe('{"suppressOutput":true}')
+    }
   })
 
   // Why: #6078 — a Windows user profile path with a space used to be written

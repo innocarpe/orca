@@ -266,13 +266,24 @@ describe('Windows managed hook stdin structure', () => {
         expect(script, `${fileName} pane guard`).toContain(
           'if "%ORCA_PANE_KEY%"=="" goto :orca_agent_hook_drain_stdin'
         )
-        expect(script, `${fileName} drain epilogue`).toContain(
-          [
-            ':orca_agent_hook_drain_stdin',
-            '"%SystemRoot%\\System32\\more.com" >nul 2>nul',
-            'exit /b 0'
-          ].join('\r\n')
-        )
+        // Why: droid inserts Factory suppressOutput echo before exit (#11122);
+        // other agents keep the shared drain → exit epilogue byte-identical.
+        if (fileName === 'droid-hook.cmd') {
+          expect(script, `${fileName} drain label`).toContain(':orca_agent_hook_drain_stdin')
+          expect(script, `${fileName} drain reader`).toContain(
+            '"%SystemRoot%\\System32\\more.com" >nul 2>nul'
+          )
+          expect(script, `${fileName} suppressOutput`).toContain('{"suppressOutput":true}')
+          expect(script, `${fileName} exit`).toContain('exit /b 0')
+        } else {
+          expect(script, `${fileName} drain epilogue`).toContain(
+            [
+              ':orca_agent_hook_drain_stdin',
+              '"%SystemRoot%\\System32\\more.com" >nul 2>nul',
+              'exit /b 0'
+            ].join('\r\n')
+          )
+        }
       }
 
       const copilot = readFileSync(join(hooksDir, 'copilot-hook.ps1'), 'utf8')

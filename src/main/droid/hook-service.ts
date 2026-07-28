@@ -24,7 +24,8 @@ import {
 import {
   buildPosixHookPayloadCapture,
   buildWindowsHookEnvironmentGuardLines,
-  buildWindowsHookStdinDrainEpilogue
+  WINDOWS_HOOK_STDIN_DRAIN_COMMAND,
+  WINDOWS_HOOK_STDIN_DRAIN_LABEL
 } from '../agent-hooks/hook-stdin-contract'
 
 // Why: SessionStart is installed (not just listened for) so that resuming a
@@ -76,6 +77,11 @@ function getManagedCommand(scriptPath: string): string {
     : wrapPosixHookCommand(scriptPath)
 }
 
+// Why: Factory's chat view renders a "Hooks <Event>" block for every command
+// hook that exits 0 without this JSON. suppressOutput hides the block from the
+// conversation while still posting status to Orca (#11122).
+const DROID_HOOK_SUPPRESS_OUTPUT_JSON = '{"suppressOutput":true}'
+
 function getManagedScript(target: 'local' | 'posix' = 'local'): string {
   if (target === 'local' && process.platform === 'win32') {
     return [
@@ -84,14 +90,23 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
       'if defined ORCA_AGENT_HOOK_ENDPOINT if exist "%ORCA_AGENT_HOOK_ENDPOINT%" call "%ORCA_AGENT_HOOK_ENDPOINT%" 2>nul',
       ...buildWindowsHookEnvironmentGuardLines(),
       buildWindowsAgentHookPostCommand('droid'),
+      `echo ${DROID_HOOK_SUPPRESS_OUTPUT_JSON}`,
       'exit /b 0',
-      ...buildWindowsHookStdinDrainEpilogue(),
+      // Why: drain path also needs suppressOutput — missing env still exits 0
+      // and Factory would otherwise paint a Hooks block for the empty run.
+      `:${WINDOWS_HOOK_STDIN_DRAIN_LABEL}`,
+      WINDOWS_HOOK_STDIN_DRAIN_COMMAND,
+      `echo ${DROID_HOOK_SUPPRESS_OUTPUT_JSON}`,
+      'exit /b 0',
       ''
     ].join('\r\n')
   }
 
   return [
     '#!/bin/sh',
+    // Why: cover empty-payload and missing-env early exits without duplicating
+    // the printf on every branch; EXIT fires for every successful path.
+    `trap 'printf '\\''%s\\n'\\'' '\\''${DROID_HOOK_SUPPRESS_OUTPUT_JSON}'\\''' EXIT`,
     ...buildPosixHookPayloadCapture(),
     'if [ -n "$ORCA_AGENT_HOOK_ENDPOINT" ] && [ -r "$ORCA_AGENT_HOOK_ENDPOINT" ]; then',
     '  . "$ORCA_AGENT_HOOK_ENDPOINT" 2>/dev/null || :',

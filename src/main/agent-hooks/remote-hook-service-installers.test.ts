@@ -775,6 +775,10 @@ describe('remote hook service installers', () => {
     const script = fs.files.get('/home/dev/.orca/agent-hooks/droid-hook.sh')
     expect(script).toContain('#!/bin/sh')
     expect(script).toContain('/hook/droid')
+    // Why: #11122 — remote install must ship the same suppressOutput contract
+    // as local so SSH Droid sessions do not paint Hooks event noise either.
+    expect(script).toContain('{"suppressOutput":true}')
+    expect(script).toMatch(/trap .*suppressOutput.*EXIT/)
     expect(fs.modes.get('/home/dev/.orca/agent-hooks/droid-hook.sh')).toBe(0o755)
   })
 
