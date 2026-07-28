@@ -84,6 +84,8 @@ import { buildSidebarHostOptions } from '@/components/sidebar/sidebar-host-optio
 import { getPaletteHostBadge, type PaletteHostBadge } from '@/components/cmd-j/palette-host-badge'
 import { useSettingsNavigationMetadata } from '@/hooks/useSettingsNavigationMetadata'
 import { runWorktreeDelete } from '@/components/sidebar/delete-worktree-flow'
+import { getActiveSidebarWorkspaceId } from '../../../shared/workspace-scope'
+import { resolveWorkspacePinToggleTarget } from '../../../shared/workspace-pin-toggle'
 import {
   buildCmdJActionResults,
   buildCmdJSettingsResults,
@@ -923,6 +925,22 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     queueMicrotask(() => runWorktreeDelete(activeWorktreeId))
   }, [])
 
+  const toggleActiveWorkspacePinAction = useCallback(() => {
+    const store = useAppStore.getState()
+    const worktreeId = getActiveSidebarWorkspaceId(
+      store.activeWorkspaceKey,
+      store.activeWorktreeId
+    )
+    const target = resolveWorkspacePinToggleTarget({
+      worktreeId,
+      isPinned: worktreeId ? store.getKnownWorktreeById(worktreeId)?.isPinned : undefined
+    })
+    if (!target) {
+      return
+    }
+    store.setWorktreesPinnedAndReveal([target.worktreeId], target.nextPinned)
+  }, [])
+
   const openAddQuickCommandAction = useCallback(() => {
     openSettingsTarget({ pane: 'quick-commands', repoId: null, intent: 'add-quick-command' })
     openSettingsPage()
@@ -938,6 +956,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
         openNewTerminalTab: openNewTerminalTabInActiveWorkspace,
         openCreateWorkspace: openCreateWorkspaceAction,
         deleteActiveWorkspace: deleteActiveWorkspaceAction,
+        toggleActiveWorkspacePin: toggleActiveWorkspacePinAction,
         openAddQuickCommand: openAddQuickCommandAction
       }),
     [
@@ -946,7 +965,8 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       openCreateWorkspaceAction,
       openNewBrowserTabInActiveWorkspace,
       openNewMarkdownInActiveWorkspace,
-      openNewTerminalTabInActiveWorkspace
+      openNewTerminalTabInActiveWorkspace,
+      toggleActiveWorkspacePinAction
     ]
   )
 
