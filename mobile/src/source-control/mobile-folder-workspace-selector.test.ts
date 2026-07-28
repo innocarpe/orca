@@ -60,7 +60,7 @@ describe('mobileFolderWorkspaceGitRpcGuard', () => {
     }
   })
 
-  it('allows routed folder methods (status/diff) and blocks unrouted SC ops', () => {
+  it('allows routed folder methods (status/diff) and blocks other git.* RPCs', () => {
     expect(mobileFolderWorkspaceGitRpcGuard('folder:g1', 'git.status')).toEqual({
       allowed: true
     })
@@ -73,7 +73,10 @@ describe('mobileFolderWorkspaceGitRpcGuard', () => {
       'git.fetch',
       'git.pull',
       'git.push',
-      'git.history'
+      'git.history',
+      'git.commit',
+      'git.stage',
+      'git.unknownMethod'
     ]) {
       expect(isMobileFolderWorkspaceUnroutedGitMethod(method)).toBe(true)
       expect(mobileFolderWorkspaceGitRpcGuard('folder:g1', method)).toEqual({
@@ -81,6 +84,8 @@ describe('mobileFolderWorkspaceGitRpcGuard', () => {
         message: MOBILE_FOLDER_WORKSPACE_UNSUPPORTED_MESSAGE
       })
     }
+    // Non-git RPCs are not gated by this helper.
+    expect(isMobileFolderWorkspaceUnroutedGitMethod('linear.list')).toBe(false)
   })
 })
 

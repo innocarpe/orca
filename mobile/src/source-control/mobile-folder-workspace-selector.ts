@@ -9,16 +9,9 @@ export const MOBILE_FOLDER_WORKSPACE_UNSUPPORTED_MESSAGE =
 
 export const MOBILE_FOLDER_WORKSPACE_BRANCH_LABEL = 'Folder workspace'
 
-// Unrouted for folder selectors today — SC must not call these (or must not
-// treat their selector_not_found as transient).
-const MOBILE_FOLDER_WORKSPACE_UNROUTED_GIT_METHODS = new Set([
-  'git.branchCompare',
-  'git.upstreamStatus',
-  'git.fetch',
-  'git.pull',
-  'git.push',
-  'git.history'
-])
+// Only git.status / git.diff are routed for folder selectors (#10819). Any other
+// git.* RPC is structurally unrouted — denylist would miss git.commit, etc.
+const MOBILE_FOLDER_WORKSPACE_ROUTED_GIT_METHODS = new Set(['git.status', 'git.diff'])
 
 export function isMobileFolderWorkspaceId(worktreeId: string): boolean {
   return worktreeId.startsWith(MOBILE_FOLDER_WORKSPACE_ID_PREFIX)
@@ -35,7 +28,7 @@ export function shouldLoadMobileBranchCompare(worktreeId: string): boolean {
 }
 
 export function isMobileFolderWorkspaceUnroutedGitMethod(method: string): boolean {
-  return MOBILE_FOLDER_WORKSPACE_UNROUTED_GIT_METHODS.has(method)
+  return method.startsWith('git.') && !MOBILE_FOLDER_WORKSPACE_ROUTED_GIT_METHODS.has(method)
 }
 
 export function mobileFolderWorkspaceGitRpcGuard(
