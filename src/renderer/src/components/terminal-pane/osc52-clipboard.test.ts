@@ -190,6 +190,7 @@ describe('createOsc52OscHandler', () => {
       settingEnabled?: boolean | null
       replaying?: boolean
       writeClipboardText?: ReturnType<typeof vi.fn<(text: string) => Promise<void>>>
+      showWriteFailedToast?: ReturnType<typeof vi.fn<() => void>>
     } = {}
   ) {
     const settingEnabled = 'settingEnabled' in overrides ? overrides.settingEnabled : true
@@ -197,7 +198,7 @@ describe('createOsc52OscHandler', () => {
       overrides.writeClipboardText ??
       vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
     const showBlockedWriteToast = vi.fn()
-    const showWriteFailedToast = vi.fn()
+    const showWriteFailedToast = overrides.showWriteFailedToast ?? vi.fn()
     const handler = createOsc52OscHandler({
       getSettingEnabled: () => settingEnabled,
       getReplaying: () => overrides.replaying ?? false,
@@ -292,7 +293,9 @@ describe('createOsc52OscHandler', () => {
     }
     process.on('unhandledRejection', record)
     const written: string[] = []
-    const showWriteFailedToast = vi.fn()
+    const showWriteFailedToast = vi.fn(() => {
+      throw new Error('toast unavailable')
+    })
     try {
       // Why not vi.fn here: the spy tracks settled results, which marks the rejection
       // handled and hides exactly the leak this test exists to catch.
@@ -319,10 +322,14 @@ describe('createOsc52OscHandler', () => {
   })
 
   it('surfaces a synchronous clipboard bridge throw as a failed write toast', async () => {
-    const { handler, showWriteFailedToast } = setup({
+    const showWriteFailedToast = vi.fn(() => {
+      throw new Error('toast unavailable')
+    })
+    const { handler } = setup({
       writeClipboardText: vi.fn<(text: string) => Promise<void>>(() => {
         throw new Error('clipboard unavailable')
-      })
+      }),
+      showWriteFailedToast
     })
 
     expect(handler(`c;${b64('copy me')}`)).toBe(true)

@@ -2699,8 +2699,8 @@
               },
               "failed": {
                 "toast": {
-                  "62a0af2cb4": "Error al escribir en el portapapeles del terminal",
-                  "fdd3e7e977": "La app del terminal pidió copiar, pero el portapapeles del sistema no se actualizó."
+                  "62a0af2cb4": "No se pudo confirmar la copia del portapapeles del terminal",
+                  "fdd3e7e977": "La app del terminal solicitó una copia, pero Orca no pudo confirmar que llegara al portapapeles del sistema."
                 }
               }
             }

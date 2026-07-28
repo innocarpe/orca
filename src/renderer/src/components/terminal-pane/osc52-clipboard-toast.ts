@@ -55,12 +55,12 @@ export function showOsc52ClipboardFailedToast(): void {
   toast.error(
     translate(
       'auto.components.terminal.pane.osc52.clipboard.failed.toast.62a0af2cb4',
-      'Terminal clipboard write failed'
+      'Terminal clipboard copy could not be confirmed'
     ),
     {
       description: translate(
         'auto.components.terminal.pane.osc52.clipboard.failed.toast.fdd3e7e977',
-        'The terminal app requested a copy, but the system clipboard did not update.'
+        'The terminal app requested a copy, but Orca could not confirm that it reached the system clipboard.'
       ),
       duration: 12_000
     }

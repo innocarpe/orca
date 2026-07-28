@@ -112,13 +112,14 @@ describe('showOsc52ClipboardFailedToast', () => {
     toastErrorMock.mockReset()
   })
 
-  it('reports that the host clipboard did not update', async () => {
+  it('reports that the host clipboard copy could not be confirmed', async () => {
     const { showOsc52ClipboardFailedToast } = await importToastModule()
 
     showOsc52ClipboardFailedToast()
 
-    expect(toastErrorMock).toHaveBeenCalledWith('Terminal clipboard write failed', {
-      description: 'The terminal app requested a copy, but the system clipboard did not update.',
+    expect(toastErrorMock).toHaveBeenCalledWith('Terminal clipboard copy could not be confirmed', {
+      description:
+        'The terminal app requested a copy, but Orca could not confirm that it reached the system clipboard.',
       duration: 12_000
     })
   })

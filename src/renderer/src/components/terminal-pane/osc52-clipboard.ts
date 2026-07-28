@@ -45,6 +45,14 @@ export type Osc52ClipboardRequestOptions = {
 
 const MAX_OSC52_BASE64_CHARS = 128 * 1024
 
+function reportOsc52ClipboardWriteFailure(notify?: () => void): void {
+  try {
+    notify?.()
+  } catch {
+    // A failed notifier must not escape an already-handled clipboard failure.
+  }
+}
+
 /** Resolves whether an incoming OSC 52 write may touch the clipboard, and whether a
  *  refusal is worth telling the user about. */
 export function resolveOsc52ClipboardGate(input: {
@@ -89,9 +97,6 @@ export function createOsc52OscHandler(deps: {
   // flood to roughly one write per xterm parse yield, not to one write overall.
   let pendingText: string | null = null
   let flushScheduled = false
-  const reportWriteFailure = (): void => {
-    deps.showWriteFailedToast?.()
-  }
   const writeCoalesced = (text: string): Promise<void> => {
     pendingText = text
     if (!flushScheduled) {
@@ -107,10 +112,10 @@ export function createOsc52OscHandler(deps: {
           // Report the otherwise invisible host failure.
           try {
             void deps.writeClipboardText(next)?.catch(() => {
-              reportWriteFailure()
+              reportOsc52ClipboardWriteFailure(deps.showWriteFailedToast)
             })
           } catch {
-            reportWriteFailure()
+            reportOsc52ClipboardWriteFailure(deps.showWriteFailedToast)
           }
         }
       })
@@ -147,7 +152,7 @@ export function handleOsc52ClipboardRequest(
   }
 
   void options.writeClipboardText(parsed.text).catch(() => {
-    options.onWriteFailure?.()
+    reportOsc52ClipboardWriteFailure(options.onWriteFailure)
   })
   return true
 }
