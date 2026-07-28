@@ -84,5 +84,9 @@ export function resolveCachedDirPath(
 }
 
 export function parentDirForWatchPath(normalizedPath: string): string {
-  return normalizeExplorerAbsolutePath(dirname(normalizedPath))
+  const parentPath = dirname(normalizedPath)
+  if (/^[A-Za-z]:$/.test(parentPath)) {
+    return `${parentPath}${normalizedPath.includes('\\') ? '\\' : '/'}`
+  }
+  return normalizeExplorerAbsolutePath(parentPath)
 }
