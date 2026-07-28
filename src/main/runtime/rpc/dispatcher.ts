@@ -54,7 +54,10 @@ export class RpcDispatcher {
     this.orchestrationMutations = new OrchestrationMutationExecutor(runtime)
   }
 
-  async dispatch(request: RpcRequest, options?: { signal?: AbortSignal }): Promise<RpcResponse> {
+  async dispatch(
+    request: RpcRequest,
+    options?: { signal?: AbortSignal; pairing?: PairingRpcContext }
+  ): Promise<RpcResponse> {
     const meta = this.meta()
     const method = this.registry.get(request.method)
     if (!method) {
@@ -101,7 +104,8 @@ export class RpcDispatcher {
           orchestrationCapability: request.orchestrationCapability,
           authenticatedCallerFingerprint: authenticatedCallerFingerprint(request),
           recordMutationReceipt: mutation?.recordReceipt,
-          orchestrationMutation: mutation?.identity
+          orchestrationMutation: mutation?.identity,
+          pairing: options?.pairing
         })
       const result = await this.orchestrationMutations.run(request, parsedParams.value, invoke)
       this.recordRuntimeFeatureInteraction(request.method, result, undefined, request.params)

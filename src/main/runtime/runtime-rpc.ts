@@ -1082,8 +1082,12 @@ export class OrcaRuntimeRpcServer {
     }
 
     try {
+      // Why: Unix/named-pipe callers hold the local authToken; minting must work without a WS device session.
       return await this.dispatcher.dispatch(request, {
-        signal: longPoll ? context?.signal : undefined
+        signal: longPoll ? context?.signal : undefined,
+        pairing: {
+          createOffer: this.createPairingOffer.bind(this)
+        }
       })
     } finally {
       this.releaseLongPoll(longPoll)
@@ -1225,8 +1229,11 @@ export class OrcaRuntimeRpcServer {
 
     const connectionId = ws ? this.mobileSocketWiring?.getConnectionId(ws) : undefined
     const pairingProvider = this.mobileRelayPairingProvider
-    const pairingContext =
-      pairingProvider && authenticatedSocket
+    // Why: createOffer is host minting (runtime clients only via mobile allowlist exclusion);
+    // getEndpoints/provisionRelay still need a relay provider + authenticated socket.
+    const pairingContext = {
+      createOffer: this.createPairingOffer.bind(this),
+      ...(pairingProvider && authenticatedSocket
         ? {
             getEndpoints: (params: PairingGetEndpointsParams) =>
               pairingProvider.getEndpoints(
@@ -1247,7 +1254,8 @@ export class OrcaRuntimeRpcServer {
                 params
               )
           }
-        : undefined
+        : {})
+    }
     try {
       await this.dispatcher.dispatchStreaming(request, replyForRequest, {
         connectionId,
