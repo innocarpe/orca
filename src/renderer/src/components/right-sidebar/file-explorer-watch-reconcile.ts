@@ -54,7 +54,6 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
     currentWorktreePath,
     worktreeId,
     cache,
-    expanded,
     setDirCache,
     setSelectedPath,
     refreshDir,
@@ -219,14 +218,7 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
   for (const dirPath of dirsToRefresh) {
     const isRoot =
       normalizeRuntimePathForComparison(dirPath) === normalizeRuntimePathForComparison(rootPath)
-    const expandedHit =
-      expanded.has(dirPath) ||
-      [...expanded].some(
-        (expandedPath) =>
-          normalizeRuntimePathForComparison(expandedPath) ===
-          normalizeRuntimePathForComparison(dirPath)
-      )
-    if (isRoot || expandedHit || dirPath in cache) {
+    if (isRoot || dirPath in cache) {
       refreshDir(dirPath)
     }
   }

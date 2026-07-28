@@ -152,6 +152,50 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     expect(refreshDir).toHaveBeenCalledWith(root)
   })
 
+  it('does not rescan expanded directories for each refreshed cached parent', () => {
+    const root = 'C:\\Repo'
+    const cache: Record<string, DirCache> = { [root]: cacheWithChildren([]) }
+    const expandedPaths: string[] = []
+    for (let index = 0; index < 2_000; index++) {
+      cache[`${root}\\dir-${index}`] = cacheWithChildren([])
+      expandedPaths.push(`c:\\repo\\DIR-${index}`)
+    }
+    let expandedPathReads = 0
+    const expanded = new Set(expandedPaths)
+    const expandedIterator = expanded[Symbol.iterator].bind(expanded)
+    expanded[Symbol.iterator] = function* measuredExpandedIterator() {
+      for (const path of expandedIterator()) {
+        expandedPathReads++
+        yield path
+      }
+      return undefined
+    }
+    const refreshDir = vi.fn()
+
+    processFileExplorerFsPayload({
+      payload: {
+        worktreePath: root,
+        events: Array.from({ length: 5_000 }, (_, index) => ({
+          kind: 'create' as const,
+          absolutePath: `c:\\repo\\dir-${index % 2_000}\\new-${index}.txt`,
+          isDirectory: false
+        }))
+      },
+      currentWorktreePath: root,
+      worktreeId: 'wt-1',
+      cache,
+      expanded,
+      setDirCache: vi.fn(),
+      setSelectedPath: vi.fn(),
+      refreshDir,
+      refreshTree: vi.fn()
+    })
+
+    expect(expandedPathReads).toBe(0)
+    expect(refreshDir).toHaveBeenCalledTimes(2_000)
+    expect(new Set(refreshDir.mock.calls.map(([dirPath]) => dirPath)).size).toBe(2_000)
+  })
+
   it('keeps POSIX child matching case-sensitive', () => {
     const root = '/repo'
     const refreshDir = processUpdate({
