@@ -53,6 +53,10 @@ function expectZdotdirSourceContext(content: string, fileName: '.zprofile' | '.z
 function expectFinalZdotdirRestoreContext(content: string) {
   expect(content).toContain("after Orca's last wrapper file has loaded")
   expect(content).toContain('export ZDOTDIR="$_orca_home"')
+  // Why: re-apply worktree HISTFILE after macOS /etc/zshrc (#11044).
+  expect(content).toContain(
+    '[[ -n "${ORCA_HISTFILE:-}" ]] && export HISTFILE="${ORCA_HISTFILE}"'
+  )
 }
 
 describe('getRelayShellLaunchConfig', () => {

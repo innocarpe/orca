@@ -169,5 +169,8 @@ esac
 # expose the same ZDOTDIR a normal zsh startup would expose.
 export ZDOTDIR="$_orca_home"
 unset _orca_home
+# Why: macOS /etc/zshrc sets HISTFILE relative to the still-wrapper ZDOTDIR
+# before this restore; re-apply the worktree-scoped path Orca injected at spawn.
+[[ -n "\${ORCA_HISTFILE:-}" ]] && export HISTFILE="\${ORCA_HISTFILE}"
 `
 }

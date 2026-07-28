@@ -158,6 +158,8 @@ describe('terminal-history', () => {
       expect(result.histFile).toContain('terminal-history')
       expect(result.histFile).toContain('zsh_history')
       expect(env.HISTFILE).toBe(result.histFile)
+      // Why: durable copy for zsh wrapper re-export after macOS /etc/zshrc (#11044).
+      expect(env.ORCA_HISTFILE).toBe(result.histFile)
     })
 
     it('injects HISTFILE for bash', () => {
@@ -169,6 +171,7 @@ describe('terminal-history', () => {
       expect(result.shell).toBe('bash')
       expect(result.histFile).toContain('bash_history')
       expect(env.HISTFILE).toBe(result.histFile)
+      expect(env.ORCA_HISTFILE).toBe(result.histFile)
     })
 
     it('produces different HISTFILE for different worktreeIds', () => {
@@ -189,6 +192,7 @@ describe('terminal-history', () => {
       const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/bin/zsh', '/path/wt')
 
       expect(env.HISTFILE).toBe('/my/custom/histfile')
+      expect(env.ORCA_HISTFILE).toBeUndefined()
       expect(result.histFile).toBeNull()
     })
 
@@ -197,6 +201,7 @@ describe('terminal-history', () => {
       const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/bin/tcsh', '/path/wt')
 
       expect(env.HISTFILE).toBeUndefined()
+      expect(env.ORCA_HISTFILE).toBeUndefined()
       expect(result.shell).toBe('unknown')
       expect(result.histFile).toBeNull()
     })
@@ -227,6 +232,7 @@ describe('terminal-history', () => {
       const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/bin/zsh', '/path/wt')
 
       expect(env.HISTFILE).toBeUndefined()
+      expect(env.ORCA_HISTFILE).toBeUndefined()
       expect(result.histFile).toBeNull()
     })
   })
@@ -234,24 +240,29 @@ describe('terminal-history', () => {
   describe('updateHistFileForFallback', () => {
     it('updates HISTFILE to match fallback shell', () => {
       const env: Record<string, string> = {
-        HISTFILE: '/fake/userData/terminal-history/abc123/zsh_history'
+        HISTFILE: '/fake/userData/terminal-history/abc123/zsh_history',
+        ORCA_HISTFILE: '/fake/userData/terminal-history/abc123/zsh_history'
       }
       updateHistFileForFallback(env, '/bin/bash')
       expect(env.HISTFILE).toBe('/fake/userData/terminal-history/abc123/bash_history')
+      expect(env.ORCA_HISTFILE).toBe('/fake/userData/terminal-history/abc123/bash_history')
     })
 
     it('removes HISTFILE for unknown fallback shell', () => {
       const env: Record<string, string> = {
-        HISTFILE: '/fake/userData/terminal-history/abc123/zsh_history'
+        HISTFILE: '/fake/userData/terminal-history/abc123/zsh_history',
+        ORCA_HISTFILE: '/fake/userData/terminal-history/abc123/zsh_history'
       }
       updateHistFileForFallback(env, '/bin/sh')
       expect(env.HISTFILE).toBeUndefined()
+      expect(env.ORCA_HISTFILE).toBeUndefined()
     })
 
     it('is a no-op when HISTFILE is not set', () => {
       const env: Record<string, string> = {}
       updateHistFileForFallback(env, '/bin/bash')
       expect(env.HISTFILE).toBeUndefined()
+      expect(env.ORCA_HISTFILE).toBeUndefined()
     })
   })
 

@@ -168,6 +168,9 @@ export function injectHistoryEnv(
 
   // For WSL, convert the Windows path to a Linux-visible path.
   spawnEnv.HISTFILE = wslDistro ? toLinuxPath(histFilePath) : histFilePath
+  // Why: macOS /etc/zshrc reassigns HISTFILE under ZDOTDIR (the shell-ready
+  // wrapper). Keep a stable copy so the zsh wrapper can re-export after startup.
+  spawnEnv.ORCA_HISTFILE = spawnEnv.HISTFILE
 
   result.histFile = spawnEnv.HISTFILE
   return result
@@ -190,12 +193,16 @@ export function updateHistFileForFallback(
     // Fallback to an unknown shell — remove HISTFILE override entirely
     // so the shell uses its own default.
     delete spawnEnv.HISTFILE
+    delete spawnEnv.ORCA_HISTFILE
     return
   }
 
   // Replace the filename portion of the HISTFILE path.
   const dir = spawnEnv.HISTFILE.replace(/[/\\][^/\\]+$/, '')
   spawnEnv.HISTFILE = `${dir}/${newFilename}`
+  if (spawnEnv.ORCA_HISTFILE) {
+    spawnEnv.ORCA_HISTFILE = spawnEnv.HISTFILE
+  }
 }
 
 /** Log the history injection result for diagnostics. */
