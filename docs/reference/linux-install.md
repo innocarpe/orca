@@ -15,7 +15,7 @@ glibc 2.31+ (Ubuntu 20.04 / Debian 11 / RHEL 9 and newer); see
 | --- | --- | --- |
 | **`.deb`** | Debian, Ubuntu, and derivatives | `amd64`, `arm64` |
 | **`.rpm`** | Fedora, RHEL, openSUSE, and derivatives | `x86_64`, `aarch64` |
-| **AppImage** | Any distro (portable; no package manager) | x64 (`orca-linux.AppImage`), arm64 (`orca-linux-arm64.AppImage`) |
+| **AppImage** | Most distros with glibc 2.31+ (portable; no package manager) | x64 (`orca-linux.AppImage`), arm64 (`orca-linux-arm64.AppImage`) |
 
 Arch users can also install the community AUR package `stably-orca-bin` (or
 `stably-orca-git` to build from source). That is not a GitHub release asset.
@@ -109,7 +109,7 @@ sudo dnf install ./orca-ide-<version>.x86_64.rpm
 sudo rpm -i orca-ide-<version>.x86_64.rpm
 ```
 
-Use the `.aarch64.rpm` on arm64. On openSUSE, `zypper install ./orca-ide-….rpm`
+Use the `.aarch64.rpm` on arm64. On openSUSE, `zypper install ./orca-ide-<version>.x86_64.rpm`
 works the same way for a local file.
 
 ## Update
