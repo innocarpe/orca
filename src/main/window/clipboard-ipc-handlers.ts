@@ -78,6 +78,7 @@ export function registerClipboardHandlers(store: Store): void {
   ipcMain.removeHandler('clipboard:readText')
   ipcMain.removeHandler('clipboard:readSelectionText')
   ipcMain.removeHandler('clipboard:writeText')
+  ipcMain.removeHandler('clipboard:writeTerminalText')
   ipcMain.removeHandler('clipboard:writeSelectionText')
   ipcMain.removeHandler('clipboard:writeImage')
   ipcMain.removeHandler('clipboard:writeFile')
@@ -157,6 +158,10 @@ export function registerClipboardHandlers(store: Store): void {
     }
   )
   ipcMain.handle('clipboard:writeText', async (event, text: string) => {
+    assertTrustedClipboardTextSender(event)
+    return clipboard.writeText(await assertClipboardTextWriteWithinLimitWithYield(text))
+  })
+  ipcMain.handle('clipboard:writeTerminalText', async (event, text: string) => {
     assertTrustedClipboardTextSender(event)
     return writeClipboardTextAndVerify(await assertClipboardTextWriteWithinLimitWithYield(text))
   })

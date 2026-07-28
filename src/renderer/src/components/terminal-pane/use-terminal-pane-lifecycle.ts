@@ -781,7 +781,7 @@ export function useTerminalPaneLifecycle({
             createOsc52OscHandler({
               getSettingEnabled: () => settingsRef.current?.terminalAllowOsc52Clipboard,
               getReplaying: () => isPaneReplaying(replayingPanesRef, pane.id),
-              writeClipboardText: (text) => window.api.ui.writeClipboardText(text),
+              writeClipboardText: (text) => window.api.ui.writeTerminalClipboardText(text),
               showBlockedWriteToast: showOsc52ClipboardBlockedToast,
               showWriteFailedToast: showOsc52ClipboardFailedToast
             })
@@ -1034,7 +1034,7 @@ export function useTerminalPaneLifecycle({
           }
           void copyTerminalSelection({
             terminal: pane.terminal,
-            writeClipboardText: window.api.ui.writeClipboardText
+            writeClipboardText: window.api.ui.writeTerminalClipboardText
           }).catch(() => {
             /* ignore clipboard write failures */
           })

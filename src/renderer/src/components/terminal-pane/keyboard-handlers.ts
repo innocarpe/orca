@@ -455,7 +455,7 @@ export function useTerminalKeyboardShortcuts({
         e.stopImmediatePropagation()
         void copyTerminalSelection({
           terminal: pane.terminal,
-          writeClipboardText: window.api.ui.writeClipboardText
+          writeClipboardText: window.api.ui.writeTerminalClipboardText
         }).catch(() => {
           /* ignore clipboard write failures */
         })
