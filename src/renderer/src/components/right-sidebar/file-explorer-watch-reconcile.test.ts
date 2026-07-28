@@ -111,6 +111,47 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     expect(refreshDir).not.toHaveBeenCalled()
   })
 
+  it('indexes cached directory keys once for a maximum update batch', () => {
+    const root = 'C:\\Repo'
+    const entries: Record<string, DirCache> = {
+      [root]: cacheWithChildren([])
+    }
+    for (let index = 0; index < 2_000; index++) {
+      entries[`${root}\\dir-${index}`] = cacheWithChildren([])
+    }
+    let cacheKeyReads = 0
+    const cache = new Proxy(entries, {
+      ownKeys(target) {
+        cacheKeyReads++
+        return Reflect.ownKeys(target)
+      }
+    })
+    const refreshDir = vi.fn()
+
+    processFileExplorerFsPayload({
+      payload: {
+        worktreePath: root,
+        events: Array.from({ length: 5_000 }, (_, index) => ({
+          kind: 'update' as const,
+          absolutePath: `c:\\repo\\new-${index}.txt`,
+          isDirectory: false
+        }))
+      },
+      currentWorktreePath: root,
+      worktreeId: 'wt-1',
+      cache,
+      expanded: new Set(),
+      setDirCache: vi.fn(),
+      setSelectedPath: vi.fn(),
+      refreshDir,
+      refreshTree: vi.fn()
+    })
+
+    expect(cacheKeyReads).toBe(1)
+    expect(refreshDir).toHaveBeenCalledOnce()
+    expect(refreshDir).toHaveBeenCalledWith(root)
+  })
+
   it('keeps POSIX child matching case-sensitive', () => {
     const root = '/repo'
     const refreshDir = processUpdate({
@@ -222,5 +263,43 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     expect(refreshDir).toHaveBeenCalledWith(targetDir)
     expect(refreshTree).not.toHaveBeenCalled()
     expect(setSelectedPath.mock.calls[0]?.[0](`${sourceDir}/old.txt`)).toBeNull()
+  })
+
+  it('deduplicates subtree and selection state work for repeated renames', () => {
+    const root = '/repo'
+    const sourceDir = `${root}/source`
+    const targetDir = `${root}/target`
+    const oldDir = `${sourceDir}/old`
+    const newDir = `${targetDir}/new`
+    const rename = {
+      kind: 'rename' as const,
+      oldAbsolutePath: oldDir,
+      absolutePath: newDir,
+      isDirectory: true
+    }
+    const setDirCache = vi.fn()
+    const setSelectedPath = vi.fn()
+    const refreshDir = vi.fn()
+
+    processFileExplorerFsPayload({
+      payload: { worktreePath: root, events: [rename, rename] },
+      currentWorktreePath: root,
+      worktreeId: 'wt-1',
+      cache: {
+        [sourceDir]: cacheWithChildren([oldDir]),
+        [targetDir]: cacheWithChildren([newDir]),
+        [oldDir]: cacheWithChildren([]),
+        [newDir]: cacheWithChildren([])
+      },
+      expanded: new Set([sourceDir, targetDir]),
+      setDirCache,
+      setSelectedPath,
+      refreshDir,
+      refreshTree: vi.fn()
+    })
+
+    expect(setDirCache).toHaveBeenCalledTimes(2)
+    expect(setSelectedPath).toHaveBeenCalledOnce()
+    expect(refreshDir).toHaveBeenCalledTimes(2)
   })
 })
