@@ -12,10 +12,12 @@ You are contributing via the **innocarpe** fork of **stablyai/orca**.
 
 | Skill | When |
 |-------|------|
+| **`orca-merge-playbook`** | **Always** — focused fix + preserves intent + regression tests (merge-rate) |
 | `orca-contribution` | Session start / full loop |
 | `oss-pr-mirror` | Opening or syncing dual-track PRs |
-| `orca-free-issue` | “다음”, free-issue scout/implement |
+| `orca-free-issue` | “다음”, free-issue scout/implement (playbook-filtered) |
 | `orca-worktree` | Create/remove `orca-worktrees/fix-*` |
 
 **Never** implement product fixes on primary `main`. Use worktrees from `upstream/main`.  
-**Never** put harness-only commits on branches that PR to upstream.
+**Never** put harness-only commits on branches that PR to upstream.  
+**North star:** merged count, not open PR volume — load `orca-merge-playbook` before coding or PR.

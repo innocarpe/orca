@@ -2,10 +2,10 @@
 name: orca-contribution
 description: >
   End-to-end Orca OSS contribution loop for the innocarpe fork: primary+worktree
-  layout, SSOT BOARD/HISTORY, free-issue scouting, dual-track PRs (upstream +
-  fork portfolio), and worktree cleanup. Use when working on stablyai/orca
-  contributions, user says "다음", "free issue", "dual PR", "worktree", "BOARD",
-  or any contribution session start on this fork.
+  layout, SSOT BOARD/HISTORY/PORTFOLIO, merge-rate playbook, free-issue scouting,
+  dual-track PRs (upstream + fork portfolio), and worktree cleanup. Use when
+  working on stablyai/orca contributions, user says "다음", "free issue", "dual PR",
+  "worktree", "BOARD", "머지", or any contribution session start on this fork.
 ---
 
 # Orca contribution (full loop)
@@ -13,26 +13,29 @@ description: >
 ## When to use
 
 - Starting or resuming Orca OSS contribution work on the `innocarpe` fork
-- User says “다음”, “이슈 찾아”, “dual PR”, “worktree 정리”
+- User says “다음”, “이슈 찾아”, “dual PR”, “worktree 정리”, “머지율”
 - Any agent (Claude Code, Codex, Grok) on this repo without prior session context
 
 ## Read first
 
-1. Full workflow: [`.grok/agent/orca-contribution.md`](../../agent/orca-contribution.md)
-2. SSOT (absolute):  
+1. **Merge-rate north star:** skill **`orca-merge-playbook`** (focused · preserves · regression) — **non-optional**
+2. Full workflow: [`.grok/agent/orca-contribution.md`](../../agent/orca-contribution.md)
+3. SSOT (absolute):  
    `$ORCA_PRIMARY/notes/orca-contribution/BOARD.md`  
    `$ORCA_PRIMARY/notes/orca-contribution/HISTORY.md`  
+   `$ORCA_PRIMARY/notes/orca-contribution/PORTFOLIO.md`  
    Default `ORCA_PRIMARY=$HOME/Projects/OpenSources/orca`
-3. Product rules: root `AGENTS.md`
+4. Product rules: root `AGENTS.md`
 
 ## Non-negotiables
 
 | Rule | Detail |
 |------|--------|
+| **Merge playbook** | Every fix/PR/review: **focused** + **preserves intent** + **regression tests**. See `orca-merge-playbook`. North star = **merged count**, not open volume. |
 | Primary = main only | Never implement product fixes in primary checkout |
 | Worktrees | `…/orca-worktrees/fix-<N>` from **`upstream/main`** |
 | Dual PR | upstream `stablyai/orca` + fork portfolio mirror |
-| SSOT | BOARD/HISTORY under gitignored `notes/`; update both; never commit |
+| SSOT | BOARD / HISTORY / PORTFOLIO under gitignored `notes/`; update; never commit |
 | Harness on fork main | Do not put `.grok/` harness commits on upstream-bound `fix/*` branches |
 
 ## Dual PR commands
@@ -50,14 +53,17 @@ See also skill **`oss-pr-mirror`**.
 ## Session checklist
 
 - [ ] `pwd` / branch: primary main vs worktree fix branch
-- [ ] BOARD → HISTORY restored
+- [ ] Loaded **`orca-merge-playbook`** (3 gates)
+- [ ] BOARD → **PORTFOLIO** → HISTORY restored
 - [ ] Work from `upstream/main`-based worktree
+- [ ] Change passes focused / preserves / regression before PR
 - [ ] Tests with correct vitest config
 - [ ] Upstream PR + fork mirror URLs reported
-- [ ] BOARD/HISTORY updated; worktree removed if clean
+- [ ] BOARD/HISTORY/PORTFOLIO updated; worktree removed if clean
 
 ## Related skills
 
+- **`orca-merge-playbook`** — merge-rate gates (always)
 - `oss-pr-mirror` — dual-track PR scripts
-- `orca-free-issue` — issue scouting + batch implement
+- `orca-free-issue` — issue scouting + batch implement (filter by playbook)
 - `orca-worktree` — create/remove worktrees safely

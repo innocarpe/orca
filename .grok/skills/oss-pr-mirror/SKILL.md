@@ -87,9 +87,10 @@ gh pr create --repo stablyai/orca --base main --head innocarpe:<branch> ...
 
 Agent checklist:
 
+- [ ] **Merge playbook** (`orca-merge-playbook`): focused + preserves + regression evidence in PR body
 - [ ] Upstream PR URL
 - [ ] Fork portfolio PR URL (`$MIRROR` / create)
-- [ ] BOARD + HISTORY updated
+- [ ] BOARD + HISTORY (+ PORTFOLIO if merge counts change) updated
 - [ ] Tell user **both** URLs
 
 ---
@@ -118,17 +119,19 @@ What `$SYNC` does:
 
 Whenever you amend code after an Orca upstream PR is open:
 
-1. Commit on the **issue worktree branch** (not primary `main`)
-2. Run **`sync-contribution-push.sh`** (not bare `git push` alone)
-3. Confirm output shows both PRs at the same SHA
-4. If user wants visible chatter on both timelines, pass `--comment "..."`
-5. Update `HISTORY.md` with a short “follow-up push” line when non-trivial
+1. Keep the change **in scope** (`orca-merge-playbook`: no drive-by expansions while addressing review)
+2. Commit on the **issue worktree branch** (not primary `main`)
+3. Run **`sync-contribution-push.sh`** (not bare `git push` alone)
+4. Confirm output shows both PRs at the same SHA
+5. Prefer **one clear human comment** over `--comment` spam for Sync update noise
+6. Update `HISTORY.md` with a short “follow-up push” line when non-trivial
 
 Do **not**:
 
 - Push only and forget to check fork mirror still exists
 - Open a second upstream PR for the same branch
 - Merge the fork portfolio PR into fork `main` before upstream merges
+- Expand PR scope while “just fixing CR”
 
 ---
 

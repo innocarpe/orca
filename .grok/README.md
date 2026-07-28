@@ -6,7 +6,8 @@ This tree is the **canonical, git-tracked** agent infrastructure for contributin
 | Surface | Role |
 |---------|------|
 | [`.grok/agent/orca-contribution.md`](./agent/orca-contribution.md) | Shared contribution workflow (all LLMs) |
-| [`.grok/skills/`](./skills/) | Skill packages (Grok native path) |
+| [`.grok/skills/orca-merge-playbook/`](./skills/orca-merge-playbook/) | **Merge-rate north star** (focused · preserves · regression) |
+| [`.grok/skills/`](./skills/) | Skill packages (Grok native path; install → Claude/Codex) |
 | [`install-agent-skills.sh`](./install-agent-skills.sh) | Install skills into Claude Code + Codex discovery paths |
 
 ## Why not only `.claude/skills` / `.agents/skills`?
@@ -29,6 +30,16 @@ Canonical copies live under **`.grok/skills/`** (tracked on fork `main`).
 | **Claude Code** | root `CLAUDE.md` / `Claude.md` → `@AGENTS.md` + contribution doc; skills via install into `.claude/skills/` |
 | **Codex CLI** | root `AGENTS.md` (product rules) + fallback `CLAUDE.md` / `codex.md` (see `~/.codex/config.toml` `project_doc_fallback_filenames`); skills via install into `.agents/skills/` |
 
+## Skills (all three agents)
+
+| Skill | Claude / Codex / Grok |
+|-------|------------------------|
+| **`orca-merge-playbook`** | Load **before any fix/PR/review** — merge-rate gates from #10474 maintainer language |
+| `orca-contribution` | Full session loop + SSOT |
+| `oss-pr-mirror` | Dual-track PRs |
+| `orca-free-issue` | Scout (playbook-filtered) |
+| `orca-worktree` | Worktree hygiene |
+
 ## Install skills (primary)
 
 ```bash
@@ -37,6 +48,9 @@ make agent-install
 # or:
 ./.grok/install-agent-skills.sh
 ```
+
+Re-run after adding/editing skills so Claude (`.claude/skills/`) and Codex (`.agents/skills/`)
+pick up symlinks. Grok reads `.grok/skills/` directly.
 
 ## Worktrees always get the harness
 

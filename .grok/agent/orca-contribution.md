@@ -29,6 +29,7 @@ Default absolute SSOT paths:
 
 - `/Users/WooseongKim/Projects/OpenSources/orca/notes/orca-contribution/BOARD.md`
 - `/Users/WooseongKim/Projects/OpenSources/orca/notes/orca-contribution/HISTORY.md`
+- `/Users/WooseongKim/Projects/OpenSources/orca/notes/orca-contribution/PORTFOLIO.md` ← **머지 극대화 · open/merged · 머지 플레이북**
 
 Override with `ORCA_PRIMARY` if the primary checkout moves.
 
@@ -42,11 +43,14 @@ Override with `ORCA_PRIMARY` if the primary checkout moves.
    - Upstream review: `gh pr create --repo stablyai/orca --base main --head innocarpe:<branch>`
    - Fork portfolio mirror: `.grok/skills/oss-pr-mirror` (`mirror-upstream-pr.sh`)
 4. **After more commits on an open PR:** use `sync-contribution-push.sh` (not bare `git push` alone).
-5. **Session cold-start:** read BOARD → HISTORY. Update both on every state change.
+5. **Session cold-start:** read BOARD → **PORTFOLIO** → HISTORY. Update SSOT on every state change.
 6. **Disk:** after dual PR is open and tree is clean, remove local worktree; keep remote branch. Recreate for review follow-ups.
 7. **Prefer `/usr/bin/git`** when shell wrappers break `PATH`.
 8. **Do not commit** `notes/`, harness-only files on contribution PR branches, or secrets.
 9. **Korean progress reports** for the human user when working in this contribution loop.
+10. **Merge-rate north star (not open-count):** every fix/PR/review follow-up should be a **focused fix**, **preserve product/security intent**, and include **regression coverage**.  
+    - **Skill (all agents):** [`.grok/skills/orca-merge-playbook/SKILL.md`](../skills/orca-merge-playbook/SKILL.md) — load at session start and before every PR.  
+    - **Human SSOT mirror:** `notes/orca-contribution/PORTFOLIO.md` § 머지 플레이북 (from maintainer language on #10474).
 
 ---
 
@@ -158,10 +162,19 @@ When editing Orca product code, also obey root **AGENTS.md**:
 
 ---
 
-## Skills install (Claude + Codex)
+## Skills install (Claude + Codex + Grok)
 
 ```bash
 "$ORCA_PRIMARY/.grok/install-agent-skills.sh"
 ```
 
-Installs into gitignored `.claude/skills/` and `.agents/skills/` for local discovery.
+Installs into gitignored `.claude/skills/` and `.agents/skills/` for local discovery.  
+Grok reads `.grok/skills/` directly (no install required).
+
+| Skill | When |
+|-------|------|
+| **`orca-merge-playbook`** | **Always** on contribution work — focused / preserves / regression |
+| `orca-contribution` | Session start / full loop |
+| `oss-pr-mirror` | Dual-track PRs |
+| `orca-free-issue` | Free-issue scout (playbook-filtered) |
+| `orca-worktree` | Worktree create/remove |

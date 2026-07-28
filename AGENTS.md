@@ -58,10 +58,13 @@ Be mindful of the user's `gh` CLI API rate limit — batch requests where possib
 ## Local contribution harness (innocarpe fork only)
 
 Product rules above apply to all Orca code. For **OSS contribution process** on this fork
-(primary + worktrees, dual-track PRs, free-issue cycle, SSOT BOARD/HISTORY), also load:
+(primary + worktrees, dual-track PRs, free-issue cycle, SSOT BOARD/HISTORY/PORTFOLIO), also load:
 
 - [`.grok/agent/orca-contribution.md`](./.grok/agent/orca-contribution.md)
-- Skills: `./.grok/install-agent-skills.sh` → Claude `.claude/skills/`, Codex `.agents/skills/`
+- **Merge-rate skill:** [`.grok/skills/orca-merge-playbook/SKILL.md`](./.grok/skills/orca-merge-playbook/SKILL.md)  
+  (focused fix · preserves intent · regression coverage — not open-PR volume)
+- Skills install: `./.grok/install-agent-skills.sh` → Claude `.claude/skills/`, Codex `.agents/skills/`  
+  (Grok: `.grok/skills/` native)
 - Entrypoints: `CLAUDE.md` / `codex.md` (same contribution include)
 
 Do **not** include harness-only commits on `fix/*` branches that PR to **upstream**.

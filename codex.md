@@ -13,8 +13,9 @@ Codex loads root `AGENTS.md` for product rules. This file (and `CLAUDE.md`) is a
 |------|--------|
 | Primary | `$HOME/Projects/OpenSources/orca` — always `main` |
 | Worktrees | `$HOME/Projects/OpenSources/orca-worktrees/fix-<N>` from `upstream/main` |
-| SSOT | `notes/orca-contribution/BOARD.md` + `HISTORY.md` (gitignored; absolute path) |
+| SSOT | `notes/orca-contribution/BOARD.md` + `HISTORY.md` + `PORTFOLIO.md` (gitignored) |
 | Dual PR | upstream `stablyai/orca` + fork portfolio via `.grok/skills/oss-pr-mirror` |
+| **Merge north star** | skill **`orca-merge-playbook`** — focused + preserves + regression (not open volume) |
 
 ## Skills
 
@@ -25,9 +26,10 @@ Codex loads root `AGENTS.md` for product rules. This file (and `CLAUDE.md`) is a
 Installs into `.agents/skills/` (gitignored; Codex project skill discovery).  
 Canonical tracked skills: `.grok/skills/*/SKILL.md`.
 
+- **`orca-merge-playbook`** — **always** load on contribution work (merge-rate gates)
 - `orca-contribution` — full loop
 - `oss-pr-mirror` — dual-track PRs
-- `orca-free-issue` — scout/implement free issues
+- `orca-free-issue` — scout/implement free issues (playbook-filtered)
 - `orca-worktree` — worktree create/cleanup
 
 ## Dual PR quick path
@@ -44,4 +46,5 @@ gh pr create --repo stablyai/orca --base main --head innocarpe:<branch> ...
 "$SYNC" --comment "…"
 ```
 
-Do **not** implement on primary `main`. Do **not** PR harness-only `.grok/` commits to upstream.
+Do **not** implement on primary `main`. Do **not** PR harness-only `.grok/` commits to upstream.  
+PR body must include **Focused fix / Preserves / Evidence** (`orca-merge-playbook`).
