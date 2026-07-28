@@ -3,7 +3,7 @@ import { networkInterfaces } from 'node:os'
 import QRCode from 'qrcode'
 import type { RuntimeAccessGrant } from '../../shared/runtime-access-grants'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
-import { isProxyFakeIpIPv4Address, isTailnetIPv4Address } from '../../shared/tailnet-address'
+import { isTailnetIPv4Address } from '../../shared/tailnet-address'
 import type { DeviceEntry } from '../runtime/device-registry'
 import type { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import type { RelayBrokerStatus } from '../runtime/relay/relay-session-broker'
@@ -27,6 +27,10 @@ function isUsableIPv6Address(address: string): boolean {
   return !/^fe[89ab][0-9a-f]:/i.test(address)
 }
 
+function isProxyFakeIpIPv4Address(address: string): boolean {
+  return /^198\.(?:18|19)\./.test(address)
+}
+
 // Why: the WebSocket transport advertises 0.0.0.0 as its endpoint, which isn't
 // connectable from a mobile device. We enumerate all non-internal IPv4 and
 // (non-link-local) IPv6 addresses so the user can choose which one to advertise
@@ -45,9 +49,7 @@ function getNetworkInterfaces(): NetworkInterface[] {
         continue
       }
       if (addr.family === 'IPv4') {
-        // Why: Clash/mihomo TUN fake-ip (198.18.0.0/15) only exists inside the
-        // desktop proxy. Advertising it in a pairing QR makes the phone retry a
-        // dead endpoint forever (#10404).
+        // 198.18.0.0/15 proxy fake IPs are only routable inside the desktop proxy.
         if (isProxyFakeIpIPv4Address(addr.address)) {
           continue
         }

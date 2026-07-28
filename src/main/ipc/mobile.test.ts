@@ -60,10 +60,11 @@ describe('registerMobileHandlers', () => {
   })
 
   it('excludes proxy fake-ip addresses so pairing defaults to LAN (#10404)', async () => {
-    // Why: os.networkInterfaces() order can put Clash TUN (198.18.x.x) first;
-    // without filtering, getDefaultPairingAddress would embed an unroutable IP.
     networkInterfacesMock.mockReturnValue({
-      utun4: [{ family: 'IPv4', internal: false, address: '198.18.9.1' }],
+      utun4: [
+        { family: 'IPv4', internal: false, address: '198.18.0.1' },
+        { family: 'IPv4', internal: false, address: '198.19.255.254' }
+      ],
       en0: [{ family: 'IPv4', internal: false, address: '192.168.50.238' }]
     })
     const createMobilePairingOffer = vi.fn().mockResolvedValue({
