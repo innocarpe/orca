@@ -818,18 +818,21 @@ describe('registerClipboardHandlers', () => {
   })
 
   it('rejects clipboard PNG bytes that remain over the cap after downscale', async () => {
-    clipboardReadImageMock.mockReturnValue({
-      getSize: () => ({ height: 1, width: 1 }),
+    // 2×2 can shrink (1×1 cannot), so resize must run before we still reject.
+    const image = {
+      getSize: () => ({ height: 2, width: 2 }),
       isEmpty: () => false,
       toPNG: () => Buffer.alloc(CLIPBOARD_IMAGE_MAX_SOURCE_BYTES + 1),
-      resize: vi.fn()
-    })
+      resize: vi.fn(() => image)
+    }
+    clipboardReadImageMock.mockReturnValue(image)
     registerClipboardHandlers({} as never)
     await expect(
       getRegisteredHandlers().get('clipboard:saveImageAsTempFile')?.(makeClipboardEvent(), {
         connectionId: 'ssh-secret'
       })
     ).rejects.toThrow('Clipboard image is too large')
+    expect(image.resize).toHaveBeenCalled()
     expect(getSshFilesystemProviderMock).not.toHaveBeenCalled()
     expect(fsWriteFileMock).not.toHaveBeenCalled()
   })
