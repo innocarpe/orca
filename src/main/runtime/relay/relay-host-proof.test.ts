@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import nacl from 'tweetnacl'
 import {
   answerRelayHostChallenge,
-  RELAY_HOST_PROOF_CLOCK_SKEW_MS,
   type RelayHostChallenge,
   type RelayHostProofContext
 } from './relay-host-proof'
@@ -11,6 +10,7 @@ import {
 const encoder = new TextEncoder()
 const HOST_PROOF_DOMAIN = 'orca-relay-host-proof/v1'
 const CHALLENGE_DOMAIN = 'orca-relay-host-challenge/v1'
+const CLOCK_SKEW_MS = 30_000
 
 function concat(parts: readonly Uint8Array[]): Uint8Array {
   const output = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0))
@@ -139,7 +139,6 @@ function buildChallengeFixture(options: {
 
 describe('answerRelayHostChallenge clock skew (#10401)', () => {
   it('accepts a challenge when local clock is a few seconds behind (issuedAt in the near future)', () => {
-    // Why: repro from #10401 — machine ~4–5s slow so server issuedAt > local now.
     const serverNow = 1_700_000_000_000
     const skewBehindMs = 4_400
     const localNow = serverNow - skewBehindMs
@@ -168,12 +167,24 @@ describe('answerRelayHostChallenge clock skew (#10401)', () => {
     expect(answerRelayHostChallenge(challenge, context)).toBe(expectedProof)
   })
 
+  it('accepts challenges at the clock-skew boundaries', () => {
+    const issuedAt = 1_700_000_000_000
+    const expiresAt = issuedAt + 10_000
+    for (const localNow of [issuedAt - CLOCK_SKEW_MS, expiresAt + CLOCK_SKEW_MS]) {
+      const { challenge, context, expectedProof } = buildChallengeFixture({
+        issuedAt,
+        expiresAt,
+        localNow
+      })
+      expect(answerRelayHostChallenge(challenge, context)).toBe(expectedProof)
+    }
+  })
+
   it('still rejects challenges outside the allowed skew window', () => {
     const serverNow = 1_700_000_000_000
     const issuedAt = serverNow
     const expiresAt = issuedAt + 10_000
-    // Local clock far behind: issuedAt is more than SKEW in the future.
-    const localNowTooBehind = issuedAt - RELAY_HOST_PROOF_CLOCK_SKEW_MS - 1
+    const localNowTooBehind = issuedAt - CLOCK_SKEW_MS - 1
     const behind = buildChallengeFixture({
       issuedAt,
       expiresAt,
@@ -181,8 +192,7 @@ describe('answerRelayHostChallenge clock skew (#10401)', () => {
     })
     expect(answerRelayHostChallenge(behind.challenge, behind.context)).toBeNull()
 
-    // Local clock far ahead: past expiresAt + SKEW.
-    const localNowTooAhead = expiresAt + RELAY_HOST_PROOF_CLOCK_SKEW_MS + 1
+    const localNowTooAhead = expiresAt + CLOCK_SKEW_MS + 1
     const ahead = buildChallengeFixture({
       issuedAt,
       expiresAt,
@@ -194,6 +204,17 @@ describe('answerRelayHostChallenge clock skew (#10401)', () => {
   it('still rejects an oversized server challenge window', () => {
     const issuedAt = 1_700_000_000_000
     const expiresAt = issuedAt + 10_001
+    const { challenge, context } = buildChallengeFixture({
+      issuedAt,
+      expiresAt,
+      localNow: issuedAt
+    })
+    expect(answerRelayHostChallenge(challenge, context)).toBeNull()
+  })
+
+  it('rejects a challenge that expires before it is issued', () => {
+    const issuedAt = 1_700_000_000_000
+    const expiresAt = issuedAt - 1
     const { challenge, context } = buildChallengeFixture({
       issuedAt,
       expiresAt,
