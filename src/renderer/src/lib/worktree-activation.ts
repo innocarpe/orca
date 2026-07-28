@@ -241,15 +241,25 @@ export function activateAndRevealFolderWorkspace(
     state.setActiveView('terminal')
   }
 
+  const workspaceKey = folderWorkspaceKey(folderWorkspaceId)
+  // Why: same empty-reselect policy as git worktrees (#11108) — seed only on first open or explicit startup.
+  const shouldSeedInitialTerminal =
+    Boolean(opts?.startup) || !state.everActivatedWorktreeIds.has(workspaceKey)
+
   state.setActiveFolderWorkspace(folderWorkspaceId, opts?.executionHostId)
 
-  const workspaceKey = folderWorkspaceKey(folderWorkspaceId)
   state.markWorktreeVisited(workspaceKey)
   if (!state.isNavigatingHistory) {
     state.recordWorktreeVisit(workspaceKey)
   }
-  resumeSleepingAgentSessionsForWorktree(workspaceKey)
-  const primaryTabId = ensureFolderWorkspaceInitialTerminal(folderWorkspace, opts?.startup)
+  // Why: empty reselect must not wake sleeping agents into a workspace the user
+  // deliberately left terminal-less (#11108 / CodeRabbit on #11159).
+  if (shouldSeedInitialTerminal) {
+    resumeSleepingAgentSessionsForWorktree(workspaceKey)
+  }
+  const primaryTabId = shouldSeedInitialTerminal
+    ? ensureFolderWorkspaceInitialTerminal(folderWorkspace, opts?.startup)
+    : null
 
   if (opts?.sidebarRevealBehavior) {
     state.revealWorktreeInSidebar(workspaceKey, { behavior: opts.sidebarRevealBehavior })
@@ -282,9 +292,15 @@ export function activateAndRevealWorktree(
   const hasActivationWork = Boolean(
     opts?.startup || opts?.setup || opts?.defaultTabs || opts?.issueCommand
   )
+  // Why: check before setActiveWorktree marks everActivated — reselect of a previously
+  // emptied workspace must stay empty (#11108); first open and create-flow still seed.
+  const isFirstActivation = !state.everActivatedWorktreeIds.has(worktreeId)
+  const shouldSeedInitialTerminal =
+    hasActivationWork || Boolean(opts?.initialCwd) || isFirstActivation
   // Why: a plain reselect should still reveal the sidebar row but must not restamp focus recency or wake persistence.
   const isPlainAlreadyActiveTerminal =
     !hasActivationWork &&
+    !opts?.initialCwd &&
     state.activeRepoId === wt.repoId &&
     state.activeWorktreeId === worktreeId &&
     state.activeWorkspaceExecutionHostId === (opts?.executionHostId ?? null) &&
@@ -322,18 +338,25 @@ export function activateAndRevealWorktree(
     state.recordWorktreeVisit(worktreeId)
   }
 
-  // Why: sleeping destroys the local PTY but preserves the provider session id, so waking should restore those CLI sessions automatically.
-  resumeSleepingAgentSessionsForWorktree(worktreeId)
+  // Why: sleeping destroys the local PTY but preserves the provider session id,
+  // so waking should restore those CLI sessions — but not when reselecting an
+  // empty workspace that must stay empty (#11108).
+  if (shouldSeedInitialTerminal) {
+    resumeSleepingAgentSessionsForWorktree(worktreeId)
+  }
 
-  // 4. Ensure a focusable surface exists for externally-created worktrees
-  const primaryTabId = ensureWorktreeHasInitialTerminal(
-    useAppStore.getState(),
-    worktreeId,
-    opts?.startup,
-    opts?.setup,
-    opts?.issueCommand,
-    opts?.defaultTabs
-  )
+  // 4. Seed a terminal only on first activation or explicit create/launch work — not on
+  // reselect after the user closed every tab (#11108).
+  const primaryTabId = shouldSeedInitialTerminal
+    ? ensureWorktreeHasInitialTerminal(
+        useAppStore.getState(),
+        worktreeId,
+        opts?.startup,
+        opts?.setup,
+        opts?.issueCommand,
+        opts?.defaultTabs
+      )
+    : null
   if (primaryTabId && opts?.initialCwd) {
     useAppStore.getState().queueTabInitialCwd(primaryTabId, opts.initialCwd)
   }

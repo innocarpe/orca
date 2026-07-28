@@ -81,7 +81,6 @@ import {
 } from '../hooks/ipc-tab-switch'
 import TabGroupSplitLayout from './tab-group/TabGroupSplitLayout'
 import AiVaultSessionDropLayer from './tab-group/AiVaultSessionDropLayer'
-import { shouldAutoCreateInitialTerminal } from './terminal/initial-terminal'
 import { useActiveTerminalRepair } from './terminal/use-active-terminal-repair'
 import { scheduleBackgroundTerminalWorktreeMeasure } from './terminal/background-terminal-worktree-visibility'
 import {
@@ -382,7 +381,6 @@ function Terminal(): React.JSX.Element | null {
   const layoutByWorktree = useAppStore((s) => s.layoutByWorktree)
   const activeGroupIdByWorktree = useAppStore((s) => s.activeGroupIdByWorktree)
   const ensureWorktreeRootGroup = useAppStore((s) => s.ensureWorktreeRootGroup)
-  const reconcileWorktreeTabModel = useAppStore((s) => s.reconcileWorktreeTabModel)
 
   const markFileDirty = useAppStore((s) => s.markFileDirty)
   const setTabBarOrder = useAppStore((s) => s.setTabBarOrder)
@@ -1451,27 +1449,8 @@ function Terminal(): React.JSX.Element | null {
   ])
   // Why: on host unmount no reconciliation effect runs again, so dispose every remaining parked watcher.
   useEffect(() => () => disposeAllParkedTerminalWatchers(), [])
-  // Auto-create first tab when worktree activates
-  useEffect(() => {
-    if (!workspaceSessionReady) {
-      return
-    }
-    if (!activeWorktreeId) {
-      return
-    }
-    // Why: host session-tabs are authoritative in the paired web client; a local fallback races the host's initial terminal and duplicates tabs.
-    if (isWebRuntimeSessionActive(getActiveWorktreeRuntimeEnvironmentId(activeWorktreeId))) {
-      return
-    }
-
-    // Why: give a newly activated worktree a focusable surface when nothing renders, without recreating one after the user closes the last visible tab.
-    const { renderableTabCount } = reconcileWorktreeTabModel(activeWorktreeId)
-    if (!shouldAutoCreateInitialTerminal(renderableTabCount)) {
-      return
-    }
-    // Why: tag this never-visited-worktree tab so its PTY spawn doesn't count as activity and reshuffle the sidebar (explicit New Tab still bumps).
-    createTab(activeWorktreeId, undefined, undefined, { pendingActivationSpawn: true })
-  }, [workspaceSessionReady, activeWorktreeId, createTab, reconcileWorktreeTabModel])
+  // Why: do not auto-create a terminal here — reselect of an emptied workspace must stay empty
+  // (#11108). First activation / create-flow seeding lives in activateAndRevealWorktree.
 
   const startupResumeWorktreeIdsRef = useRef(new Set<string>())
   useEffect(() => {
