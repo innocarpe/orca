@@ -132,6 +132,12 @@ describe('resolveTerminalTitleAgentType', () => {
     expect(resolveTerminalTitleAgentType('Qwen Code')).toBe('qwen-code')
     expect(resolveTerminalTitleAgentType('⠋ Qwen Code')).toBe('qwen-code')
     expect(resolveTerminalTitleAgentType('qwen ready')).toBe('qwen-code')
+  })
+
+  it('does not let a qwen mention reclassify another named agent title', () => {
+    expect(resolveTerminalTitleAgentType('Aider: compare qwen output')).toBe('aider')
+    expect(resolveTerminalTitleAgentType('⠋ Aider: compare qwen output')).toBe('aider')
+    expect(getSharedAgentLabel('Aider: compare qwen output')).toBe('Aider')
     expect(getSharedAgentLabel('Qwen Code')).toBe('Qwen Code')
     expect(getSharedAgentLabel('⠋ Qwen Code')).toBe('Qwen Code')
   })
