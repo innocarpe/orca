@@ -6,6 +6,7 @@
  * execCommand on frame focus — see #10375 / regression of #7035.
  */
 export const CDP_FOCUS_EMULATION_METHOD = 'Emulation.setFocusEmulationEnabled' as const
+const CDP_FOCUS_EMULATION_TIMEOUT_MS = 5_000
 
 export type CdpFocusEmulationSender = (
   method: string,
@@ -13,5 +14,20 @@ export type CdpFocusEmulationSender = (
 ) => Promise<unknown>
 
 export async function enableCdpFocusEmulation(send: CdpFocusEmulationSender): Promise<void> {
-  await send(CDP_FOCUS_EMULATION_METHOD, { enabled: true })
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    await Promise.race([
+      send(CDP_FOCUS_EMULATION_METHOD, { enabled: true }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`CDP focus emulation timed out: ${CDP_FOCUS_EMULATION_METHOD}`)),
+          CDP_FOCUS_EMULATION_TIMEOUT_MS
+        )
+      })
+    ])
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }
 }

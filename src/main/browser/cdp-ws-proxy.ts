@@ -238,26 +238,9 @@ export class CdpWsProxy {
     // tabs can report document.hasFocus()===false even when Orca is frontmost.
     // Rich editors (Draft.js) then drop Input.insertText / execCommand (#10375).
     try {
-      // Why: bound stalled debugger commands so attach does not hang agent-browser (30s CDP default).
-      const FOCUS_EMULATION_COMMAND_TIMEOUT_MS = 5_000
-      await enableCdpFocusEmulation(async (method, params) => {
-        let timer: ReturnType<typeof setTimeout> | null = null
-        try {
-          return await Promise.race([
-            this.webContents.debugger.sendCommand(method, params ?? {}),
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(
-                () => reject(new Error(`CDP focus emulation timed out: ${method}`)),
-                FOCUS_EMULATION_COMMAND_TIMEOUT_MS
-              )
-            })
-          ])
-        } finally {
-          if (timer) {
-            clearTimeout(timer)
-          }
-        }
-      })
+      await enableCdpFocusEmulation((method, params) =>
+        this.webContents.debugger.sendCommand(method, params ?? {})
+      )
     } catch {
       /* best-effort — older CDP stacks may lack the method */
     }
