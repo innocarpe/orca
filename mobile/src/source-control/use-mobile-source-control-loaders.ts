@@ -16,6 +16,10 @@ import {
 } from './mobile-branch-compare-outcome'
 import { gitStatusHostPayloadRead } from './mobile-git-read-operations'
 import {
+  shouldLoadMobileBranchCompare,
+  shouldRetryMobileStatusSelectorNotFound
+} from './mobile-folder-workspace-selector'
+import {
   isMobileGitTransientRefreshError,
   isMobileGitUnavailableReply,
   readMobileGitRefusal
@@ -115,6 +119,15 @@ export function useMobileSourceControlLoaders(params: Params): MobileSourceContr
       // Scope by host and route identity as well as render-time retirement to fence loads that reach the owner first.
       const scope: RequestScope = [client, statusIdentityKey]
 
+      // Why: git.branchCompare is unrouted for folder: selectors; skip instead of
+      // firing a guaranteed selector_not_found (issue #11153).
+      if (!shouldLoadMobileBranchCompare(worktreeId)) {
+        if (mountedRef.current) {
+          setBranchCompareState({ kind: 'idle' })
+        }
+        return false
+      }
+
       setBranchCompareState((prev) => (prev.kind === 'ready' ? prev : { kind: 'loading' }))
       const loaded = await branchCompare.load(scope, WHOLE_WORKTREE, (currency) =>
         readBranchCompareOutcome(client, worktreeId, currency, {
@@ -209,7 +222,8 @@ export function useMobileSourceControlLoaders(params: Params): MobileSourceContr
               return false
             }
             const shouldRetry =
-              refusal.code === 'selector_not_found' ||
+              (refusal.code === 'selector_not_found' &&
+                shouldRetryMobileStatusSelectorNotFound(worktreeId)) ||
               isMobileGitTransientRefreshError(refusal.code, refusal.message)
             if (shouldRetry && attempt < SELECTOR_RETRY_COUNT) {
               await wait(SELECTOR_RETRY_DELAY_MS)
