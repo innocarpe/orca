@@ -6,8 +6,8 @@ import {
   normalizeRuntimePathForComparison
 } from '../../../../shared/cross-platform-path'
 import {
-  purgeDirCacheSubtree,
-  purgeExpandedDirsSubtree,
+  purgeDirCacheSubtrees,
+  purgeExpandedDirsSubtrees,
   clearStalePendingReveal
 } from './file-explorer-watcher-reconcile'
 import {
@@ -69,17 +69,14 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
   const dirsToRefresh = new Set<string>()
   const childPathIndexes = new Map<string, Set<string>>()
   const cachePathIndex = createCachedDirPathIndex(cache)
-  const purgedCachedDirs = new Set<string>()
+  const cachedDirsToPurge = new Set<string>()
   const reconciledRenameSources = new Set<string>()
   let needsFullRefresh = false
 
-  const purgeCachedDirOnce = (cachedDir: string | null): void => {
-    if (!cachedDir || purgedCachedDirs.has(cachedDir)) {
-      return
+  const queueCachedDirPurge = (cachedDir: string | null): void => {
+    if (cachedDir) {
+      cachedDirsToPurge.add(cachedDir)
     }
-    purgedCachedDirs.add(cachedDir)
-    purgeDirCacheSubtree(setDirCache, cachedDir)
-    purgeExpandedDirsSubtree(worktreeId, cachedDir)
   }
 
   for (const evt of payload.events) {
@@ -104,8 +101,7 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
       const wasDirectory = cachedDir !== null
 
       if (wasDirectory && cachedDir) {
-        purgeDirCacheSubtree(setDirCache, cachedDir)
-        purgeExpandedDirsSubtree(worktreeId, cachedDir)
+        queueCachedDirPurge(cachedDir)
       }
 
       clearStalePendingReveal(normalizedPath)
@@ -181,8 +177,8 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
           currentWorktreePath,
           cachePathIndex
         )
-        purgeCachedDirOnce(cachedOldDir)
-        purgeCachedDirOnce(cachedNewDir)
+        queueCachedDirPurge(cachedOldDir)
+        queueCachedDirPurge(cachedNewDir)
       }
     } else if (evt.kind === 'update') {
       const cachedDir = resolveCachedDirPath(
@@ -208,6 +204,9 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
       }
     }
   }
+
+  purgeDirCacheSubtrees(setDirCache, cachedDirsToPurge)
+  purgeExpandedDirsSubtrees(worktreeId, cachedDirsToPurge)
 
   if (needsFullRefresh) {
     refreshTree()

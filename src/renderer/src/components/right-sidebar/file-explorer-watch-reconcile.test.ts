@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DirCache, TreeNode } from './file-explorer-types'
 import { processFileExplorerFsPayload } from './file-explorer-watch-reconcile'
+import { purgeDirCacheSubtrees } from './file-explorer-watcher-reconcile'
+import { useAppStore } from '@/store'
 
 function cacheWithChildren(paths: string[]): DirCache {
   return {
@@ -57,6 +59,25 @@ function processUpdate(args: {
 }
 
 describe('processFileExplorerFsPayload update reconciliation', () => {
+  it('purges Windows descendants case-insensitively without folding remote POSIX paths', () => {
+    let cache: Record<string, DirCache> = {
+      'C:\\Repo\\Old': cacheWithChildren([]),
+      'c:\\repo\\OLD\\child': cacheWithChildren([]),
+      'C:\\Repo\\Keep': cacheWithChildren([]),
+      '/srv/repo/Old': cacheWithChildren([]),
+      '/srv/repo/Old/child': cacheWithChildren([]),
+      '/srv/repo/old/keep': cacheWithChildren([])
+    }
+    type DirCacheUpdate = Parameters<Parameters<typeof purgeDirCacheSubtrees>[0]>[0]
+    const setDirCache = (update: DirCacheUpdate): void => {
+      cache = typeof update === 'function' ? update(cache) : update
+    }
+
+    purgeDirCacheSubtrees(setDirCache, new Set(['C:\\repo\\old', '/srv/repo/Old']))
+
+    expect(Object.keys(cache)).toEqual(['C:\\Repo\\Keep', '/srv/repo/old/keep'])
+  })
+
   it('refreshes a cached parent when Windows reports a new file as update', () => {
     const root = 'C:\\Repo'
     const refreshDir = processUpdate({
@@ -342,8 +363,79 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
       refreshTree: vi.fn()
     })
 
-    expect(setDirCache).toHaveBeenCalledTimes(2)
+    expect(setDirCache).toHaveBeenCalledOnce()
     expect(setSelectedPath).toHaveBeenCalledOnce()
     expect(refreshDir).toHaveBeenCalledTimes(2)
+  })
+
+  it('purges distinct cached directory renames with one bounded cache scan', () => {
+    const root = '/repo'
+    const worktreeId = 'watch-reconcile-perf'
+    const entries: Record<string, DirCache> = { [root]: cacheWithChildren([]) }
+    const expandedPaths: string[] = []
+    const events = Array.from({ length: 1_000 }, (_, index) => {
+      entries[`${root}/old-${index}`] = cacheWithChildren([])
+      entries[`${root}/new-${index}`] = cacheWithChildren([])
+      expandedPaths.push(`${root}/old-${index}`, `${root}/new-${index}`)
+      return {
+        kind: 'rename' as const,
+        oldAbsolutePath: `${root}/old-${index}`,
+        absolutePath: `${root}/new-${index}`,
+        isDirectory: true
+      }
+    })
+    let keyVisits = 0
+    const entryCount = Object.keys(entries).length
+    const measured = (value: Record<string, DirCache>): Record<string, DirCache> =>
+      new Proxy(value, {
+        getOwnPropertyDescriptor(target, property) {
+          keyVisits++
+          return Reflect.getOwnPropertyDescriptor(target, property)
+        }
+      })
+    let current = measured(entries)
+    type DirCacheUpdate = Parameters<
+      Parameters<typeof processFileExplorerFsPayload>[0]['setDirCache']
+    >[0]
+    const setDirCache = vi.fn((update: DirCacheUpdate) => {
+      current = measured(typeof update === 'function' ? update(current) : update)
+    })
+    let expandedPathReads = 0
+    const expanded = new Set(expandedPaths)
+    const expandedIterator = expanded[Symbol.iterator].bind(expanded)
+    expanded[Symbol.iterator] = function* measuredExpandedIterator() {
+      for (const path of expandedIterator()) {
+        expandedPathReads++
+        yield path
+      }
+      return undefined
+    }
+    const previousExpandedDirs = useAppStore.getState().expandedDirs
+    let remainingExpanded: Set<string> | undefined
+
+    try {
+      useAppStore.setState({
+        expandedDirs: { ...previousExpandedDirs, [worktreeId]: expanded }
+      })
+      processFileExplorerFsPayload({
+        payload: { worktreePath: root, events },
+        currentWorktreePath: root,
+        worktreeId,
+        cache: current,
+        expanded,
+        setDirCache,
+        setSelectedPath: vi.fn(),
+        refreshDir: vi.fn(),
+        refreshTree: vi.fn()
+      })
+      remainingExpanded = useAppStore.getState().expandedDirs[worktreeId]
+    } finally {
+      useAppStore.setState({ expandedDirs: previousExpandedDirs })
+    }
+
+    expect(setDirCache).toHaveBeenCalledOnce()
+    expect(keyVisits).toBe(entryCount * 2)
+    expect(expandedPathReads).toBe(expandedPaths.length)
+    expect(remainingExpanded).toEqual(new Set())
   })
 })
