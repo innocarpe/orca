@@ -196,6 +196,31 @@ describe('terminal-history', () => {
       expect(result.histFile).toBeNull()
     })
 
+    it('clears stale ORCA_HISTFILE when caller provides HISTFILE', () => {
+      // Why: inherited ORCA_HISTFILE must not win over check-before-set HISTFILE
+      // via the zsh wrapper re-export after /etc/zshrc (CodeRabbit #11146).
+      const env: Record<string, string> = {
+        HISTFILE: '/my/custom/histfile',
+        ORCA_HISTFILE: '/stale/orca/worktree/zsh_history'
+      }
+      const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/bin/zsh', '/path/wt')
+
+      expect(env.HISTFILE).toBe('/my/custom/histfile')
+      expect(env.ORCA_HISTFILE).toBeUndefined()
+      expect(result.histFile).toBeNull()
+    })
+
+    it('clears stale ORCA_HISTFILE for unsupported shells', () => {
+      const env: Record<string, string> = {
+        ORCA_HISTFILE: '/stale/orca/worktree/zsh_history'
+      }
+      const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/usr/bin/fish', '/path/wt')
+
+      expect(env.HISTFILE).toBeUndefined()
+      expect(env.ORCA_HISTFILE).toBeUndefined()
+      expect(result.histFile).toBeNull()
+    })
+
     it('does not inject HISTFILE for unknown shells', () => {
       const env: Record<string, string> = {}
       const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/bin/tcsh', '/path/wt')
@@ -228,7 +253,9 @@ describe('terminal-history', () => {
         throw new Error('disk full')
       })
 
-      const env: Record<string, string> = {}
+      const env: Record<string, string> = {
+        ORCA_HISTFILE: '/stale/orca/worktree/zsh_history'
+      }
       const result = injectHistoryEnv(env, 'repo-1::/path/wt', '/bin/zsh', '/path/wt')
 
       expect(env.HISTFILE).toBeUndefined()

@@ -799,6 +799,10 @@ export class LocalPtyProvider implements IPtyProvider {
         wslDistro: preferredWslContext?.distro ?? worktreeWslContext?.distro ?? null
       })
       logHistoryInjection(worktreeId, historyResult)
+    } else {
+      // Why: skip injectHistoryEnv — still drop inherited ORCA_HISTFILE so the
+      // zsh wrapper cannot re-export a prior worktree path over default history.
+      delete finalEnv.ORCA_HISTFILE
     }
 
     await prepareLocalPtySpawn(id)

@@ -138,15 +138,24 @@ export function injectHistoryEnv(
   const shell = resolveShellKind(shellPath)
   const result: HistoryInjectionResult = { shell, histFile: null }
 
+  // Why: only set ORCA_HISTFILE when we inject HISTFILE this spawn. A stale
+  // value (inherited env, prior path) would make the zsh wrapper re-export it
+  // over a caller-provided HISTFILE or when history is not scoped (#11044 CR).
+  const clearOrcaHistFile = (): void => {
+    delete spawnEnv.ORCA_HISTFILE
+  }
+
   const filename = historyFilename(shell)
   if (!filename) {
-    // Unknown shell or Phase 2 shell (fish, pwsh, cmd) — leave unchanged.
+    // Unknown shell or Phase 2 shell (fish, pwsh, cmd) — leave HISTFILE alone.
+    clearOrcaHistFile()
     return result
   }
 
   // Check-before-set: if the caller already provided HISTFILE, preserve it.
   // This follows the pattern used by Ghostty, Kitty, and VS Code (§6).
   if (spawnEnv.HISTFILE) {
+    clearOrcaHistFile()
     return result
   }
 
@@ -159,6 +168,7 @@ export function injectHistoryEnv(
   const histDir = ensureHistoryDir(worktreeHash, wslDistro)
   if (!histDir) {
     // Directory creation failed — degrade gracefully to shared history.
+    clearOrcaHistFile()
     return result
   }
 
