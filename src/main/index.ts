@@ -377,7 +377,12 @@ function maybeAutoRenameBranchOnFirstWorkFromHook(event: {
   paneKey: string
   tabId: string | undefined
   worktreeId: string | undefined
-  payload: { state: string; prompt?: string; lastAssistantMessage?: string }
+  payload: {
+    state: string
+    prompt?: string
+    lastAssistantMessage?: string
+    agentType?: string
+  }
   isReplay: boolean | undefined
 }): void {
   const currentStore = store
@@ -393,7 +398,8 @@ function maybeAutoRenameBranchOnFirstWorkFromHook(event: {
       state: event.payload.state,
       prompt: event.payload.prompt,
       assistantMessage: event.payload.lastAssistantMessage,
-      isReplay: event.isReplay
+      isReplay: event.isReplay,
+      agentType: event.payload.agentType
     },
     {
       getSettings: () => currentStore.getSettings(),
