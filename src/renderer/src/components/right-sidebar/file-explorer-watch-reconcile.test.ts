@@ -19,6 +19,19 @@ function cacheWithChildren(paths: string[]): DirCache {
   }
 }
 
+function cacheWithMeasuredChildren(paths: string[], onPathRead: () => void): DirCache {
+  const cache = cacheWithChildren(paths)
+  for (let index = 0; index < paths.length; index++) {
+    Object.defineProperty(cache.children[index]!, 'path', {
+      get: () => {
+        onPathRead()
+        return paths[index]
+      }
+    })
+  }
+  return cache
+}
+
 function processUpdate(args: {
   root: string
   absolutePath: string
@@ -66,6 +79,35 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
       cache: { [root]: cacheWithChildren([`${root}\\existing.txt`]) }
     })
 
+    expect(refreshDir).not.toHaveBeenCalled()
+  })
+
+  it('indexes cached children once for a large update batch', () => {
+    const root = 'C:\\Repo'
+    const paths = Array.from({ length: 1_000 }, (_, index) => `${root}\\file-${index}.txt`)
+    let pathReads = 0
+    const refreshDir = vi.fn()
+
+    processFileExplorerFsPayload({
+      payload: {
+        worktreePath: root,
+        events: paths.map((absolutePath) => ({
+          kind: 'update' as const,
+          absolutePath: absolutePath.toLowerCase(),
+          isDirectory: false
+        }))
+      },
+      currentWorktreePath: root,
+      worktreeId: 'wt-1',
+      cache: { [root]: cacheWithMeasuredChildren(paths, () => pathReads++) },
+      expanded: new Set(),
+      setDirCache: vi.fn(),
+      setSelectedPath: vi.fn(),
+      refreshDir,
+      refreshTree: vi.fn()
+    })
+
+    expect(pathReads).toBe(paths.length)
     expect(refreshDir).not.toHaveBeenCalled()
   })
 
@@ -139,5 +181,46 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     })
 
     expect(refreshDir).not.toHaveBeenCalled()
+  })
+
+  it('refreshes both parents for a synthetic cross-directory rename', () => {
+    const root = '/repo'
+    const sourceDir = `${root}/source`
+    const targetDir = `${root}/target`
+    const refreshDir = vi.fn()
+    const refreshTree = vi.fn()
+    const setSelectedPath = vi.fn()
+
+    processFileExplorerFsPayload({
+      payload: {
+        worktreePath: root,
+        events: [
+          {
+            kind: 'rename',
+            oldAbsolutePath: `${sourceDir}/old.txt`,
+            absolutePath: `${targetDir}/new.txt`,
+            isDirectory: false
+          }
+        ]
+      },
+      currentWorktreePath: root,
+      worktreeId: 'folder::remote-1',
+      cache: {
+        [root]: cacheWithChildren([sourceDir, targetDir]),
+        [sourceDir]: cacheWithChildren([`${sourceDir}/old.txt`]),
+        [targetDir]: cacheWithChildren([])
+      },
+      expanded: new Set([sourceDir, targetDir]),
+      setDirCache: vi.fn(),
+      setSelectedPath,
+      refreshDir,
+      refreshTree
+    })
+
+    expect(refreshDir).toHaveBeenCalledTimes(2)
+    expect(refreshDir).toHaveBeenCalledWith(sourceDir)
+    expect(refreshDir).toHaveBeenCalledWith(targetDir)
+    expect(refreshTree).not.toHaveBeenCalled()
+    expect(setSelectedPath.mock.calls[0]?.[0](`${sourceDir}/old.txt`)).toBeNull()
   })
 })

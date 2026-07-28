@@ -32,14 +32,19 @@ export type ProcessFileExplorerFsPayloadArgs = {
 function cachedDirectoryContainsPath(
   cache: Record<string, DirCache>,
   cachedDirPath: string,
-  childPath: string
+  childPath: string,
+  childPathIndexes: Map<string, Set<string>>
 ): boolean {
-  const target = normalizeRuntimePathForComparison(childPath)
-  return (
-    cache[cachedDirPath]?.children.some(
-      (child) => normalizeRuntimePathForComparison(child.path) === target
-    ) ?? false
-  )
+  let childPaths = childPathIndexes.get(cachedDirPath)
+  if (!childPaths) {
+    childPaths = new Set(
+      cache[cachedDirPath]?.children.map((child) =>
+        normalizeRuntimePathForComparison(child.path)
+      ) ?? []
+    )
+    childPathIndexes.set(cachedDirPath, childPaths)
+  }
+  return childPaths.has(normalizeRuntimePathForComparison(childPath))
 }
 
 export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadArgs): void {
@@ -62,6 +67,7 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
   }
 
   const dirsToRefresh = new Set<string>()
+  const childPathIndexes = new Map<string, Set<string>>()
   let needsFullRefresh = false
 
   for (const evt of payload.events) {
@@ -117,8 +123,38 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
         dirsToRefresh.add(cachedParent)
       }
       if (evt.kind === 'rename') {
-        const cachedDir = resolveCachedDirPath(cache, normalizedPath, currentWorktreePath)
-        if (cachedDir) {
+        const oldPath = evt.oldAbsolutePath
+          ? canonicalizeFileExplorerWatchPath(currentWorktreePath, evt.oldAbsolutePath)
+          : null
+        const cachedOldDir = oldPath
+          ? resolveCachedDirPath(cache, oldPath, currentWorktreePath)
+          : null
+        if (oldPath) {
+          const oldParent = parentDirForWatchPath(oldPath)
+          const cachedOldParent = resolveCachedDirPath(cache, oldParent, currentWorktreePath)
+          if (cachedOldParent) {
+            dirsToRefresh.add(cachedOldParent)
+          }
+
+          clearStalePendingReveal(oldPath)
+          setSelectedPath((prev) => {
+            if (!prev) {
+              return prev
+            }
+            const selectedSource = normalizeRuntimePathForComparison(prev)
+            if (selectedSource === normalizeRuntimePathForComparison(oldPath)) {
+              return null
+            }
+            return cachedOldDir && isPathInsideOrEqual(oldPath, prev) ? null : prev
+          })
+        }
+
+        const cachedNewDir = resolveCachedDirPath(cache, normalizedPath, currentWorktreePath)
+        const renamedDirs = new Set([cachedOldDir, cachedNewDir])
+        for (const cachedDir of renamedDirs) {
+          if (!cachedDir) {
+            continue
+          }
           purgeDirCacheSubtree(setDirCache, cachedDir)
           purgeExpandedDirsSubtree(worktreeId, cachedDir)
         }
@@ -133,7 +169,11 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
       const parent = parentDirForWatchPath(normalizedPath)
       const cachedParent = resolveCachedDirPath(cache, parent, currentWorktreePath)
       // Windows can classify a new file as update; existing file updates do not invalidate the tree.
-      if (cachedParent && !cachedDirectoryContainsPath(cache, cachedParent, normalizedPath)) {
+      if (
+        cachedParent &&
+        !dirsToRefresh.has(cachedParent) &&
+        !cachedDirectoryContainsPath(cache, cachedParent, normalizedPath, childPathIndexes)
+      ) {
         dirsToRefresh.add(cachedParent)
       }
     }

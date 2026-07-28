@@ -8,13 +8,11 @@ import {
   getFileExplorerOperationOwnerFromState,
   type FileExplorerOwnerState
 } from './file-explorer-operation-owner'
-import { payloadRequiresDeferredTreeRefresh } from './file-explorer-watch-path'
 import { processFileExplorerFsPayload } from './file-explorer-watch-reconcile'
 
 export {
   canonicalizeFileExplorerWatchPath,
   getExternalFileChangeRelativePath,
-  payloadRequiresDeferredTreeRefresh,
   resolveCachedDirPath
 } from './file-explorer-watch-path'
 
@@ -223,19 +221,12 @@ export function useFileExplorerWatch({
       deferredRef.current.length > 0
     ) {
       const deferred = deferredRef.current.splice(0)
-      const requiresFullRefresh = worktreePath
-        ? deferred.some((payload) => payloadRequiresDeferredTreeRefresh(payload, worktreePath))
-        : false
       // Why: replay deferred payloads so the tree cache reconciles to disk after inline input or drag ends (design §6.2).
       if (processPayloadRef.current) {
         for (const payload of deferred) {
           processPayloadRef.current(payload)
         }
       }
-      // Why: create/delete/update already replayed above; only kinds this reconciler can't apply (rename) pay the full-tree refresh.
-      if (requiresFullRefresh) {
-        void refreshTreeRef.current()
-      }
     }
-  }, [inlineInput, dragSourcePath, isNativeDragOver, worktreePath])
+  }, [inlineInput, dragSourcePath, isNativeDragOver])
 }

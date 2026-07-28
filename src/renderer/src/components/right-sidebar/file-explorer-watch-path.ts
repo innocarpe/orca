@@ -3,7 +3,6 @@ import {
   normalizeRuntimePathForComparison,
   relativePathInsideRoot
 } from '../../../../shared/cross-platform-path'
-import type { FsChangedPayload } from '../../../../shared/types'
 
 export function normalizeExplorerAbsolutePath(path: string): string {
   return path === '/' || /^[A-Za-z]:[\\/]$/.test(path) ? path : path.replace(/[\\/]+$/, '')
@@ -62,20 +61,6 @@ export function resolveCachedDirPath(
     return normalizeExplorerAbsolutePath(worktreePath)
   }
   return null
-}
-
-export function payloadRequiresDeferredTreeRefresh(
-  payload: FsChangedPayload,
-  currentWorktreePath: string
-): boolean {
-  if (
-    normalizeRuntimePathForComparison(payload.worktreePath) !==
-    normalizeRuntimePathForComparison(currentWorktreePath)
-  ) {
-    return false
-  }
-
-  return payload.events.some((evt) => evt.kind === 'rename')
 }
 
 export function parentDirForWatchPath(normalizedPath: string): string {
