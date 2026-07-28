@@ -169,6 +169,17 @@ because its contract requires a pairing URL. Stop a foreground server with
 `device_registry_unavailable`, `e2ee_key_unavailable`, and
 `invalid_advertised_endpoint`.
 
+To mint another access grant against an already-running server (without restart
+or the Settings UI), call the local CLI on that host:
+
+```bash
+orca pairing create --address 100.64.1.20 --json
+```
+
+This uses the authenticated local runtime socket (`pairing.createOffer`) and
+returns a pairing URL plus optional web client URL. Minted grants stay
+revocable in the host's runtime access-grant list.
+
 ## Systemd Service
 
 Create a dedicated service user and install directory. Run the service as this

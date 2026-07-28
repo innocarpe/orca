@@ -30,7 +30,16 @@ import { RpcStreamingDispatcher } from './rpc-streaming-dispatcher'
 export type DispatcherOptions = { runtime: OrcaRuntimeService; methods?: readonly RpcAnyMethod[] }
 
 // oxfmt-ignore
-type DispatchCallOptions = Pick<RpcDispatchStreamingOptions, 'signal' | 'connectionId' | 'clientId' | 'clientKind' | 'clientCapabilities' | 'authenticatedCallerFingerprint'>
+type DispatchCallOptions = Pick<
+  RpcDispatchStreamingOptions,
+  | 'signal'
+  | 'connectionId'
+  | 'clientId'
+  | 'clientKind'
+  | 'clientCapabilities'
+  | 'authenticatedCallerFingerprint'
+  | 'pairing'
+>
 
 export class RpcDispatcher {
   private readonly runtime: OrcaRuntimeService
@@ -143,7 +152,8 @@ export class RpcDispatcher {
           revalidateLegacyCoordinator: legacyCoordinator?.revalidate,
           orchestrationCompatibilityCallerAuthority:
             compatibility.orchestrationCompatibilityCallerAuthority,
-          orchestrationCompatibilityEvidence: request.orchestrationCompatibilityEvidence
+          orchestrationCompatibilityEvidence: request.orchestrationCompatibilityEvidence,
+          pairing: options?.pairing
         })
       }
       const result = await this.orchestrationMutations.run(
