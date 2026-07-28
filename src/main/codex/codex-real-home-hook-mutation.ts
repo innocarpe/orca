@@ -138,12 +138,19 @@ export function installRealHomeCodexHooks(userDataPath: string): RealHomeHookMut
     return { kind: 'installed' }
   }
 
-  // Why: never leave an untrusted Orca entry in the user's real home.
+  // Why: never leave an untrusted Orca entry in the user's real home. Catch each
+  // restore so a secondary throw cannot mask grant.reason for the retry timer.
   try {
     restoreRealHomeHooksJson(hooksWritePath, previousRaw, previousMode)
+  } catch (error) {
+    console.error('[codex-real-home-hooks] rollback of hooks.json failed:', error)
   } finally {
     if (trustConfigSnapshot) {
-      restoreCodexTrustConfig(getRealHomeConfigTomlPath(), trustConfigSnapshot)
+      try {
+        restoreCodexTrustConfig(getRealHomeConfigTomlPath(), trustConfigSnapshot)
+      } catch (error) {
+        console.error('[codex-real-home-hooks] rollback of config.toml trust failed:', error)
+      }
     }
   }
   console.warn(
@@ -156,6 +163,16 @@ export function installRealHomeCodexHooks(userDataPath: string): RealHomeHookMut
 export function sweepRealHomeCodexHooks(): RealHomeHookMutationOutcome {
   const hooksJsonPath = getRealHomeHooksJsonPath()
   const { raw: previousRaw, config } = readHooksJsonWithRaw(hooksJsonPath)
+  if (previousRaw !== null && !config) {
+    // Why: unreadable/unparseable hooks.json is not "clean" — log residue so ops
+    // can diagnose a leftover Orca entry the sweep could not rewrite.
+    console.warn(
+      '[codex-real-home-hooks] could not parse',
+      hooksJsonPath,
+      '- sweep skipped'
+    )
+    return { kind: 'removed' }
+  }
   if (!config?.hooks || previousRaw === null) {
     return { kind: 'removed' }
   }

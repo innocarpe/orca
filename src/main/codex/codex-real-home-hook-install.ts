@@ -87,12 +87,28 @@ function reconcileRealHomeCodexHookState(args: {
   userDataPath: string
 }): RealHomeCodexHookLane {
   const scope = resolveCodexSystemDefaultHookScope()
-  const configTomlPath = getRealHomeConfigTomlPath()
-  const configToml = existsSync(configTomlPath) ? readFileSync(configTomlPath, 'utf-8') : ''
+  // Why: orca-sessions never consults config.toml (plan ignores dual-rep for that
+  // scope). Skip the sync read on the default path so EACCES/ENOENT races cannot
+  // mark the lane unavailable for a decision that does not need the file.
+  let configTomlHasUserHookDefinitions = false
+  if (scope === 'all-sessions') {
+    const configTomlPath = getRealHomeConfigTomlPath()
+    try {
+      const configToml = existsSync(configTomlPath) ? readFileSync(configTomlPath, 'utf-8') : ''
+      configTomlHasUserHookDefinitions = configTomlHasUserLayerHookDefinitions(configToml)
+    } catch (error) {
+      // Why: fail closed — prefer managed when we cannot prove config.toml is clean.
+      console.warn(
+        '[codex-real-home-hooks] config.toml read failed; treating as dual-representation risk:',
+        error
+      )
+      configTomlHasUserHookDefinitions = true
+    }
+  }
   const plan = planSystemDefaultHookInstall({
     scope,
     hooksEnabled: args.hooksEnabled,
-    configTomlHasUserHookDefinitions: configTomlHasUserLayerHookDefinitions(configToml)
+    configTomlHasUserHookDefinitions
   })
 
   if (plan.action === 'sweep-real-home') {
