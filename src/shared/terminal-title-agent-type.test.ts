@@ -36,6 +36,7 @@ describe('isGrokRotatingWorkingTitle', () => {
 })
 
 describe('resolveExplicitTerminalTitleAgentType', () => {
+
   it('treats Claude generic status prefixes as activity-only, not identity', () => {
     expect(resolveExplicitTerminalTitleAgentType('✳ investigating startup')).toBeNull()
     expect(resolveExplicitTerminalTitleAgentType('⠸ investigating startup')).toBeNull()
@@ -117,5 +118,15 @@ describe('resolveTerminalTitleAgentType', () => {
       'claude'
     )
     expect(resolveTerminalTitleAgentType('⠋ Codex: fix cursor offsets')).toBe('codex')
+  })
+
+  // Why: Qwen Code is hook-less; sidebar tracking depends on title identity resolving
+  // to qwen-code before Claude's braille-spinner heuristic claims the frame.
+  it('maps Qwen Code product titles to qwen-code', () => {
+    expect(resolveTerminalTitleAgentType('Qwen Code')).toBe('qwen-code')
+    expect(resolveTerminalTitleAgentType('⠋ Qwen Code')).toBe('qwen-code')
+    expect(resolveTerminalTitleAgentType('qwen ready')).toBe('qwen-code')
+    expect(getSharedAgentLabel('Qwen Code')).toBe('Qwen Code')
+    expect(getSharedAgentLabel('⠋ Qwen Code')).toBe('Qwen Code')
   })
 })
