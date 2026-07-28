@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest'
+import { isMobileMermaidLanguage } from './mobile-mermaid-language'
 import { normalizeMobileMarkdownPreviewHtml } from './mobile-markdown-preview-html'
 import { parseMobileMarkdown } from './mobile-markdown-parser'
 
+describe('isMobileMermaidLanguage', () => {
+  it('matches mermaid case-insensitively after trim', () => {
+    expect(isMobileMermaidLanguage('mermaid')).toBe(true)
+    expect(isMobileMermaidLanguage('Mermaid')).toBe(true)
+    expect(isMobileMermaidLanguage(' MERMAID ')).toBe(true)
+  })
+
+  it('rejects non-mermaid languages and missing language', () => {
+    expect(isMobileMermaidLanguage(undefined)).toBe(false)
+    expect(isMobileMermaidLanguage('')).toBe(false)
+    expect(isMobileMermaidLanguage('ts')).toBe(false)
+    expect(isMobileMermaidLanguage('mermaidx')).toBe(false)
+  })
+})
+
 describe('parseMobileMarkdown', () => {
+  it('parses mermaid fences as code blocks with language mermaid', () => {
+    expect(parseMobileMarkdown('```mermaid\ngraph TD; A-->B\n```')).toEqual([
+      { type: 'code', text: 'graph TD; A-->B', language: 'mermaid' }
+    ])
+    expect(isMobileMermaidLanguage('mermaid')).toBe(true)
+  })
+
   it('parses GFM tables into table blocks', () => {
     expect(parseMobileMarkdown('| Name | State |\n| --- | --- |\n| Orca | Open |')).toEqual([
       {

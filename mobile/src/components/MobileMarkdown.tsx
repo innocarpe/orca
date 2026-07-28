@@ -7,7 +7,9 @@ import {
   isFilePathCodeSpan,
   normalizeFilePath
 } from './markdown-file-path-detection'
+import { isMobileMermaidLanguage } from './mobile-mermaid-language'
 import { parseMobileMarkdown } from './mobile-markdown-parser'
+import { MermaidDiagram } from './pr-sidebar/MermaidDiagram'
 
 type Props = {
   content?: string
@@ -23,6 +25,8 @@ type Props = {
 
 const MAX_TABLE_ROWS = 40
 const MAX_TABLE_COLUMNS = 8
+/** Prose base size — passed to MermaidDiagram fallback mono text. */
+const MERMAID_BASE = 13
 
 function openMarkdownUrl(url: string): void {
   const trimmed = url.trim()
@@ -175,6 +179,10 @@ function MobileMarkdownInner({ content, fallback = '', textScale = 1, onOpenFile
           )
         }
         if (block.type === 'code') {
+          // Mermaid fences render as diagrams (WebView), not as raw code — same as PR sidebar.
+          if (isMobileMermaidLanguage(block.language)) {
+            return <MermaidDiagram key={index} source={block.text} base={MERMAID_BASE} />
+          }
           return (
             <View key={index} style={styles.codeBlock}>
               {block.language ? <Text style={styles.codeLanguage}>{block.language}</Text> : null}
