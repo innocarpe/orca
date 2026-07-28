@@ -29,6 +29,19 @@ export type ProcessFileExplorerFsPayloadArgs = {
   refreshTree: () => void
 }
 
+function cachedDirectoryContainsPath(
+  cache: Record<string, DirCache>,
+  cachedDirPath: string,
+  childPath: string
+): boolean {
+  const target = normalizeRuntimePathForComparison(childPath)
+  return (
+    cache[cachedDirPath]?.children.some(
+      (child) => normalizeRuntimePathForComparison(child.path) === target
+    ) ?? false
+  )
+}
+
 export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadArgs): void {
   const {
     payload,
@@ -41,7 +54,6 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
     refreshDir,
     refreshTree
   } = args
-
   if (
     normalizeRuntimePathForComparison(payload.worktreePath) !==
     normalizeRuntimePathForComparison(currentWorktreePath)
@@ -112,12 +124,17 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
         }
       }
     } else if (evt.kind === 'update') {
-      // Why: only directory updates invalidate; file-content updates are ignored in v1 (design §6.1).
-      if (evt.isDirectory === true) {
-        const cachedDir = resolveCachedDirPath(cache, normalizedPath, currentWorktreePath)
-        if (cachedDir) {
-          dirsToRefresh.add(cachedDir)
-        }
+      const cachedDir = resolveCachedDirPath(cache, normalizedPath, currentWorktreePath)
+      if (evt.isDirectory === true && cachedDir) {
+        dirsToRefresh.add(cachedDir)
+        continue
+      }
+
+      const parent = parentDirForWatchPath(normalizedPath)
+      const cachedParent = resolveCachedDirPath(cache, parent, currentWorktreePath)
+      // Windows can classify a new file as update; existing file updates do not invalidate the tree.
+      if (cachedParent && !cachedDirectoryContainsPath(cache, cachedParent, normalizedPath)) {
+        dirsToRefresh.add(cachedParent)
       }
     }
   }
