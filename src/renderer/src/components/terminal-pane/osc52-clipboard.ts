@@ -120,6 +120,8 @@ export function createOsc52OscHandler(deps: {
         }
       })
     }
+    // Always resolve here: failure toast is raised in the microtask above.
+    // Passing onWriteFailure to handleOsc52ClipboardRequest would be dead.
     return Promise.resolve()
   }
 
@@ -131,8 +133,7 @@ export function createOsc52OscHandler(deps: {
     return handleOsc52ClipboardRequest(data, {
       allowClipboardWrite: gate.allowClipboardWrite,
       writeClipboardText: writeCoalesced,
-      onBlockedWrite: gate.shouldSurfaceBlockedWrite ? deps.showBlockedWriteToast : undefined,
-      onWriteFailure: deps.showWriteFailedToast
+      onBlockedWrite: gate.shouldSurfaceBlockedWrite ? deps.showBlockedWriteToast : undefined
     })
   }
 }
