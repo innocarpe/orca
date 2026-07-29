@@ -25,5 +25,5 @@ export const SETTING_LABELS: Partial<Record<keyof GlobalSettings, string>> = {
   terminalDividerColorLight: 'Divider Color (Light)',
   terminalInactivePaneOpacity: 'Inactive Pane Opacity',
   windowBackgroundBlur: 'Window Background Blur',
-  reopenWorkspacesWithCreatedAgent: 'Reopen workspaces with creation agent'
+  reopenWorkspacesWithCreatedAgent: 'Reopen workspaces with the agent they were created with'
 }
