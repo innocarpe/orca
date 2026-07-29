@@ -21,7 +21,7 @@ import { HermesHookService, hermesHookService } from '../hermes/hook-service'
 import { DevinHookService, devinHookService } from '../devin/hook-service'
 import { KimiHookService, kimiHookService } from '../kimi/hook-service'
 import { ZcodeHookService, zcodeHookService } from '../zcode/hook-service'
-import { openClaudeHookService } from '../openclaude/hook-service
+import { openClaudeHookService } from '../openclaude/hook-service'
 import { MANAGED_AGENT_HOOK_INSTALLERS } from './managed-agent-hook-controls'
 import {
   installRemoteManagedAgentHooks,
