@@ -269,12 +269,16 @@ describe('Windows managed hook stdin structure', () => {
         // Why: droid inserts Factory suppressOutput echo before exit (#11122);
         // other agents keep the shared drain → exit epilogue byte-identical.
         if (fileName === 'droid-hook.cmd') {
-          expect(script, `${fileName} drain label`).toContain(':orca_agent_hook_drain_stdin')
-          expect(script, `${fileName} drain reader`).toContain(
-            '"%SystemRoot%\\System32\\more.com" >nul 2>nul'
+          // Why: contiguous order matters — echo before more.com would leak
+          // suppressOutput before stdin is drained (#11122 / Greptile).
+          expect(script, `${fileName} drain epilogue`).toContain(
+            [
+              ':orca_agent_hook_drain_stdin',
+              '"%SystemRoot%\\System32\\more.com" >nul 2>nul',
+              'echo {"suppressOutput":true}',
+              'exit /b 0'
+            ].join('\r\n')
           )
-          expect(script, `${fileName} suppressOutput`).toContain('{"suppressOutput":true}')
-          expect(script, `${fileName} exit`).toContain('exit /b 0')
         } else {
           expect(script, `${fileName} drain epilogue`).toContain(
             [
