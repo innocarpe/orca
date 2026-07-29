@@ -18424,6 +18424,8 @@ describe('OrcaRuntimeService', () => {
       const [terminal] = (await runtime.listTerminals()).terminals
       runtime.onPtyData('pty-1', '\x1b]0;. Investigate Cursor Agent\x07', 100)
       runtime.onPtyData('pty-1', '\x1b]0;* Investigate Cursor Agent\x07', 101)
+      // Why: synthetic Enter only fires for worker panes under an active orchestration run.
+      db.setActiveCoordinatorRun({ coordinator_handle: 'term_other' })
       db.insertMessage({ from: 'term_sender', to: terminal.handle, subject: 'hello claude' })
 
       runtime.deliverPendingMessagesForHandle(terminal.handle)
@@ -18431,6 +18433,93 @@ describe('OrcaRuntimeService', () => {
 
       expect(write).toHaveBeenCalledWith('pty-1', expect.stringContaining('Subject: hello claude'))
       expect(write).toHaveBeenCalledWith('pty-1', '\r')
+      db.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('injects without auto-submit when no active coordinator run is registered', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      const db = new InMemoryOrchestrationMessages()
+      const write = vi.fn().mockReturnValue(true)
+      setInMemoryOrchestrationMessages(runtime, db)
+      runtime.setPtyController({
+        write,
+        kill: vi.fn(),
+        getForegroundProcess: async () => null
+      })
+      syncSinglePty(runtime)
+
+      const [terminal] = (await runtime.listTerminals()).terminals
+      runtime.onPtyData('pty-1', '\x1b]0;Codex working\x07', 100)
+      runtime.onPtyData('pty-1', '\x1b]0;Codex done\x07', 101)
+      db.insertMessage({ from: 'term_sender', to: terminal.handle, subject: 'no run' })
+
+      runtime.deliverPendingMessagesForHandle(terminal.handle)
+      await vi.advanceTimersByTimeAsync(500)
+
+      expect(write).toHaveBeenCalledWith('pty-1', expect.stringContaining('Subject: no run'))
+      const submitWrites = write.mock.calls.filter(
+        ([ptyId, text]) => ptyId === 'pty-1' && text === '\r'
+      )
+      expect(submitWrites).toHaveLength(0)
+
+      const unread = db.getUnreadMessages(terminal.handle)
+      expect(unread).toHaveLength(1)
+      expect(unread[0].delivered_at).not.toBeNull()
+      db.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('defers push-on-idle injection while the leaf is the user-focused tab', async () => {
+    vi.useFakeTimers()
+    try {
+      const session: WorkspaceSessionState = {
+        ...makeWorkspaceSessionWithHeadlessTerminal(),
+        activeTabId: 'tab-1',
+        activeTabIdByWorktree: { [TEST_WORKTREE_ID]: 'tab-1' },
+        terminalLayoutsByTabId: {
+          'tab-1': {
+            root: { type: 'leaf', leafId: 'pane:1' },
+            activeLeafId: 'pane:1',
+            expandedLeafId: null,
+            ptyIdsByLeafId: { 'pane:1': 'pty-1' }
+          }
+        }
+      }
+      const runtime = new OrcaRuntimeService({
+        ...store,
+        getWorkspaceSession: () => session
+      })
+      const db = new InMemoryOrchestrationMessages()
+      const write = vi.fn().mockReturnValue(true)
+      setInMemoryOrchestrationMessages(runtime, db)
+      runtime.setPtyController({
+        write,
+        kill: vi.fn(),
+        getForegroundProcess: async () => null
+      })
+      syncSinglePty(runtime)
+
+      const [terminal] = (await runtime.listTerminals()).terminals
+      runtime.onPtyData('pty-1', '\x1b]0;Codex working\x07', 100)
+      runtime.onPtyData('pty-1', '\x1b]0;Codex done\x07', 101)
+      db.setActiveCoordinatorRun({ coordinator_handle: 'term_other' })
+      db.insertMessage({ from: 'term_sender', to: terminal.handle, subject: 'while typing' })
+
+      runtime.deliverPendingMessagesForHandle(terminal.handle)
+      await vi.advanceTimersByTimeAsync(500)
+
+      // Why: focused panes keep undelivered rows so a later unfocused idle can inject safely.
+      expect(write).not.toHaveBeenCalled()
+      const undelivered = db.getUndeliveredUnreadMessages(terminal.handle)
+      expect(undelivered).toHaveLength(1)
+      expect(undelivered[0].delivered_at).toBeNull()
       db.close()
     } finally {
       vi.useRealTimers()

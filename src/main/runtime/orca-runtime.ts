@@ -135,6 +135,11 @@ import type {
 } from './orchestration/environment-transport'
 import { syncFederatedDispatch } from './orchestration/federation-sync'
 import { formatMessagesForInjection } from './orchestration/formatter'
+import {
+  isOrchestrationLeafUserFocused,
+  shouldDeferOrchestrationInjection,
+  shouldSynthesizeOrchestrationEnter
+} from './orchestration/injection-delivery'
 import { selectExactWorkerProviderSession } from './orchestration/worker-provider-session'
 import type {
   Automation,
@@ -31697,6 +31702,23 @@ export class OrcaRuntimeService {
   }
 
   // Why: push-on-idle delivery is event-driven (no polling) because the runtime owns both the message store and terminal status detection.
+
+  // Why: session + graph together identify the pane the user is typing into; graph alone
+  // cannot, because every tab keeps an activeLeafId even when backgrounded.
+  private isUserFocusedOrchestrationLeaf(leaf: RuntimeLeafRecord): boolean {
+    const session = this.getWorkspaceSessionForWorktree(leaf.worktreeId)
+    const activeTabId =
+      session?.activeTabIdByWorktree?.[leaf.worktreeId] ?? session?.activeTabId ?? null
+    const graphActiveLeafId = this.tabs.get(leaf.tabId)?.activeLeafId ?? null
+    const layoutActiveLeafId = session?.terminalLayoutsByTabId?.[leaf.tabId]?.activeLeafId ?? null
+    return isOrchestrationLeafUserFocused({
+      leafTabId: leaf.tabId,
+      leafId: leaf.leafId,
+      activeTabId,
+      activeLeafId: graphActiveLeafId ?? layoutActiveLeafId
+    })
+  }
+
   private deliverPendingMessages(leaf: RuntimeLeafRecord, skipAbsenceProbe = false): void {
     if (!this._orchestrationDb) {
       return
@@ -31719,6 +31741,12 @@ export class OrcaRuntimeService {
     }
 
     if (!leaf.writable || !leaf.ptyId) {
+      return
+    }
+
+    const isUserFocused = this.isUserFocusedOrchestrationLeaf(leaf)
+    // Why: never clobber a draft the user is actively typing; leave undelivered for a later idle.
+    if (shouldDeferOrchestrationInjection({ isUserFocused })) {
       return
     }
 
@@ -31766,15 +31794,17 @@ export class OrcaRuntimeService {
         return
       }
 
-      // The active coordinator prompt is user-owned input, so push-on-idle must not synthesize Enter.
-      if (this._orchestrationDb.getActiveCoordinatorRun()?.coordinator_handle === handle) {
-        this._orchestrationDb.markAsDelivered(unread.map((m) => m.id))
-        return
-      }
-
+      const activeRun = this._orchestrationDb.getActiveCoordinatorRun()
       const tabTitle = this.tabs.get(leaf.tabId)?.title
-      if (isCursorAgentOrchestrationTarget(leaf, tabTitle)) {
-        // Why: Cursor Agent treats injected PTY text as editable prompt input, so submitting must stay under user control.
+      if (
+        !shouldSynthesizeOrchestrationEnter({
+          isUserFocused,
+          isActiveCoordinator: activeRun?.coordinator_handle === handle,
+          isCursorTarget: isCursorAgentOrchestrationTarget(leaf, tabTitle),
+          hasActiveCoordinatorRun: activeRun != null
+        })
+      ) {
+        // Why: coordinator / Cursor / no-run targets keep user-owned submit control; stamp delivered so the banner does not replay on the next idle.
         this._orchestrationDb.markAsDelivered(unread.map((m) => m.id))
         return
       }
