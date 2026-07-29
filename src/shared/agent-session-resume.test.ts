@@ -39,7 +39,9 @@ describe('agent session resume metadata', () => {
     ['droid', { session_id: 'droid-session' }, { key: 'session_id', id: 'droid-session' }],
     ['grok', { sessionId: 'grok-session' }, { key: 'session_id', id: 'grok-session' }],
     ['devin', { session_id: 'devin-session' }, { key: 'session_id', id: 'devin-session' }],
-    ['omp', { session_id: 'omp-session' }, { key: 'session_id', id: 'omp-session' }]
+    ['omp', { session_id: 'omp-session' }, { key: 'session_id', id: 'omp-session' }],
+    ['trae', { session_id: 'trae-session' }, { key: 'session_id', id: 'trae-session' }],
+    ['trae', { sessionId: 'trae-camel' }, { key: 'session_id', id: 'trae-camel' }]
   ] as const)('extracts %s provider session ids', (source, payload, expected) => {
     expect(extractAgentProviderSession(source, payload)).toEqual(expected)
   })
