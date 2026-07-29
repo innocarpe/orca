@@ -417,7 +417,8 @@ describe('registerPtyHandlers', () => {
         kind === 'omp'
           ? {
               ORCA_OMP_SOURCE_AGENT_DIR: existingAgentDir ?? '/tmp/default-omp-agent',
-              ORCA_OMP_STATUS_EXTENSION: `${existingAgentDir ?? '/tmp/default-omp-agent'}/extensions/orca-agent-status.ts`
+              ORCA_OMP_STATUS_EXTENSION: `${existingAgentDir ?? '/tmp/default-omp-agent'}/extensions/orca-agent-status.ts`,
+              ORCA_OMP_PREFILL_EXTENSION: `${existingAgentDir ?? '/tmp/default-omp-agent'}/extensions/orca-prefill.ts`
             }
           : {
               ORCA_PI_SOURCE_AGENT_DIR: existingAgentDir ?? '/tmp/default-pi-agent'
@@ -2433,6 +2434,9 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(
         '/tmp/default-omp-agent/extensions/orca-agent-status.ts'
       )
+      expect(env.ORCA_OMP_PREFILL_EXTENSION).toBe(
+        '/tmp/default-omp-agent/extensions/orca-prefill.ts'
+      )
     })
 
     it('threads command: "omp" through to piBuildPtyEnv and emits OMP status metadata', async () => {
@@ -2453,6 +2457,9 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OMP_CODING_AGENT_DIR).toBeUndefined()
       expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(
         '/tmp/user-omp-agent/extensions/orca-agent-status.ts'
+      )
+      expect(env.ORCA_OMP_PREFILL_EXTENSION).toBe(
+        '/tmp/user-omp-agent/extensions/orca-prefill.ts'
       )
       expect(env.ORCA_OMP_SOURCE_AGENT_DIR).toBe('/tmp/user-omp-agent')
       // CRITICAL: a Pi-named shadow MUST NOT leak into an OMP PTY env.
@@ -2479,6 +2486,9 @@ describe('registerPtyHandlers', () => {
       )
       expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(
         '/tmp/user-omp-agent/extensions/orca-agent-status.ts'
+      )
+      expect(env.ORCA_OMP_PREFILL_EXTENSION).toBe(
+        '/tmp/user-omp-agent/extensions/orca-prefill.ts'
       )
       expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBeUndefined()
     })
@@ -2533,6 +2543,7 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OMP_CODING_AGENT_DIR).toBeUndefined()
       expect(env.ORCA_OMP_SOURCE_AGENT_DIR).toBeUndefined()
       expect(env.ORCA_OMP_STATUS_EXTENSION).toBeUndefined()
+      expect(env.ORCA_OMP_PREFILL_EXTENSION).toBeUndefined()
     })
 
     it('restores user Pi config when agent status hooks are disabled in a nested Orca shell', async () => {
@@ -2978,6 +2989,9 @@ describe('registerPtyHandlers', () => {
         expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/user/.pi/agent')
         expect(env.ORCA_OMP_CODING_AGENT_DIR).toBeUndefined()
         expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(expectedOmpStatusExtension)
+        expect(env.ORCA_OMP_PREFILL_EXTENSION).toBe(
+          '/tmp/default-omp-agent/extensions/orca-prefill.ts'
+        )
       })
 
       it('threads command: "omp" through to piBuildPtyEnv on the daemon path with OMP status metadata', async () => {
@@ -2998,6 +3012,9 @@ describe('registerPtyHandlers', () => {
         expect(env.ORCA_OMP_CODING_AGENT_DIR).toBeUndefined()
         expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(
           '/user/.omp/agent/extensions/orca-agent-status.ts'
+        )
+        expect(env.ORCA_OMP_PREFILL_EXTENSION).toBe(
+          '/user/.omp/agent/extensions/orca-prefill.ts'
         )
         expect(env.ORCA_OMP_SOURCE_AGENT_DIR).toBe('/user/.omp/agent')
         expect(env.ORCA_PI_CODING_AGENT_DIR).toBeUndefined()
@@ -3023,6 +3040,9 @@ describe('registerPtyHandlers', () => {
         )
         expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(
           '/user/.omp/agent/extensions/orca-agent-status.ts'
+        )
+        expect(env.ORCA_OMP_PREFILL_EXTENSION).toBe(
+          '/user/.omp/agent/extensions/orca-prefill.ts'
         )
         expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBeUndefined()
       })
@@ -8769,6 +8789,7 @@ describe('registerPtyHandlers', () => {
         'ORCA_AGENT_HOOK_TOKEN/u',
         'ORCA_OMP_SOURCE_AGENT_DIR/p',
         'ORCA_OMP_STATUS_EXTENSION/p',
+        'ORCA_OMP_PREFILL_EXTENSION/p',
         'POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD'
       ])
     )

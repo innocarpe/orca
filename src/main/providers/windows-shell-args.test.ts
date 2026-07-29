@@ -103,7 +103,14 @@ describe('resolveWindowsShellLaunchArgs', () => {
       '$env:OPENCODE_CONFIG_DIR = $env:ORCA_OPENCODE_CONFIG_DIR'
     )
     const ompWrapperIndex = command.indexOf('function Global:omp')
-    const ompExtensionIndex = command.indexOf('--extension $env:ORCA_OMP_STATUS_EXTENSION')
+    // Why: the outer `if ($env:ORCA_OMP_STATUS_EXTENSION -or …)` also names the
+    // var; use the body assignment that only exists inside the omp wrapper.
+    const ompExtensionIndex = command.indexOf(
+      "$orcaExtArgs += @('--extension', $env:ORCA_OMP_STATUS_EXTENSION)"
+    )
+    const ompPrefillExtensionIndex = command.indexOf(
+      "$orcaExtArgs += @('--extension', $env:ORCA_OMP_PREFILL_EXTENSION)"
+    )
     const codexRestoreIndex = command.indexOf('$env:CODEX_HOME = $env:ORCA_CODEX_HOME')
     const promptIndex = command.indexOf('function Global:prompt')
     const cwdRestoreIndex = command.indexOf(
@@ -118,6 +125,7 @@ describe('resolveWindowsShellLaunchArgs', () => {
     expect(opencodeRestoreIndex).toBeGreaterThan(outputEncodingIndex)
     expect(ompWrapperIndex).toBeGreaterThan(opencodeRestoreIndex)
     expect(ompExtensionIndex).toBeGreaterThan(ompWrapperIndex)
+    expect(ompPrefillExtensionIndex).toBeGreaterThan(ompExtensionIndex)
     expect(codexRestoreIndex).toBeGreaterThan(outputEncodingIndex)
     expect(codexRestoreIndex).toBeGreaterThan(ompWrapperIndex)
     expect(promptIndex).toBeGreaterThan(codexRestoreIndex)
@@ -279,7 +287,8 @@ describe('resolveWindowsShellLaunchArgs', () => {
     const bashRcfile = readFileSync(join(userDataPath, 'shell-ready', 'bash', 'rcfile'), 'utf8')
     const zshLogin = readFileSync(join(userDataPath, 'shell-ready', 'zsh', '.zlogin'), 'utf8')
     for (const wrapperFile of [bashRcfile, zshLogin]) {
-      expect(wrapperFile).toContain('command omp --extension "${ORCA_OMP_STATUS_EXTENSION}" "$@"')
+      expect(wrapperFile).toContain('command omp "${__orca_ext_args[@]}" "$@"')
+      expect(wrapperFile).toContain('ORCA_OMP_PREFILL_EXTENSION')
       expect(wrapperFile).toContain('omp() { __orca_omp "$@"; }')
     }
   })

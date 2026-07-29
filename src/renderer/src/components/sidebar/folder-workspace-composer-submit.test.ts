@@ -449,6 +449,41 @@ describe('submitFolderWorkspaceCreate', () => {
     expect(mocks.ensureAgentStartupInTerminal).not.toHaveBeenCalled()
   })
 
+  it('seeds Linear identity into ORCA_OMP_PREFILL for OMP folder workspace drafts (#11245)', async () => {
+    const createFolderWorkspace = vi.fn(async () => makeFolderWorkspace())
+    const linkedWorkItem = {
+      provider: 'linear' as const,
+      type: 'issue' as const,
+      number: 0,
+      title: 'OMP Linear preload',
+      url: 'https://linear.app/acme/issue/ENG-11245/omp-linear-preload',
+      linearIdentifier: 'ENG-11245'
+    }
+
+    await submitFolderWorkspaceCreate({
+      projectGroup: makeProjectGroup(),
+      name: '',
+      lastAutoName: '',
+      linkedWorkItem,
+      note: 'Review before starting',
+      quickAgent: 'omp',
+      autoRenameBranchFromWork: true,
+      agentCmdOverrides: {},
+      createFolderWorkspace,
+      onOpenChange: vi.fn()
+    })
+
+    const startup = mocks.activateAndRevealFolderWorkspace.mock.calls[0]?.[1]?.startup
+    expect(startup?.command).toBe('omp; unset ORCA_OMP_PREFILL')
+    expect(startup?.env?.ORCA_OMP_PREFILL).toContain('Review before starting')
+    expect(startup?.env?.ORCA_OMP_PREFILL).toContain('Linked Linear issue: ENG-11245')
+    expect(startup?.env?.ORCA_OMP_PREFILL).toContain(
+      'https://linear.app/acme/issue/ENG-11245/omp-linear-preload'
+    )
+    expect(startup?.command).not.toContain('Linked Linear issue')
+    expect(mocks.ensureAgentStartupInTerminal).not.toHaveBeenCalled()
+  })
+
   it('keeps explicit blank linked folder creates free of agent startup and draft paste', async () => {
     const createFolderWorkspace = vi.fn(async () => makeFolderWorkspace())
     const linkedWorkItem = {

@@ -36,6 +36,9 @@ type PiManagedExtensionEnv = {
   extensionDir?: string
   sourceAgentDir: string
   statusExtensionPath?: string
+  /** Why: OMP interactive launches need an explicit `--extension` for prefill
+   *  (same as status); auto-discovery alone is not reliable for managed files. */
+  prefillExtensionPath?: string
 }
 
 // Why: old Orca versions used per-kind overlay roots. Keep the names so
@@ -146,8 +149,9 @@ export class PiTitlebarExtensionService {
       join(extensionsDir, ORCA_PI_EXTENSION_FILE),
       withOrcaManagedExtensionMarker(getPiTitlebarExtensionSource())
     )
-    this.writeManagedExtension(
-      join(extensionsDir, ORCA_PI_PREFILL_EXTENSION_FILE),
+    const prefillExtensionPath = join(extensionsDir, ORCA_PI_PREFILL_EXTENSION_FILE)
+    const prefillResult = this.writeManagedExtension(
+      prefillExtensionPath,
       withOrcaManagedExtensionMarker(getPiPrefillExtensionSource(kind))
     )
     const statusExtensionPath = join(extensionsDir, ORCA_PI_AGENT_STATUS_EXTENSION_FILE)
@@ -162,7 +166,13 @@ export class PiTitlebarExtensionService {
           ? statusExtensionPath
           : kind === 'omp'
             ? this.writeOmpFallbackStatusExtension(statusSource)
-            : undefined
+            : undefined,
+      // Why: keep pointing at the on-disk file even when a user-owned prefill
+      // blocked overwrite — OMP still needs the path for `--extension`.
+      prefillExtensionPath:
+        prefillResult !== 'failed' && existsSync(prefillExtensionPath)
+          ? prefillExtensionPath
+          : undefined
     }
   }
 
@@ -190,6 +200,9 @@ export class PiTitlebarExtensionService {
       env.ORCA_OMP_SOURCE_AGENT_DIR = installed.sourceAgentDir
       if (installed.statusExtensionPath) {
         env.ORCA_OMP_STATUS_EXTENSION = installed.statusExtensionPath
+      }
+      if (installed.prefillExtensionPath) {
+        env.ORCA_OMP_PREFILL_EXTENSION = installed.prefillExtensionPath
       }
     } else {
       env.ORCA_PI_SOURCE_AGENT_DIR = installed.sourceAgentDir

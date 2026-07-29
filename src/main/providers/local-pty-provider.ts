@@ -745,12 +745,13 @@ export class LocalPtyProvider implements IPtyProvider {
       addWslEnvKeys(finalEnv, [POWERLEVEL10K_WIZARD_DISABLE_ENV])
     }
     if (!wslInfo && process.platform !== 'win32') {
-      // Why: OpenCode/Codex PATH restoration and OMP's status wrapper need shell-ready code after user startup files run.
+      // Why: OpenCode/Codex PATH restoration and OMP's status/prefill wrappers need shell-ready code after user startup files run.
       const needsNoMarkerWrapper =
         finalEnv.ORCA_ATTRIBUTION_SHIM_DIR ||
         finalEnv.ORCA_OPENCODE_CONFIG_DIR ||
         finalEnv.ORCA_MIMOCODE_HOME ||
         finalEnv.ORCA_OMP_STATUS_EXTENSION ||
+        finalEnv.ORCA_OMP_PREFILL_EXTENSION ||
         finalEnv.ORCA_CODEX_HOME ||
         finalEnv.ORCA_AGENT_TEAMS_SHIM_DIR
       const isCodexStartupCommand = startupAgentRecognition?.agent === 'codex'

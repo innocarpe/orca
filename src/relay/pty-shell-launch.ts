@@ -50,7 +50,8 @@ function hasOverlayRestoreEnv(env: Record<string, string>): boolean {
     env.ORCA_OPENCODE_CONFIG_DIR ||
     env.ORCA_MIMOCODE_HOME ||
     env.ORCA_REMOTE_CLI_BIN_DIR ||
-    env.ORCA_OMP_STATUS_EXTENSION
+    env.ORCA_OMP_STATUS_EXTENSION ||
+    env.ORCA_OMP_PREFILL_EXTENSION
   )
 }
 
