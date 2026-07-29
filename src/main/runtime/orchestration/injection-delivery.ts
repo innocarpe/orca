@@ -8,9 +8,17 @@ export function shouldDeferOrchestrationInjection(args: { isUserFocused: boolean
 export function isOrchestrationLeafUserFocused(args: {
   leafTabId: string
   leafId: string
+  leafWorktreeId: string
+  /** Session-level on-screen worktree; per-worktree tab memory alone is not focus. */
+  activeWorktreeId: string | null | undefined
   activeTabId: string | null | undefined
   activeLeafId: string | null | undefined
 }): boolean {
+  // Why: activeTabIdByWorktree remembers each worktree's last tab even when backgrounded;
+  // only the session's active worktree is the surface the user is looking at.
+  if (!args.activeWorktreeId || args.activeWorktreeId !== args.leafWorktreeId) {
+    return false
+  }
   // Why: without a known active tab we cannot distinguish user focus from idle workers.
   if (!args.activeTabId || args.activeTabId !== args.leafTabId) {
     return false

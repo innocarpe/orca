@@ -31704,7 +31704,8 @@ export class OrcaRuntimeService {
   // Why: push-on-idle delivery is event-driven (no polling) because the runtime owns both the message store and terminal status detection.
 
   // Why: session + graph together identify the pane the user is typing into; graph alone
-  // cannot, because every tab keeps an activeLeafId even when backgrounded.
+  // cannot, because every tab keeps an activeLeafId even when backgrounded, and each
+  // worktree keeps its own last active tab even when not on screen.
   private isUserFocusedOrchestrationLeaf(leaf: RuntimeLeafRecord): boolean {
     const session = this.getWorkspaceSessionForWorktree(leaf.worktreeId)
     const activeTabId =
@@ -31714,6 +31715,8 @@ export class OrcaRuntimeService {
     return isOrchestrationLeafUserFocused({
       leafTabId: leaf.tabId,
       leafId: leaf.leafId,
+      leafWorktreeId: leaf.worktreeId,
+      activeWorktreeId: session?.activeWorktreeId ?? null,
       activeTabId,
       activeLeafId: graphActiveLeafId ?? layoutActiveLeafId
     })

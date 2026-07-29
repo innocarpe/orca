@@ -16,11 +16,17 @@ describe('shouldDeferOrchestrationInjection', () => {
 })
 
 describe('isOrchestrationLeafUserFocused', () => {
+  const onScreen = {
+    leafWorktreeId: 'wt-a',
+    activeWorktreeId: 'wt-a'
+  } as const
+
   it('is false when no active tab is known', () => {
     expect(
       isOrchestrationLeafUserFocused({
         leafTabId: 'tab-1',
         leafId: 'pane:1',
+        ...onScreen,
         activeTabId: null,
         activeLeafId: 'pane:1'
       })
@@ -32,6 +38,7 @@ describe('isOrchestrationLeafUserFocused', () => {
       isOrchestrationLeafUserFocused({
         leafTabId: 'tab-1',
         leafId: 'pane:1',
+        ...onScreen,
         activeTabId: 'tab-other',
         activeLeafId: 'pane:1'
       })
@@ -43,6 +50,7 @@ describe('isOrchestrationLeafUserFocused', () => {
       isOrchestrationLeafUserFocused({
         leafTabId: 'tab-1',
         leafId: 'pane:1',
+        ...onScreen,
         activeTabId: 'tab-1',
         activeLeafId: null
       })
@@ -54,6 +62,7 @@ describe('isOrchestrationLeafUserFocused', () => {
       isOrchestrationLeafUserFocused({
         leafTabId: 'tab-1',
         leafId: 'pane:1',
+        ...onScreen,
         activeTabId: 'tab-1',
         activeLeafId: 'pane:1'
       })
@@ -65,8 +74,37 @@ describe('isOrchestrationLeafUserFocused', () => {
       isOrchestrationLeafUserFocused({
         leafTabId: 'tab-1',
         leafId: 'pane:1',
+        ...onScreen,
         activeTabId: 'tab-1',
         activeLeafId: 'pane:2'
+      })
+    ).toBe(false)
+  })
+
+  // Why: deliverPendingMessages runs for idle workers in any worktree; without this
+  // guard a background worktree's remembered active tab would defer push-on-idle forever.
+  it('is false when the leaf belongs to a background worktree', () => {
+    expect(
+      isOrchestrationLeafUserFocused({
+        leafTabId: 'tab-1',
+        leafId: 'pane:1',
+        leafWorktreeId: 'wt-background',
+        activeWorktreeId: 'wt-a',
+        activeTabId: 'tab-1',
+        activeLeafId: 'pane:1'
+      })
+    ).toBe(false)
+  })
+
+  it('is false when the session has no active worktree', () => {
+    expect(
+      isOrchestrationLeafUserFocused({
+        leafTabId: 'tab-1',
+        leafId: 'pane:1',
+        leafWorktreeId: 'wt-a',
+        activeWorktreeId: null,
+        activeTabId: 'tab-1',
+        activeLeafId: 'pane:1'
       })
     ).toBe(false)
   })
