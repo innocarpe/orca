@@ -1449,8 +1449,7 @@ function Terminal(): React.JSX.Element | null {
   ])
   // Why: on host unmount no reconciliation effect runs again, so dispose every remaining parked watcher.
   useEffect(() => () => disposeAllParkedTerminalWatchers(), [])
-  // Why: do not auto-create a terminal here — reselect of an emptied workspace must stay empty
-  // (#11108). First activation / create-flow seeding lives in activateAndRevealWorktree.
+  // Empty reselection stays terminal-less; activation flows own first-terminal seeding (#11108).
 
   const startupResumeWorktreeIdsRef = useRef(new Set<string>())
   useEffect(() => {

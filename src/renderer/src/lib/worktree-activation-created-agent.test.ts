@@ -86,17 +86,16 @@ describe('activateAndRevealWorktree', () => {
     expect(revealWorktreeInSidebar).toHaveBeenCalledWith(worktree.id)
   })
 
-  it('does not relaunch on repeated activate/close cycles', () => {
+  it('keeps later activate/close cycles empty after the first activation', () => {
     const worktree = makeWorktree()
     seedEmptyActivatableWorktree(worktree)
 
-    for (let cycle = 0; cycle < 3; cycle += 1) {
-      activateAndExpectNoRelaunch(worktree.id)
+    activateAndExpectNoRelaunch(worktree.id)
+    useAppStore.setState({ tabsByWorktree: {}, activeTabIdByWorktree: {} })
 
-      // Return to zero tabs, the state that used to re-arm the relaunch. Sets state
-      // directly rather than via closeTab — the sleeping-record purge is covered in
-      // worktree-reactivation-tab-forkbomb.test.ts.
-      useAppStore.setState({ tabsByWorktree: {}, activeTabIdByWorktree: {} })
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      expect(activateAndRevealWorktree(worktree.id)).toEqual({ primaryTabId: null })
+      expect(useAppStore.getState().tabsByWorktree[worktree.id] ?? []).toEqual([])
     }
   })
 
