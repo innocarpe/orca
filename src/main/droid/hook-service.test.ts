@@ -117,7 +117,16 @@ describe('DroidHookService', () => {
       const result = spawnSync('/bin/sh', [scriptPath], {
         input,
         encoding: 'utf8',
-        env: { ...process.env, ...env }
+        // Why: clear inherited hook env so missing-env cases cannot pick up a
+        // parent ORCA_* endpoint and skip the early-exit branch (CodeRabbit).
+        env: {
+          ...process.env,
+          ORCA_AGENT_HOOK_ENDPOINT: '',
+          ORCA_AGENT_HOOK_PORT: '',
+          ORCA_AGENT_HOOK_TOKEN: '',
+          ORCA_PANE_KEY: '',
+          ...env
+        }
       })
       expect(result.status, label).toBe(0)
       expect(result.stdout.trim(), label).toBe('{"suppressOutput":true}')
