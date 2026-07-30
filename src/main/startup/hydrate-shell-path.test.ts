@@ -5,6 +5,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import {
   _resetHydrateShellPathCache,
   hydrateShellPath,
+  isVersionManagerInstallPath,
   mergePathSegments,
   type HydrationResult
 } from './hydrate-shell-path'
@@ -249,5 +250,55 @@ describe('mergePathSegments', () => {
 
     expect(added).toEqual([shellMise])
     expect(process.env.PATH).toBe(joinPath(shellMise, '/usr/bin', '/bin', customBin))
+  })
+
+  it.each([
+    {
+      name: 'nvm',
+      stale: '/Users/tester/.nvm/versions/node/v20.0.0/bin',
+      current: '/Users/tester/.nvm/versions/node/v22.0.0/bin'
+    },
+    {
+      name: 'asdf',
+      stale: '/Users/tester/.asdf/installs/nodejs/20.0.0/bin',
+      current: '/Users/tester/.asdf/installs/nodejs/22.0.0/bin'
+    },
+    {
+      name: 'fnm multishell (unix bin)',
+      stale: '/tmp/fnm_multishells/12345_174350780/bin',
+      current: '/tmp/fnm_multishells/99999_174350999/bin'
+    },
+    {
+      // Why: Windows fnm puts the session root on PATH (no trailing /bin). Avoid
+      // drive-letter paths here — `C:` collides with the Unix PATH delimiter in tests.
+      name: 'fnm multishell (session root)',
+      stale: '/Users/tester/AppData/Local/fnm_multishells/12345_174350780',
+      current: '/Users/tester/AppData/Local/fnm_multishells/99999_174350999'
+    }
+  ])('drops stale $name install paths the shell no longer exports', ({ stale, current }) => {
+    process.env.PATH = joinPath(stale, '/usr/bin', '/bin')
+
+    const added = mergePathSegments([current, '/usr/bin', '/bin'])
+
+    expect(added).toEqual([current])
+    expect(process.env.PATH).toBe(joinPath(current, '/usr/bin', '/bin'))
+    expect(process.env.PATH?.includes(stale)).toBe(false)
+  })
+
+  it('matches Windows-backslash fnm session roots as install paths', () => {
+    expect(
+      isVersionManagerInstallPath(
+        'C:\\Users\\tester\\AppData\\Local\\fnm_multishells\\12345_174350780'
+      )
+    ).toBe(true)
+  })
+
+  it('does not treat arbitrary paths containing fnm_multishells as install bins', () => {
+    const custom = '/opt/myapp/fnm_multishells/tools'
+    expect(isVersionManagerInstallPath(custom)).toBe(false)
+
+    process.env.PATH = joinPath(custom, '/usr/bin')
+    mergePathSegments(['/usr/bin', '/bin'])
+    expect(process.env.PATH).toBe(joinPath('/usr/bin', '/bin', custom))
   })
 })
