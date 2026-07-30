@@ -33,6 +33,7 @@ export function useTerminalWebViewController(
     terminalTheme,
     interactionActive = true,
     textScale = 1,
+    eastAsianAmbiguousWidth = 'narrow',
     onWebReady,
     onEngineError,
     onSelectionMode,
@@ -261,6 +262,7 @@ export function useTerminalWebViewController(
           terminalTheme,
           fontScale: textScale,
           preserveScroll,
+          eastAsianAmbiguousWidth,
           frame
         })
       },
@@ -296,6 +298,7 @@ export function useTerminalWebViewController(
       postMessage,
       promises,
       sendToDocument,
+      eastAsianAmbiguousWidth,
       terminalTheme,
       textScale,
       writeCoalescer
