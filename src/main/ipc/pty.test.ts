@@ -2069,6 +2069,39 @@ describe('registerPtyHandlers', () => {
       expect(env.ORCA_OMP_SOURCE_AGENT_DIR).toBeUndefined()
     })
 
+    it('does not materialize a missing Pi home when another agent mentions Pi', async () => {
+      const env = await spawnAndGetEnv(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'codex "ask about pi"',
+        'codex'
+      )
+
+      expect(piBuildPtyEnvMock).toHaveBeenCalledTimes(1)
+      expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), undefined, 'pi', {
+        materializeDefaultHome: false
+      })
+      expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBeUndefined()
+    })
+
+    it('materializes Pi home for an explicit Pi launch through a custom command', async () => {
+      const env = await spawnAndGetEnv(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'custom-pi-wrapper',
+        'pi'
+      )
+
+      expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), undefined, 'pi', {
+        materializeDefaultHome: true
+      })
+      expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/tmp/default-pi-agent')
+    })
+
     it('threads command: "omp" through to piBuildPtyEnv and emits OMP status metadata', async () => {
       // Why: OMP launches emit ORCA_OMP_* shadow vars, not Pi-named ones; only PI_CODING_AGENT_DIR stays (OMP's own binary reads it).
       const env = await spawnAndGetEnv(
@@ -2635,6 +2668,19 @@ describe('registerPtyHandlers', () => {
         expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBe('/user/.pi/agent')
         expect(env.ORCA_OMP_CODING_AGENT_DIR).toBeUndefined()
         expect(env.ORCA_OMP_STATUS_EXTENSION).toBe(expectedOmpStatusExtension)
+      })
+
+      it('does not materialize agent homes when another daemon agent mentions OMP', async () => {
+        const env = await daemonSpawnAndGetEnv(undefined, undefined, undefined, undefined, {
+          command: 'codex "ask about omp"',
+          launchAgent: 'codex'
+        })
+
+        expect(piBuildPtyEnvMock).toHaveBeenCalledTimes(1)
+        expect(piBuildPtyEnvMock).toHaveBeenCalledWith(expect.any(String), undefined, 'pi', {
+          materializeDefaultHome: false
+        })
+        expect(env.ORCA_PI_SOURCE_AGENT_DIR).toBeUndefined()
       })
 
       it('threads command: "omp" through to piBuildPtyEnv on the daemon path with OMP status metadata', async () => {
