@@ -170,10 +170,12 @@ because its contract requires a pairing URL. Stop a foreground server with
 `invalid_advertised_endpoint`.
 
 To mint another access grant against an already-running server (without restart
-or the Settings UI), call the local CLI on that host:
+or the Settings UI), call the local CLI on that host. This guide installs the
+AppImage at `/opt/orca/orca-linux.AppImage` rather than an `orca` binary on
+`PATH`, so invoke that path (or `squashfs-root/AppRun` if you extracted):
 
 ```bash
-orca pairing create --address 100.64.1.20 --json
+/opt/orca/orca-linux.AppImage pairing create --address 100.64.1.20 --json
 ```
 
 This uses the authenticated local runtime socket (`pairing.createOffer`) and

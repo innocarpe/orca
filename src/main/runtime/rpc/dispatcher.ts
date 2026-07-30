@@ -1,6 +1,7 @@
 import {
   buildRegistry,
   isStreamingMethod,
+  type PairingRpcContext,
   type RpcAnyMethod,
   type RpcEnvelopeMeta,
   type RpcRegistry,
