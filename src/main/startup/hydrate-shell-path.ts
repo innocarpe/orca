@@ -180,6 +180,22 @@ export function hydrateShellPath(options: HydrateOptions = {}): Promise<Hydratio
   return cached
 }
 
+// Why: process PATH can retain version-manager install bins after mise/nvm/asdf
+// switches versions (or after auto-update inherits the pre-switch env). Union
+// merge would keep obsolete `.../installs/<tool>/<ver>/bin` ahead of the shell's
+// current pin. Drop those exact-install runtime segments when only present in
+// the inherited process PATH; shell-exported ones stay via shellSegments.
+const VERSION_MANAGER_INSTALL_BIN_RE =
+  /(?:^|[/\\])(?:\.?mise[/\\]installs|\.nvm[/\\]versions|\.asdf[/\\]installs)[/\\][^/\\]+[/\\][^/\\]+[/\\]bin$/i
+
+const FNM_MULTISHELL_BIN_RE = /(?:^|[/\\])fnm_multishells[/\\]/i
+
+/** @internal - exported for unit tests. */
+export function isObsoleteVersionManagerInstallSegment(segment: string): boolean {
+  const normalized = segment.replace(/\\/g, '/')
+  return VERSION_MANAGER_INSTALL_BIN_RE.test(normalized) || FNM_MULTISHELL_BIN_RE.test(normalized)
+}
+
 /**
  * Promote shell-discovered PATH segments to the front of process.env.PATH,
  * preserving shell ordering and avoiding duplicates. Returns the segments that
@@ -197,7 +213,9 @@ export function mergePathSegments(segments: string[]): string[] {
   const added = shellSegments.filter((segment) => !existing.has(segment))
   const merged = [
     ...shellSegments,
-    ...currentSegments.filter((segment) => !shellSegmentSet.has(segment))
+    ...currentSegments.filter(
+      (segment) => !shellSegmentSet.has(segment) && !isObsoleteVersionManagerInstallSegment(segment)
+    )
   ]
   const next = merged.join(delimiter)
   if (next === current) {

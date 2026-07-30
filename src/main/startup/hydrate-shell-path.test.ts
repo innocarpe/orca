@@ -214,4 +214,40 @@ describe('mergePathSegments', () => {
     expect(mergePathSegments([])).toEqual([])
     expect(process.env.PATH).toBe(joinPath('/usr/bin', '/bin'))
   })
+
+  // Why: after mise switches Node (or auto-update inherits the pre-switch env),
+  // process PATH still holds the old installs/.../bin while the login shell
+  // only exports the current pin. Union merge must drop the stale segment.
+  it('drops stale mise install bins that the login shell no longer exports', () => {
+    const staleMise = '/Users/tester/.local/share/mise/installs/node/26.5.0/bin'
+    const currentMise = '/Users/tester/.local/share/mise/installs/node/24.18.0/bin'
+    process.env.PATH = joinPath(staleMise, '/usr/bin', '/bin')
+
+    const added = mergePathSegments([currentMise, '/usr/bin', '/bin'])
+
+    expect(added).toEqual([currentMise])
+    expect(process.env.PATH).toBe(joinPath(currentMise, '/usr/bin', '/bin'))
+    expect(process.env.PATH).not.toContain('26.5.0')
+  })
+
+  it('keeps shell-exported mise install paths at shell order', () => {
+    const shellMise = '/Users/tester/.local/share/mise/installs/node/24.18.0/bin'
+    process.env.PATH = joinPath('/usr/bin', shellMise, '/bin')
+
+    const added = mergePathSegments([shellMise, '/usr/bin', '/bin'])
+
+    expect(added).toEqual([])
+    expect(process.env.PATH).toBe(joinPath(shellMise, '/usr/bin', '/bin'))
+  })
+
+  it('preserves non-version-manager process PATH entries missing from shell', () => {
+    const customBin = '/Users/tester/.custom-tools/bin'
+    const shellMise = '/Users/tester/.local/share/mise/installs/node/24.18.0/bin'
+    process.env.PATH = joinPath(customBin, '/usr/bin', '/bin')
+
+    const added = mergePathSegments([shellMise, '/usr/bin', '/bin'])
+
+    expect(added).toEqual([shellMise])
+    expect(process.env.PATH).toBe(joinPath(shellMise, '/usr/bin', '/bin', customBin))
+  })
 })
