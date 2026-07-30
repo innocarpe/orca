@@ -2,6 +2,11 @@
  * East Asian Width = Ambiguous (A) code points from Unicode EAW.
  * Used only when the user opts into double-width ambiguous cells (#9958).
  * Compact inclusive [lo, hi] ranges, sorted for binary search.
+ *
+ * BMP Private Use Area (U+E000–U+F8FF) is omitted on purpose: Unicode marks it
+ * Ambiguous, but Nerd Fonts / Powerline / OMP place single-cell prompt icons
+ * there. Widening that range would break status bars for the same users this
+ * opt-in is meant to help.
  */
 const AMBIGUOUS_RANGES: readonly (readonly [number, number])[] = [
   [0x00a1, 0x00a1],
@@ -171,7 +176,12 @@ const AMBIGUOUS_RANGES: readonly (readonly [number, number])[] = [
   [0x2776, 0x277f],
   [0x2b56, 0x2b59],
   [0x3248, 0x324f],
-  [0xe000, 0xf8ff],
+  // Why: Unicode classifies U+E000–U+F8FF (BMP Private Use Area) as EAW=A, but
+  // Nerd Fonts / Powerline / OMP map single-cell prompt icons into that range.
+  // Widening them in wide mode doubles every status-bar glyph and breaks prompts
+  // for the same CJK-locale users this opt-in targets (Greptile on #10078).
+  // Intentionally omit PUA — match practical terminals that keep Nerd Fonts at
+  // width 1 even when ambiguous mode is wide.
   [0xfe00, 0xfe0f],
   [0xfffd, 0xfffd],
   [0x1f100, 0x1f10a],

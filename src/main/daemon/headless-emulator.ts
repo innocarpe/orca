@@ -6,7 +6,6 @@ import {
   activateOrcaTerminalUnicodeProvider,
   setTerminalEastAsianAmbiguousWidthMode
 } from '../../shared/terminal-unicode-provider'
-import type { TerminalEastAsianAmbiguousWidth } from '../../shared/east-asian-ambiguous-width'
 import {
   readSavedCursorRegister,
   serializeWithAbsoluteCursor
@@ -14,6 +13,10 @@ import {
 import { advancePartialEscapeTail } from '../../shared/terminal-partial-escape-tail'
 import type { TerminalViewAttributes } from '../../shared/terminal-view-attributes'
 import { collectHeadlessOscLinkRanges } from './headless-osc-link-ranges'
+import type {
+  HeadlessEmulatorOptions,
+  HeadlessEmulatorWriteOptions
+} from './headless-emulator-options'
 import { buildRehydrateSequences } from './terminal-mode-rehydrate-sequences'
 import { TerminalMouseModeMirror } from './terminal-mouse-mode-mirror'
 import { TerminalOscCwdTitleScanner } from './terminal-osc-cwd-title-scanner'
@@ -22,30 +25,13 @@ import {
   installTerminalViewAttributeResponder,
   type TerminalViewAttributeResponder
 } from './terminal-view-attribute-responder'
-import type { TerminalSnapshot, TerminalModes } from './types'
+import type { TerminalModes, TerminalSnapshot } from './types'
 import type { TerminalOscLinkRange } from '../../shared/terminal-osc-link-ranges'
 
-export type HeadlessEmulatorOptions = {
-  cols: number
-  rows: number
-  scrollback?: number
-  /** Query reply sink (terminal-query-authority.md); only `forwardQueryReplies` writes emit here. The daemon Session must never pass this. */
-  onQueryReply?: (reply: string) => void
-  pathFlavor?: 'posix' | 'win32'
-  remotePosixFileUriAuthority?: boolean
-  wslDistro?: string
-  /**
-   * East Asian Ambiguous cell width for this process's Orca unicode provider.
-   * Must match the renderer setting so headless mirrors do not tear under SSH (#9958).
-   * When omitted, the process-wide mode is left unchanged (default `narrow`).
-   */
-  eastAsianAmbiguousWidth?: TerminalEastAsianAmbiguousWidth
-}
-
-export type HeadlessEmulatorWriteOptions = {
-  /** Reply ownership for this exact chunk; default false so seed/hydration/snapshot writes never forward (main-side replay guard; twin of renderer replay-guard.ts). */
-  forwardQueryReplies?: boolean
-}
+export type {
+  HeadlessEmulatorOptions,
+  HeadlessEmulatorWriteOptions
+} from './headless-emulator-options'
 
 type TerminalWithSynchronousWrite = Terminal & {
   _core?: {
@@ -99,9 +85,7 @@ export class HeadlessEmulator {
     this.serializer = new SerializeAddon()
     this.terminal.loadAddon(this.serializer)
 
-    // Why Unicode 11 + Orca provider: must match the renderer's char-width measurement
-    // (including opt-in wide East Asian Ambiguous mode), else emoji/CJK rows mismeasure
-    // and the SSH/daemon mirror accumulates cell-shifted tears (#9958).
+    // Why: Unicode 11 + Orca EAW must match the renderer or SSH mirrors tear (#9958).
     if (opts.eastAsianAmbiguousWidth !== undefined) {
       setTerminalEastAsianAmbiguousWidthMode(opts.eastAsianAmbiguousWidth)
     }
@@ -309,6 +293,16 @@ export class HeadlessEmulator {
     const buffer = this.terminal.buffer.active
     const lines: string[] = []
     for (let row = buffer.viewportY; row < buffer.viewportY + this.terminal.rows; row += 1) {
+      lines.push(buffer.getLine(row)?.translateToString(true) ?? '')
+    }
+    return lines
+  }
+
+  getBufferTailLines(limit: number): string[] {
+    const buffer = this.terminal.buffer.active
+    const start = Math.max(0, buffer.length - Math.max(0, Math.floor(limit)))
+    const lines: string[] = []
+    for (let row = start; row < buffer.length; row += 1) {
       lines.push(buffer.getLine(row)?.translateToString(true) ?? '')
     }
     return lines

@@ -19,6 +19,15 @@ describe('isEastAsianAmbiguous', () => {
     expect(isEastAsianAmbiguous(0x0041)).toBe(false) // A
     expect(isEastAsianAmbiguous(0x0020)).toBe(false) // space
   })
+
+  // Why: Nerd Font / Powerline / OMP icons live in BMP PUA and must stay single-cell.
+  it('does not treat Private Use Area as ambiguous', () => {
+    expect(isEastAsianAmbiguous(0xe0a0)).toBe(false) // Powerline branch
+    expect(isEastAsianAmbiguous(0xe0b0)).toBe(false) // Powerline separator
+    expect(isEastAsianAmbiguous(0xf0e7)).toBe(false) // typical Nerd Font codepoint
+    expect(isEastAsianAmbiguous(0xe000)).toBe(false)
+    expect(isEastAsianAmbiguous(0xf8ff)).toBe(false)
+  })
 })
 
 describe('resolveEastAsianAmbiguousCellWidth', () => {
@@ -32,5 +41,10 @@ describe('resolveEastAsianAmbiguousCellWidth', () => {
     expect(resolveEastAsianAmbiguousCellWidth(0x0041, 1, 'wide')).toBe(1)
     expect(resolveEastAsianAmbiguousCellWidth(0x6f22, 2, 'wide')).toBe(2)
     expect(resolveEastAsianAmbiguousCellWidth(0x0300, 0, 'wide')).toBe(0)
+  })
+
+  it('keeps Nerd Font PUA single-cell even in wide mode', () => {
+    expect(resolveEastAsianAmbiguousCellWidth(0xe0b0, 1, 'wide')).toBe(1)
+    expect(resolveEastAsianAmbiguousCellWidth(0xf0e7, 1, 'wide')).toBe(1)
   })
 })
