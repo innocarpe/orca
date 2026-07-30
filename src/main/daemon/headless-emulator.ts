@@ -2,7 +2,11 @@ import './xterm-env-polyfill'
 import { Terminal } from '@xterm/headless'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { activateOrcaTerminalUnicodeProvider } from '../../shared/terminal-unicode-provider'
+import {
+  activateOrcaTerminalUnicodeProvider,
+  setTerminalEastAsianAmbiguousWidthMode
+} from '../../shared/terminal-unicode-provider'
+import type { TerminalEastAsianAmbiguousWidth } from '../../shared/east-asian-ambiguous-width'
 import {
   readSavedCursorRegister,
   serializeWithAbsoluteCursor
@@ -30,6 +34,12 @@ export type HeadlessEmulatorOptions = {
   pathFlavor?: 'posix' | 'win32'
   remotePosixFileUriAuthority?: boolean
   wslDistro?: string
+  /**
+   * East Asian Ambiguous cell width for this process's Orca unicode provider.
+   * Must match the renderer setting so headless mirrors do not tear under SSH (#9958).
+   * When omitted, the process-wide mode is left unchanged (default `narrow`).
+   */
+  eastAsianAmbiguousWidth?: TerminalEastAsianAmbiguousWidth
 }
 
 export type HeadlessEmulatorWriteOptions = {
@@ -89,7 +99,12 @@ export class HeadlessEmulator {
     this.serializer = new SerializeAddon()
     this.terminal.loadAddon(this.serializer)
 
-    // Why Unicode 11: must match the renderer's char-width measurement, else emoji rows mismeasure and the mirror accumulates cell-shifted tears.
+    // Why Unicode 11 + Orca provider: must match the renderer's char-width measurement
+    // (including opt-in wide East Asian Ambiguous mode), else emoji/CJK rows mismeasure
+    // and the SSH/daemon mirror accumulates cell-shifted tears (#9958).
+    if (opts.eastAsianAmbiguousWidth !== undefined) {
+      setTerminalEastAsianAmbiguousWidthMode(opts.eastAsianAmbiguousWidth)
+    }
     this.terminal.loadAddon(new Unicode11Addon())
     activateOrcaTerminalUnicodeProvider(this.terminal)
 
