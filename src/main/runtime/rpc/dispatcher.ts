@@ -2,6 +2,7 @@ import {
   buildRegistry,
   formatZodError,
   isStreamingMethod,
+  type PairingRpcContext,
   type RpcAnyMethod,
   type RpcEnvelopeMeta,
   type RpcRegistry,
