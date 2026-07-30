@@ -90,6 +90,12 @@ export type MaterializePiResult = {
   statusExtensionPath?: string
 }
 
+/** Presence of this file is what makes an overlay usable — a rebuild that failed
+ *  after the wipe leaves the dir itself present but the plugin missing. */
+export function getRelayOpenCodePluginPath(overlayDir: string): string {
+  return join(overlayDir, 'plugins', OPENCODE_PLUGIN_FILE)
+}
+
 export class PluginOverlayManager {
   private opencodePluginSource: string | null = null
   private piExtensionSources: Record<PiAgentKind, string | null> = {

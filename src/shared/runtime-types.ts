@@ -23,9 +23,9 @@ import type {
   Worktree,
   WorktreeLineage,
   WorkspaceLineage,
-  WorktreeLineageWarning
+  WorktreeLineageWarning,
+  TerminalPaneLayoutNode
 } from './types'
-import type { TerminalPaneLayoutNode } from './types'
 import type {
   RuntimeMarkdownReadTabResult,
   RuntimeMarkdownSaveTabResult
@@ -40,6 +40,7 @@ import type { StartupCommandDelivery } from './codex-startup-delivery'
 import type { RemoteServerUpdateSupport } from './remote-server-update'
 import type { ExecutionHostId } from './execution-host'
 import type { PtyIncarnationId } from './pty-incarnation'
+import type { RasterImageDimensions } from './raster-image-dimensions'
 
 export type { RuntimeMarkdownReadTabResult, RuntimeMarkdownSaveTabResult }
 
@@ -145,10 +146,17 @@ export type RuntimeSyncWindowGraph = {
   mobileSessionTabs?: RuntimeMobileSessionTabsSnapshot[]
 }
 
+export type RuntimeNativeChatLaunchDraftResolution = {
+  tabId: string
+  text: string
+  createdAt: number
+}
+
 export type RuntimeSyncWindowGraphResult = RuntimeStatus & {
   /** Main owns terminal handles/dispatches, so renderer graph sync returns the
    *  parent metadata needed by title-derived agent rows without name guessing. */
   agentOrchestrationByPaneKey?: Record<string, AgentStatusOrchestrationContext>
+  nativeChatLaunchDraftResolutions?: RuntimeNativeChatLaunchDraftResolution[]
 }
 
 export type RuntimeMobileSessionTerminalTab = {
@@ -170,6 +178,11 @@ export type RuntimeMobileSessionTerminalTab = {
   /** Per-tab view preference (terminal xterm vs native chat). Host-persisted so
    *  paired clients converge; clients still win during the optimistic echo window. */
   viewMode?: 'terminal' | 'chat'
+  /** Launch context delivered only into the TUI input as an unsent draft; the
+   *  mobile chat composer adopts it so the context isn't invisible in chat. */
+  launchDraft?: string
+  /** Identity of the launch draft text, used to retire only the adopted generation. */
+  launchDraftCreatedAt?: number
   isActive: boolean
 }
 
@@ -407,6 +420,7 @@ export type RuntimeFilePreviewResult = {
   isBinary: boolean
   isImage?: boolean
   mimeType?: string
+  imageDimensions?: RasterImageDimensions
 }
 
 export type RuntimeFileReadChunkResult = {
@@ -617,6 +631,13 @@ type RuntimeTerminalCreateBaseRequestPayload = {
   title?: string
   activate?: boolean
   presentation?: RuntimeTerminalPresentation
+  /**
+   * Why: adopting a terminal is separate from pointing the user at it. `false`
+   * keeps the tab silent — no sidebar reveal, no tab focus — for terminals the
+   * user never asked to see (e.g. a workspace created in the background).
+   * Absent means "surface it", so this is a suppression switch, never `true`.
+   */
+  surfaceOwner?: false
 }
 
 export type RuntimeTerminalCreateRequestPayload =

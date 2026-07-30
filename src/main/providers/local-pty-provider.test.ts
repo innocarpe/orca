@@ -96,6 +96,7 @@ vi.mock('../wsl', () => ({
   toLinuxPath: (path: string) => path.replace(/^C:\\/i, '/mnt/c/').replace(/\\/g, '/'),
   toWindowsWslPath: (path: string, distro: string) =>
     `\\\\wsl.localhost\\${distro}${path.replace(/\//g, '\\')}`,
+  getDefaultWslDistro: () => 'Ubuntu',
   isWslAvailable: () => true,
   // Why: WSL worktree validation now asks the distro; these tests use WSL UNC
   // cwds that are meant to exist, so report them present without spawning wsl.exe.
@@ -880,6 +881,45 @@ describe('LocalPtyProvider', () => {
       expect(spawnCall[2].env.HISTFILE).toContain('terminal-history-wsl/Debian')
     })
 
+    it('resolves and persists the default distro for Windows cwd WSL terminals', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const buildSpawnEnv = vi.fn(
+        (
+          _id: string,
+          env: Record<string, string>,
+          _ctx?: { isWsl?: boolean; wslDistro?: string | null }
+        ) => env
+      )
+      provider.configure({ buildSpawnEnv })
+
+      const result = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        worktreeId: 'repo-1::C:\\Users\\jin\\repo',
+        cwd: 'C:\\Users\\jin\\repo',
+        shellOverride: 'wsl.exe',
+        terminalWindowsWslDistro: null
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[1]).toEqual([
+        '-d',
+        'Ubuntu',
+        '--',
+        'sh',
+        '-c',
+        expect.stringContaining("cd '/mnt/c/Users/jin/repo'")
+      ])
+      expect(buildSpawnEnv.mock.calls[0]?.[2]).toMatchObject({
+        isWsl: true,
+        wslDistro: 'Ubuntu'
+      })
+      expect(result.wslDistro).toBe('Ubuntu')
+      expect(
+        (await provider.listProcesses()).find((entry) => entry.id === result.id)?.wslDistro
+      ).toBe('Ubuntu')
+    })
+
     it('repro: keeps explicit PowerShell 7 selection when the pwsh probe is cold-false', async () => {
       Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
       const pwshAvailable = vi.fn(() => false)
@@ -1509,6 +1549,39 @@ describe('LocalPtyProvider', () => {
       await shutdown
 
       expect(terminateDescendants).not.toHaveBeenCalled()
+    })
+
+    it('win32 immediate shutdown of a plain shell taskkills the descendant tree', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      await provider.shutdown(id, { immediate: true })
+
+      // Why: an orphaned pnpm/node child otherwise keeps the ConPTY console alive and holds
+      // the worktree cwd; the sweep taskkill /T /F clears the tree so removal can proceed.
+      expect(killWithDescendantSweepMock).toHaveBeenCalledWith(
+        mockProc.pid,
+        expect.any(Function),
+        expect.objectContaining({ ownsRoot: expect.any(Function) })
+      )
+    })
+
+    it('win32 graceful shutdown of a plain shell does not taskkill the tree', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      await provider.shutdown(id, { immediate: false })
+
+      expect(killWithDescendantSweepMock).not.toHaveBeenCalled()
+    })
+
+    it('non-win32 immediate shutdown of a plain shell skips the tree kill', async () => {
+      // beforeEach pins platform to linux; POSIX force-kill already reaches the child pgroup.
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      await provider.shutdown(id, { immediate: true })
+
+      expect(killWithDescendantSweepMock).not.toHaveBeenCalled()
     })
   })
 
