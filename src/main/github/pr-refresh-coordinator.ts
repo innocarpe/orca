@@ -73,6 +73,8 @@ const MANUAL_MERGEABILITY_PENDING_REFRESH_MS = 2_500
 const BACKGROUND_BUDGET_WINDOW_MS = 5 * 60_000
 const MIN_BACKGROUND_SPACING_MS = 10_000
 const BACKGROUND_BUDGET_MAX = 20
+// Why: no-PR branches are common across many worktrees; 15m re-polls burn gh rate limit at scale.
+const NO_PR_BACKGROUND_REFRESH_MS = 60 * 60_000
 const POST_PUSH_DELAY_MS = 2_500
 const BACKOFF_BASE_MS = 60_000
 const BACKOFF_MAX_MS = 15 * 60_000
@@ -509,7 +511,7 @@ function refreshIntervalForCandidate(candidate: GitHubPRRefreshCandidate): numbe
     return 30 * 60_000
   }
   if (candidate.cachedHasPR === false) {
-    return 15 * 60_000
+    return NO_PR_BACKGROUND_REFRESH_MS
   }
   if (
     candidate.cachedHasPR === true &&

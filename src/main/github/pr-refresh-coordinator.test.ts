@@ -220,6 +220,53 @@ describe('pr-refresh-coordinator', () => {
     expect(getPRForBranchOutcomeMock).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps a 15-minute-old no-PR cache fresh for background refresh until 60 minutes', async () => {
+    const { reportVisiblePRRefreshCandidates } = await import('./pr-refresh-coordinator')
+    getPRForBranchOutcomeMock.mockResolvedValue({
+      kind: 'no-pr',
+      fetchedAt: Date.now()
+    })
+
+    const candidate = makeCandidate({
+      cachedHasPR: false,
+      cachedFetchedAt: Date.now() - 15 * 60_000
+    })
+    reportVisiblePRRefreshCandidates([candidate], 1, 1)
+
+    // Still within the 60m no-PR TTL (was eligible under the old 15m interval).
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+
+    // Remaining wait is 45m (60m TTL − 15m age); stay just under it.
+    await vi.advanceTimersByTimeAsync(45 * 60_000 - 1)
+    expect(getPRForBranchOutcomeMock).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(getPRForBranchOutcomeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes no-PR candidates once the 60-minute background TTL has elapsed', async () => {
+    const { reportVisiblePRRefreshCandidates } = await import('./pr-refresh-coordinator')
+    getPRForBranchOutcomeMock.mockResolvedValue({
+      kind: 'no-pr',
+      fetchedAt: Date.now()
+    })
+
+    reportVisiblePRRefreshCandidates(
+      [
+        makeCandidate({
+          cachedHasPR: false,
+          cachedFetchedAt: Date.now() - 61 * 60_000
+        })
+      ],
+      1,
+      1
+    )
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(getPRForBranchOutcomeMock).toHaveBeenCalledTimes(1)
+  })
+
   it('lets an active worktree refresh bypass a delayed visible follow-up', async () => {
     const { enqueuePRRefresh, reportVisiblePRRefreshCandidates } =
       await import('./pr-refresh-coordinator')
