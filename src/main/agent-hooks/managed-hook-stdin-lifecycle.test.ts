@@ -235,7 +235,7 @@ function withPlatform<T>(platform: NodeJS.Platform, run: () => T): T {
 }
 
 describe('Windows managed hook stdin structure', () => {
-  it('routes every batch guard to a shared drain epilogue', () => {
+  it('exits immediately when Orca env is missing and keeps drain for other failures', () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-hook-stdin-windows-'))
     homedirMock.mockReturnValue(home)
     const previousGrokHome = process.env.GROK_HOME
@@ -257,15 +257,24 @@ describe('Windows managed hook stdin structure', () => {
       expect(mainBatchScripts).toHaveLength(10)
       for (const fileName of mainBatchScripts) {
         const script = readFileSync(join(hooksDir, fileName), 'utf8')
+        // Why: missing-env path must not touch more.com — hang class from #11549.
         expect(script, `${fileName} port guard`).toContain(
-          'if "%ORCA_AGENT_HOOK_PORT%"=="" goto :orca_agent_hook_drain_stdin'
+          'if "%ORCA_AGENT_HOOK_PORT%"=="" exit /b 0'
         )
         expect(script, `${fileName} token guard`).toContain(
+          'if "%ORCA_AGENT_HOOK_TOKEN%"=="" exit /b 0'
+        )
+        expect(script, `${fileName} pane guard`).toContain('if "%ORCA_PANE_KEY%"=="" exit /b 0')
+        expect(script, `${fileName} port guard not drain`).not.toContain(
+          'if "%ORCA_AGENT_HOOK_PORT%"=="" goto :orca_agent_hook_drain_stdin'
+        )
+        expect(script, `${fileName} token guard not drain`).not.toContain(
           'if "%ORCA_AGENT_HOOK_TOKEN%"=="" goto :orca_agent_hook_drain_stdin'
         )
-        expect(script, `${fileName} pane guard`).toContain(
+        expect(script, `${fileName} pane guard not drain`).not.toContain(
           'if "%ORCA_PANE_KEY%"=="" goto :orca_agent_hook_drain_stdin'
         )
+        // Why: other failure paths (missing script etc.) still share the more.com drain.
         expect(script, `${fileName} drain epilogue`).toContain(
           [
             ':orca_agent_hook_drain_stdin',
