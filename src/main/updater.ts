@@ -156,6 +156,23 @@ function clearAvailableUpdateContext(): void {
   availableReleaseUrl = null
 }
 
+// Why: renderer restart/teardown can race with async updater callbacks (MacUpdater hourly check).
+function sendToMainWindow(channel: string, payload?: unknown): void {
+  const wc = mainWindowRef?.webContents
+  if (!wc || wc.isDestroyed?.()) {
+    return
+  }
+  try {
+    if (payload === undefined) {
+      wc.send(channel)
+    } else {
+      wc.send(channel, payload)
+    }
+  } catch {
+    // Why: isDestroyed() can race with actual destroy mid-send.
+  }
+}
+
 function closeLocalBuildFeed(): void {
   const feed = activeLocalBuildFeed
   activeLocalBuildFeed = null
@@ -297,7 +314,7 @@ function sendStatus(status: UpdateStatus): void {
     return
   }
   currentStatus = decoratedStatus
-  mainWindowRef?.webContents.send('updater:status', decoratedStatus)
+  sendToMainWindow('updater:status', decoratedStatus)
 }
 
 function getOptionsForUpdateCheckVariant(variant: UpdateCheckVariant): UpdateCheckOptions {
@@ -1535,7 +1552,7 @@ async function checkForUpdateNudge(): Promise<void> {
     ) {
       awaitingNudgeCheckOutcome = true
       _setPendingUpdateNudgeId?.(nudge.id)
-      mainWindowRef?.webContents.send('updater:clearDismissal')
+      sendToMainWindow('updater:clearDismissal')
       runBackgroundUpdateCheck(nudge.id)
     }
   } finally {

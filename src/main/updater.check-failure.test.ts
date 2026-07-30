@@ -384,4 +384,63 @@ describe('updater check failure handling', () => {
     await vi.advanceTimersByTimeAsync(ONE_HOUR_MS)
     expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(7)
   })
+
+  it('skips IPC when main WebContents is destroyed during check-failure status', async () => {
+    makeBenignCheckFailure('Unable to find latest version on GitHub')
+
+    const sendMock = vi.fn(() => {
+      throw new Error('Object has been destroyed')
+    })
+    const mainWindow = {
+      webContents: {
+        send: sendMock,
+        isDestroyed: () => true
+      }
+    }
+
+    const { setupAutoUpdater, checkForUpdatesFromMenu, getUpdateStatus } = await import('./updater')
+
+    setupAutoUpdater(mainWindow as never, { getLastUpdateCheckAt: () => Date.now() })
+
+    await expect(
+      (async () => {
+        checkForUpdatesFromMenu()
+        await vi.waitFor(() => {
+          expect(getUpdateStatus()).toEqual(
+            expect.objectContaining({ state: 'error', userInitiated: true })
+          )
+        })
+      })()
+    ).resolves.toBeUndefined()
+
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
+  it('still sends updater:status when main WebContents is live', async () => {
+    makeBenignCheckFailure('Unable to find latest version on GitHub')
+
+    const sendMock = vi.fn()
+    const mainWindow = {
+      webContents: {
+        send: sendMock,
+        isDestroyed: () => false
+      }
+    }
+
+    const { setupAutoUpdater, checkForUpdatesFromMenu } = await import('./updater')
+
+    setupAutoUpdater(mainWindow as never, { getLastUpdateCheckAt: () => Date.now() })
+    checkForUpdatesFromMenu()
+
+    await vi.waitFor(() => {
+      expect(sendMock).toHaveBeenCalledWith(
+        'updater:status',
+        expect.objectContaining({
+          state: 'error',
+          userInitiated: true,
+          message: FRIENDLY_MESSAGE
+        })
+      )
+    })
+  })
 })
