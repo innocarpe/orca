@@ -158,7 +158,13 @@ function clearAvailableUpdateContext(): void {
 
 // Why: renderer restart/teardown can race with async updater callbacks (MacUpdater hourly check).
 function sendToMainWindow(channel: string, payload?: unknown): void {
-  const wc = mainWindowRef?.webContents
+  const win = mainWindowRef
+  // Why: a destroyed BrowserWindow throws "Object has been destroyed" from the
+  // webContents getter itself, so check the window before touching webContents.
+  if (!win || win.isDestroyed?.()) {
+    return
+  }
+  const wc = win.webContents
   if (!wc || wc.isDestroyed?.()) {
     return
   }

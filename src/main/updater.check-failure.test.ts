@@ -416,6 +416,35 @@ describe('updater check failure handling', () => {
     expect(sendMock).not.toHaveBeenCalled()
   })
 
+  it('skips IPC when the whole BrowserWindow is destroyed (webContents getter throws)', async () => {
+    makeBenignCheckFailure('Unable to find latest version on GitHub')
+
+    // Why: a real destroyed BrowserWindow throws "Object has been destroyed"
+    // from the webContents getter itself; a plain destroyed-webContents mock
+    // cannot catch a helper that touches webContents before checking the window.
+    const mainWindow = {
+      isDestroyed: () => true,
+      get webContents(): never {
+        throw new TypeError('Object has been destroyed')
+      }
+    }
+
+    const { setupAutoUpdater, checkForUpdatesFromMenu, getUpdateStatus } = await import('./updater')
+
+    setupAutoUpdater(mainWindow as never, { getLastUpdateCheckAt: () => Date.now() })
+
+    await expect(
+      (async () => {
+        checkForUpdatesFromMenu()
+        await vi.waitFor(() => {
+          expect(getUpdateStatus()).toEqual(
+            expect.objectContaining({ state: 'error', userInitiated: true })
+          )
+        })
+      })()
+    ).resolves.toBeUndefined()
+  })
+
   it('still sends updater:status when main WebContents is live', async () => {
     makeBenignCheckFailure('Unable to find latest version on GitHub')
 
