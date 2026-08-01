@@ -60,6 +60,16 @@ Be mindful of the user's `gh` CLI API rate limit — batch requests where possib
 Product rules above apply to all Orca code. For **OSS contribution process** on this fork
 (primary + worktrees, dual-track PRs, free-issue cycle, SSOT BOARD/HISTORY/PORTFOLIO), also load:
 
+### Public OSS language
+
+All public upstream-facing artifacts must be written in English: `fix/*` commit
+subjects and bodies, PR and issue titles and descriptions, review replies, and
+public comments. Korean is limited to user-facing progress reports and local,
+gitignored SSOT notes. Before every upstream-bound push, inspect
+`git log upstream/main..HEAD --format='%h %s'`. If a published commit violates
+this rule, rewrite it and push with `--force-with-lease`, then verify that both
+the upstream PR and fork mirror point to the replacement SHA.
+
 - [`.grok/agent/orca-contribution.md`](./.grok/agent/orca-contribution.md)
 - **Merge-rate skill:** [`.grok/skills/orca-merge-playbook/SKILL.md`](./.grok/skills/orca-merge-playbook/SKILL.md)  
   (focused fix · preserves intent · regression coverage — not open-PR volume)
