@@ -2590,6 +2590,7 @@ export type PreloadApi = {
     prepareSetupRunner: (args: {
       repoId: string
       worktreePath: string
+      hostId?: ExecutionHostId
     }) => Promise<{
       status: 'ok' | 'error'
       setup: WorktreeSetupLaunch | null

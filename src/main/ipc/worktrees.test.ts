@@ -6805,14 +6805,16 @@ describe('registerWorktreeHandlers', () => {
   })
 
   it('returns folder-repo without creating a setup runner for folder workspaces', async () => {
-    store.getRepo.mockReturnValue({
-      id: 'repo-1',
-      path: '/workspace/folder',
-      displayName: 'folder',
-      badgeColor: '#000',
-      addedAt: 0,
-      kind: 'folder'
-    })
+    store.getRepos.mockReturnValue([
+      {
+        id: 'repo-1',
+        path: '/workspace/folder',
+        displayName: 'folder',
+        badgeColor: '#000',
+        addedAt: 0,
+        kind: 'folder'
+      }
+    ])
 
     const result = await handlers['hooks:prepareSetupRunner'](null, {
       repoId: 'repo-1',
@@ -6825,6 +6827,61 @@ describe('registerWorktreeHandlers', () => {
       status: 'ok',
       setup: null,
       reason: 'folder-repo'
+    })
+  })
+
+  it('rejects setup runner preparation for SSH repos', async () => {
+    store.getRepos.mockReturnValue([
+      {
+        id: 'repo-1',
+        path: '/workspace/repo',
+        displayName: 'repo',
+        badgeColor: '#000',
+        addedAt: 0,
+        connectionId: 'ssh-target'
+      }
+    ])
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard'
+    })
+
+    expect(getEffectiveHooksMock).not.toHaveBeenCalled()
+    expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      status: 'error',
+      setup: null,
+      reason: 'runner-failed',
+      message: expect.stringContaining('not yet supported for remote worktrees')
+    })
+  })
+
+  it('rejects setup runner preparation for runtime-host repos without a connectionId', async () => {
+    store.getRepos.mockReturnValue([
+      {
+        id: 'repo-1',
+        path: '/workspace/repo',
+        displayName: 'repo',
+        badgeColor: '#000',
+        addedAt: 0,
+        connectionId: null,
+        executionHostId: 'runtime:env-1'
+      }
+    ])
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard'
+    })
+
+    expect(getEffectiveHooksMock).not.toHaveBeenCalled()
+    expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      status: 'error',
+      setup: null,
+      reason: 'runner-failed',
+      message: expect.stringContaining('not yet supported for remote worktrees')
     })
   })
 

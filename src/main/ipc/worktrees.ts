@@ -3175,29 +3175,29 @@ export function registerWorktreeHandlers(
     'hooks:prepareSetupRunner',
     (
       _event,
-      args: { repoId: string; worktreePath: string }
+      args: { repoId: string; worktreePath: string; hostId?: ExecutionHostId }
     ): {
       status: 'ok' | 'error'
       setup: ReturnType<typeof createSetupRunnerScript> | null
       reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
       message?: string
     } => {
-      const repo = store.getRepo(args.repoId)
+      const repo = getRepoForWorktreeRemoval(store, args.repoId, args.hostId)
       if (!repo) {
         throw new Error(`Repo not found: ${args.repoId}`)
       }
       if (isFolderRepo(repo)) {
         return { status: 'ok', setup: null, reason: 'folder-repo' }
       }
-      // Why: getEffectiveHooks/createSetupRunnerScript are local-FS only today;
-      // SSH worktrees need the remote setup path (CodeRabbit / #10077).
-      if (repo.connectionId) {
+      // Why: getEffectiveHooks/createSetupRunnerScript are local-FS only today; runtime-host
+      // repos have no connectionId, so gate on the execution host, not the SSH target.
+      if (getRepoExecutionHostId(repo) !== LOCAL_EXECUTION_HOST_ID) {
         return {
           status: 'error',
           setup: null,
           reason: 'runner-failed',
           message:
-            'Run setup script is not yet supported for remote/SSH worktrees. Create a new worktree to run setup on that host, or open a local clone.'
+            'Run setup script is not yet supported for remote worktrees. Create a new worktree to run setup on that host, or open a local clone.'
         }
       }
 

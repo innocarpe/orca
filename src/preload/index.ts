@@ -2899,6 +2899,7 @@ const api = {
     prepareSetupRunner: (args: {
       repoId: string
       worktreePath: string
+      hostId?: ExecutionHostId
     }): Promise<{
       status: 'ok' | 'error'
       setup: { runnerScriptPath: string; envVars: Record<string, string>; command?: string } | null
