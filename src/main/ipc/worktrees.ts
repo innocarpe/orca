@@ -86,6 +86,7 @@ import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import {
   createIssueCommandRunnerScript,
   createSetupRunnerScript,
+  getDefaultTabCommandTrustContent,
   getEffectiveHooks,
   getEffectiveHooksFromConfig,
   getSetupCommandSource,
@@ -3182,6 +3183,7 @@ export function registerWorktreeHandlers(
       setup: ReturnType<typeof createSetupRunnerScript> | null
       setupScript?: string
       setupScriptSource?: 'yaml' | 'local' | 'both'
+      trustContent?: string
       reason?: 'no-setup-configured' | 'folder-repo' | 'remote-host' | 'runner-failed'
       message?: string
     } => {
@@ -3194,7 +3196,7 @@ export function registerWorktreeHandlers(
             setup: null,
             reason: 'runner-failed',
             message:
-              'This project exists on multiple hosts; retry from the workspace list of the host that owns it.'
+              'Multiple project entries share this id; remove the duplicate project, or retry from the host that owns this workspace.'
           }
         }
         throw new Error(`Repo not found: ${args.repoId}`)
@@ -3240,7 +3242,16 @@ export function registerWorktreeHandlers(
           setupScript,
           getLocalProjectWorktreeGitOptions(store, repo)
         )
-        return { status: 'ok', setup, setupScript, setupScriptSource: commandSource?.source }
+        // Why: trust hashes must match the create path's canonical shape (setup +
+        // defaultTabs commands) or the one per-repo slot ping-pongs between flows.
+        const trustContent = getDefaultTabCommandTrustContent(loadHooks(args.worktreePath))
+        return {
+          status: 'ok',
+          setup,
+          setupScript,
+          setupScriptSource: commandSource?.source,
+          ...(trustContent ? { trustContent } : {})
+        }
       } catch (error) {
         return {
           status: 'error',

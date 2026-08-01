@@ -404,6 +404,26 @@ describe('ensureWorktreeHasInitialTerminal', () => {
     expect(store.queueTabIssueCommandSplit).not.toHaveBeenCalled()
   })
 
+  it('targets the active terminal tab instead of the oldest when queueing setup', () => {
+    let createdIndex = 10
+    const createTab = vi.fn(() => ({ id: `tab-${++createdIndex}` }))
+    const store = createMockStore({
+      tabsByWorktree: { 'wt-1': [{ id: 'tab-old' }, { id: 'tab-active' }] },
+      getActiveTab: vi.fn(() => ({ id: 'tab-active' })),
+      createTab,
+      reconcileWorktreeTabModel: vi.fn(() => ({ renderableTabCount: 2 }))
+    })
+
+    const result = ensureWorktreeHasInitialTerminal(store, 'wt-1', undefined, {
+      runnerScriptPath: '/tmp/repo/.git/orca/setup-runner.sh',
+      envVars: {}
+    })
+
+    expect(result).toBe('tab-active')
+    // Why: the new-tab mode reverts focus to the targeted terminal, not tabsByWorktree[0].
+    expect(store.setActiveTab).toHaveBeenCalledWith('tab-active')
+  })
+
   it('creates a terminal to carry setup when the worktree has only non-terminal tabs', () => {
     // Why: editor/browser-only worktrees must not silently drop a requested setup launch.
     const store = createMockStore({

@@ -2596,6 +2596,7 @@ export type PreloadApi = {
       setup: WorktreeSetupLaunch | null
       setupScript?: string
       setupScriptSource?: 'yaml' | 'local' | 'both'
+      trustContent?: string
       reason?: 'no-setup-configured' | 'folder-repo' | 'remote-host' | 'runner-failed'
       message?: string
     }>

@@ -42,6 +42,7 @@ const {
   getPullRequestPushTargetMock,
   getEffectiveHooksMock,
   getSetupCommandSourceMock,
+  getDefaultTabCommandTrustContentMock,
   createIssueCommandRunnerScriptMock,
   createSetupRunnerScriptMock,
   getEffectiveHooksFromConfigMock,
@@ -94,6 +95,7 @@ const {
   getPullRequestPushTargetMock: vi.fn(),
   getEffectiveHooksMock: vi.fn(),
   getSetupCommandSourceMock: vi.fn(),
+  getDefaultTabCommandTrustContentMock: vi.fn(),
   createIssueCommandRunnerScriptMock: vi.fn(),
   createSetupRunnerScriptMock: vi.fn(),
   getEffectiveHooksFromConfigMock: vi.fn(),
@@ -199,6 +201,7 @@ vi.mock('../hooks', () => ({
   createSetupRunnerScript: createSetupRunnerScriptMock,
   getEffectiveHooks: getEffectiveHooksMock,
   getSetupCommandSource: getSetupCommandSourceMock,
+  getDefaultTabCommandTrustContent: getDefaultTabCommandTrustContentMock,
   getEffectiveHooksFromConfig: getEffectiveHooksFromConfigMock,
   getDefaultTabsLaunch: getDefaultTabsLaunchMock,
   getSetupRunnerEnvVars: getSetupRunnerEnvVarsMock,
@@ -368,6 +371,7 @@ describe('registerWorktreeHandlers', () => {
       getPullRequestPushTargetMock,
       getEffectiveHooksMock,
       getSetupCommandSourceMock,
+      getDefaultTabCommandTrustContentMock,
       getEffectiveHooksFromConfigMock,
       getDefaultTabsLaunchMock,
       parseOrcaYamlMock,
@@ -6794,6 +6798,23 @@ describe('registerWorktreeHandlers', () => {
     })
   })
 
+  it('returns the canonical trust content for the worktree yaml', async () => {
+    getSetupCommandSourceMock.mockReturnValue({ source: 'yaml', command: 'pnpm install' })
+    getDefaultTabCommandTrustContentMock.mockReturnValue(
+      'pnpm install\n\n# defaultTabs[1]\nnpm run dev'
+    )
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard'
+    })
+
+    expect(result).toMatchObject({
+      status: 'ok',
+      trustContent: 'pnpm install\n\n# defaultTabs[1]\nnpm run dev'
+    })
+  })
+
   it('resolves the host-matching repo row when duplicate repo ids exist across hosts', async () => {
     const localRepo = {
       id: 'repo-1',
@@ -6841,7 +6862,7 @@ describe('registerWorktreeHandlers', () => {
     expect(result).toMatchObject({
       status: 'error',
       reason: 'runner-failed',
-      message: expect.stringContaining('multiple hosts')
+      message: expect.stringContaining('Multiple project entries share this id')
     })
   })
 

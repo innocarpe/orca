@@ -121,6 +121,7 @@ function getSetupRunnerCommandPlatformForLaunch(setup: WorktreeSetupLaunch): 'wi
 
 type WorktreeActivationStore = Partial<WorktreeRuntimeOwnerState> & {
   tabsByWorktree: Record<string, { id: string }[]>
+  getActiveTab?: (worktreeId: string) => { id: string } | null
   defaultTerminalTabsAppliedByWorktreeId: Record<string, true>
   createTab: (
     worktreeId: string,
@@ -490,7 +491,9 @@ export function ensureWorktreeHasInitialTerminal(
     const terminalTabs = store.tabsByWorktree[worktreeId] ?? []
     // Why: on an existing worktree the oldest terminal is unrelated to where the user
     // is; target the active tab when it is a terminal so focus and splits stay put.
-    const activeTabId = useAppStore.getState().getActiveTab?.(worktreeId)?.id
+    const activeTabId = (store.getActiveTab ?? useAppStore.getState().getActiveTab)?.(
+      worktreeId
+    )?.id
     const existingTerminalTabId =
       terminalTabs.find((tab) => tab.id === activeTabId)?.id ?? terminalTabs[0]?.id
     if (existingTerminalTabId && (setup || issueCommand)) {

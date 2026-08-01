@@ -13,6 +13,7 @@ vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
   rmSync: vi.fn(),
+  renameSync: vi.fn(),
   chmodSync: vi.fn()
 }))
 
@@ -823,6 +824,21 @@ describe('getEffectiveHooks', () => {
     const result = getEffectiveHooks(repo)
 
     expect(result).toBeNull()
+  })
+
+  it('runs the local script alone under run-both when yaml has no setup', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.existsSync).mockReturnValue(false)
+
+    const { getSetupCommandSource } = await import('./hooks')
+    const repo = makeRepo({
+      commandSourcePolicy: 'run-both',
+      scripts: { setup: 'echo "local setup"', archive: '' }
+    })
+    const result = getSetupCommandSource(repo)
+
+    // Why: parity with create — getEffectiveHookScript merges with filter(Boolean).
+    expect(result).toEqual({ source: 'local', command: 'echo "local setup"' })
   })
 
   it('falls back to legacy local setup source only when yaml is missing', async () => {
