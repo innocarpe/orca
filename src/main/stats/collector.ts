@@ -91,10 +91,18 @@ export class StatsCollector {
       // hook-status bridge, which reuses the pane's ptyId as its session key. A
       // second start would double both totalAgentsSpawned and totalAgentTimeMs.
       // The hook stream still takes over the boundaries: it sees the agent's real
-      // turn end, while an OSC title can flip to idle mid-turn.
-      if (source === 'hook') {
-        live.source = 'hook'
+      // turn end, while an OSC title can flip to idle mid-turn. An OSC start
+      // must not claim ownership either, or the OSC producer's own stop would
+      // be refused and its session could never close.
+      if (source === 'osc') {
+        return
       }
+      // A late hook adoption inherits the session's span, dangling or not —
+      // rotating on evidence age was tried and misclassified live sessions
+      // (no per-producer signal distinguishes a quiet agent from a dead one).
+      // For a dangling row this matches the quit path, which bills the open
+      // span at flush; the PTY-exit path would have billed 0.
+      live.source = 'hook'
       return
     }
     this.liveAgents.set(ptyId, { startedAt: at, source })
@@ -105,6 +113,12 @@ export class StatsCollector {
       worktreeId,
       meta: { ptyId }
     })
+  }
+
+  /** Whether a session is currently open under this key. The bridge uses this to
+   *  reopen after another row sharing the key closed it. */
+  hasLiveAgent(ptyId: string): boolean {
+    return this.liveAgents.has(ptyId)
   }
 
   onAgentStop(ptyId: string, at: number, source: AgentSessionSource = 'osc'): void {

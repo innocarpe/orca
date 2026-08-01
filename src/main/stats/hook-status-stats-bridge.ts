@@ -21,6 +21,7 @@ type StatsAgentLifecycle = {
     source?: AgentSessionSource
   ) => void
   onAgentStop: (sessionKey: string, at: number, source?: AgentSessionSource) => void
+  hasLiveAgent: (sessionKey: string) => boolean
 }
 
 export type HookStatusStatsBridgeOptions = {
@@ -50,6 +51,29 @@ export type HookStatusStatsBridgeOptions = {
  * where the staleness bound below credits it correctly. Letting the OSC detector
  * close it on PTY exit instead was tried and repeatedly produced worse bugs than
  * the delay it fixed; the real fix is evicting stale rows in AgentHookServer.
+ *
+ * Accepted residuals, all rooted in rows nothing evicts and in hook events
+ * carrying no liveness heartbeat. Cross-producer evidence (terminal output,
+ * then working titles) was tried against each and made another case worse —
+ * output let a user's shell keep a dead session alive forever, and agents do
+ * not repaint working titles inside a turn (Claude writes its title once per
+ * session, measured). The real fix for all of them is upstream stale-row
+ * eviction in AgentHookServer:
+ * - A turn whose tool call outlasts the staleness horizon with no hook event
+ *   in between splits into two counted sessions at the next working event,
+ *   crediting only the spans the hook stream proved. On such turns this
+ *   credits LESS than the OSC path alone would (its output-bounded close
+ *   spans the whole turn) — for hook-enabled panes that is a real regression
+ *   scoped to >30-min hook-silent tool calls, accepted over the unbounded
+ *   dead-row billing every rejected alternative reintroduced.
+ * - Two rows sharing one session key can diverge; a row whose events went
+ *   quiet before its sibling closed the session loses its tail time until its
+ *   next working event — and loses the remainder of the turn when that next
+ *   event is its own done. The reopen below refuses frozen rows because
+ *   honoring them would mint unbounded phantom spawns from dead panes.
+ * - A hook agent killed without a Stop parks its session on the pane's key
+ *   until its next hook turn rotates it, and OSC-only agents in that pane go
+ *   uncounted while it is parked.
  */
 export function createHookStatusStatsBridge(
   stats: StatsAgentLifecycle,
@@ -62,7 +86,12 @@ export function createHookStatusStatsBridge(
   // paneKey → the session this bridge opened for it. The key is stored rather
   // than re-resolved so a PTY swap mid-turn cannot orphan the open session, and
   // lastEvidenceAt tracks the newest hook event that proved the pane was working.
-  const liveWorking = new Map<string, { sessionKey: string; lastEvidenceAt: number }>()
+  // keyClosedAt is stamped on surviving rows when a sibling closes their shared
+  // key, so a reopen can never back-date into the span already credited.
+  const liveWorking = new Map<
+    string,
+    { sessionKey: string; lastEvidenceAt: number; keyClosedAt?: number }
+  >()
 
   const closeSession = (paneKey: string, at: number): void => {
     const session = liveWorking.get(paneKey)
@@ -71,6 +100,11 @@ export function createHookStatusStatsBridge(
     }
     liveWorking.delete(paneKey)
     stats.onAgentStop(session.sessionKey, at, 'hook')
+    for (const survivor of liveWorking.values()) {
+      if (survivor.sessionKey === session.sessionKey) {
+        survivor.keyClosedAt = Math.max(survivor.keyClosedAt ?? 0, at)
+      }
+    }
   }
 
   return {
@@ -94,10 +128,26 @@ export function createHookStatusStatsBridge(
             // the abandoned session sits on the pane's ptyId, an OSC-only agent
             // in that pane is counted by nobody (its start hits a live key, its
             // stop hits the wrong owner). Reopening restores both boundaries.
+            // A live turn whose tool call outlasts the horizon splits here too;
+            // that granularity residual is documented above.
             if (status.receivedAt - open.lastEvidenceAt > AGENT_STATUS_STALE_AFTER_MS) {
               closeSession(status.paneKey, open.lastEvidenceAt)
             } else {
+              const previousEvidenceAt = open.lastEvidenceAt
               open.lastEvidenceAt = Math.max(open.lastEvidenceAt, status.receivedAt)
+              // Why reopen: the collector can lose this key while our row stays
+              // working — another pane sharing the ptyId (one PTY, two leaves)
+              // went idle and closed the shared session. Without this the rest
+              // of the turn is counted by nobody. Only a row carrying NEW
+              // evidence reopens: a dead agent's frozen row would otherwise
+              // mint a phantom zero-time spawn per snapshot once its key was
+              // freed. The reopen starts no earlier than the key's last close,
+              // or the overlap behind the sibling's boundary would be billed
+              // twice.
+              if (status.receivedAt > previousEvidenceAt && !stats.hasLiveAgent(open.sessionKey)) {
+                const reopenAt = Math.max(status.receivedAt, open.keyClosedAt ?? 0)
+                stats.onAgentStart(open.sessionKey, reopenAt, undefined, undefined, 'hook')
+              }
               continue
             }
           }

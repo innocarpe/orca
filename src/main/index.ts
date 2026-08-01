@@ -3009,8 +3009,6 @@ app.on('before-quit', () => {
   unsubscribeSystemResumeBroadcast = null
   unsubscribeAgentAwakeStatusChanges?.()
   unsubscribeAgentAwakeStatusChanges = null
-  unsubscribeHookStatusStatsBridge?.()
-  unsubscribeHookStatusStatsBridge = null
   agentAwakeService?.dispose()
   agentAwakeService = null
   // Why: defer PTY cleanup to will-quit so the renderer captures scrollback before PTY-exit events unmount TerminalPane (dropping its capture callbacks).
@@ -3060,6 +3058,13 @@ app.on('will-quit', (e) => {
   const pluginHostShutdown = pluginService?.dispose() ?? Promise.resolve()
   pluginService = null
   setUnreadDockBadgeCount(0)
+  // Why here, not before-quit: before-quit also fires on aborted quits (updater
+  // defer, dirty-editor veto) and there is no re-subscribe path — tearing down
+  // there silently reverts #10201 for the rest of the process. will-quit only
+  // runs on the committed path, and the sweep must precede the stats flush
+  // below so hook sessions close at their staleness bound, not wall clock.
+  unsubscribeHookStatusStatsBridge?.()
+  unsubscribeHookStatusStatsBridge = null
   agentHookServer.stop()
   // Why: cancels relay restart/reinstall timers and kills wsl.exe children deterministically, not via stdio-pipe teardown.
   wslHookRelayManager.disposeAll()
