@@ -2594,7 +2594,9 @@ export type PreloadApi = {
     }) => Promise<{
       status: 'ok' | 'error'
       setup: WorktreeSetupLaunch | null
-      reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
+      setupScript?: string
+      setupScriptSource?: 'yaml' | 'local' | 'both'
+      reason?: 'no-setup-configured' | 'folder-repo' | 'remote-host' | 'runner-failed'
       message?: string
     }>
     readIssueCommand: (args: { repoId: string; hostId?: ExecutionHostId }) => Promise<{

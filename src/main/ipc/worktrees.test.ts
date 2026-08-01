@@ -41,6 +41,7 @@ const {
   getWorkItemMock,
   getPullRequestPushTargetMock,
   getEffectiveHooksMock,
+  getSetupCommandSourceMock,
   createIssueCommandRunnerScriptMock,
   createSetupRunnerScriptMock,
   getEffectiveHooksFromConfigMock,
@@ -92,6 +93,7 @@ const {
   getWorkItemMock: vi.fn(),
   getPullRequestPushTargetMock: vi.fn(),
   getEffectiveHooksMock: vi.fn(),
+  getSetupCommandSourceMock: vi.fn(),
   createIssueCommandRunnerScriptMock: vi.fn(),
   createSetupRunnerScriptMock: vi.fn(),
   getEffectiveHooksFromConfigMock: vi.fn(),
@@ -196,6 +198,7 @@ vi.mock('../hooks', () => ({
   createIssueCommandRunnerScript: createIssueCommandRunnerScriptMock,
   createSetupRunnerScript: createSetupRunnerScriptMock,
   getEffectiveHooks: getEffectiveHooksMock,
+  getSetupCommandSource: getSetupCommandSourceMock,
   getEffectiveHooksFromConfig: getEffectiveHooksFromConfigMock,
   getDefaultTabsLaunch: getDefaultTabsLaunchMock,
   getSetupRunnerEnvVars: getSetupRunnerEnvVarsMock,
@@ -364,6 +367,7 @@ describe('registerWorktreeHandlers', () => {
       getWorkItemMock,
       getPullRequestPushTargetMock,
       getEffectiveHooksMock,
+      getSetupCommandSourceMock,
       getEffectiveHooksFromConfigMock,
       getDefaultTabsLaunchMock,
       parseOrcaYamlMock,
@@ -6759,14 +6763,14 @@ describe('registerWorktreeHandlers', () => {
   })
 
   it('prepares a setup runner for an existing worktree when setup is configured', async () => {
-    getEffectiveHooksMock.mockReturnValue({ scripts: { setup: 'pnpm install' } })
+    getSetupCommandSourceMock.mockReturnValue({ source: 'yaml', command: 'pnpm install' })
 
     const result = await handlers['hooks:prepareSetupRunner'](null, {
       repoId: 'repo-1',
       worktreePath: '/workspace/improve-dashboard'
     })
 
-    expect(getEffectiveHooksMock).toHaveBeenCalledWith(
+    expect(getSetupCommandSourceMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'repo-1' }),
       '/workspace/improve-dashboard'
     )
@@ -6784,12 +6788,65 @@ describe('registerWorktreeHandlers', () => {
           ORCA_ROOT_PATH: '/workspace/repo',
           ORCA_WORKTREE_PATH: '/workspace/improve-dashboard'
         }
-      }
+      },
+      setupScript: 'pnpm install',
+      setupScriptSource: 'yaml'
+    })
+  })
+
+  it('resolves the host-matching repo row when duplicate repo ids exist across hosts', async () => {
+    const localRepo = {
+      id: 'repo-1',
+      path: '/workspace/repo',
+      displayName: 'repo',
+      badgeColor: '#000',
+      addedAt: 0
+    }
+    const sshRepo = { ...localRepo, path: '/remote/repo', connectionId: 'ssh-target' }
+    store.getRepos.mockReturnValue([sshRepo, localRepo])
+    getSetupCommandSourceMock.mockReturnValue({ source: 'yaml', command: 'pnpm install' })
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard',
+      hostId: 'local'
+    })
+
+    expect(getSetupCommandSourceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/workspace/repo' }),
+      '/workspace/improve-dashboard'
+    )
+    expect(result).toMatchObject({ status: 'ok' })
+  })
+
+  it('returns a structured error for ambiguous duplicate repo ids without a hostId', async () => {
+    const localRepo = {
+      id: 'repo-1',
+      path: '/workspace/repo',
+      displayName: 'repo',
+      badgeColor: '#000',
+      addedAt: 0
+    }
+    store.getRepos.mockReturnValue([
+      { ...localRepo, connectionId: 'ssh-target' },
+      { ...localRepo, path: '/other/repo' }
+    ])
+
+    const result = await handlers['hooks:prepareSetupRunner'](null, {
+      repoId: 'repo-1',
+      worktreePath: '/workspace/improve-dashboard'
+    })
+
+    expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      status: 'error',
+      reason: 'runner-failed',
+      message: expect.stringContaining('multiple hosts')
     })
   })
 
   it('returns no-setup-configured without creating a runner when setup is missing', async () => {
-    getEffectiveHooksMock.mockReturnValue(null)
+    getSetupCommandSourceMock.mockReturnValue(null)
 
     const result = await handlers['hooks:prepareSetupRunner'](null, {
       repoId: 'repo-1',
@@ -6821,7 +6878,7 @@ describe('registerWorktreeHandlers', () => {
       worktreePath: '/workspace/folder'
     })
 
-    expect(getEffectiveHooksMock).not.toHaveBeenCalled()
+    expect(getSetupCommandSourceMock).not.toHaveBeenCalled()
     expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
     expect(result).toEqual({
       status: 'ok',
@@ -6847,12 +6904,12 @@ describe('registerWorktreeHandlers', () => {
       worktreePath: '/workspace/improve-dashboard'
     })
 
-    expect(getEffectiveHooksMock).not.toHaveBeenCalled()
+    expect(getSetupCommandSourceMock).not.toHaveBeenCalled()
     expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       status: 'error',
       setup: null,
-      reason: 'runner-failed',
+      reason: 'remote-host',
       message: expect.stringContaining('not yet supported for remote worktrees')
     })
   })
@@ -6875,12 +6932,12 @@ describe('registerWorktreeHandlers', () => {
       worktreePath: '/workspace/improve-dashboard'
     })
 
-    expect(getEffectiveHooksMock).not.toHaveBeenCalled()
+    expect(getSetupCommandSourceMock).not.toHaveBeenCalled()
     expect(createSetupRunnerScriptMock).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       status: 'error',
       setup: null,
-      reason: 'runner-failed',
+      reason: 'remote-host',
       message: expect.stringContaining('not yet supported for remote worktrees')
     })
   })

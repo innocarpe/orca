@@ -2903,7 +2903,9 @@ const api = {
     }): Promise<{
       status: 'ok' | 'error'
       setup: { runnerScriptPath: string; envVars: Record<string, string> } | null
-      reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
+      setupScript?: string
+      setupScriptSource?: 'yaml' | 'local' | 'both'
+      reason?: 'no-setup-configured' | 'folder-repo' | 'remote-host' | 'runner-failed'
       message?: string
     }> => ipcRenderer.invoke('hooks:prepareSetupRunner', args),
 

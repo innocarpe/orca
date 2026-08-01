@@ -1,6 +1,14 @@
 /* eslint-disable max-lines -- Why: hook parsing, layered issue-command resolution, and cross-platform runner setup share one execution surface, so keeping them together avoids subtle drift across create/read/write paths. */
-import { readFileSync, existsSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import {
+  readFileSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  chmodSync,
+  renameSync,
+  rmSync
+} from 'node:fs'
+import { dirname, isAbsolute, join } from 'node:path'
 import { exec, execFile } from 'node:child_process'
 import { getDefaultRepoHookSettings } from '../shared/constants'
 import { getRuntimePathBasename } from '../shared/cross-platform-path'
@@ -584,24 +592,40 @@ function createWorktreeRunnerScript(args: {
   const gitRelPath = `orca/${runnerBaseName}.${runnerExtension}`
   let runnerScriptPath = getGitPath(worktreePath, gitRelPath, runtimeTarget)
 
+  // Why: a main worktree's --git-path is worktree-relative, and the fs calls below
+  // would resolve it against the app process cwd instead of the worktree.
+  if (!isAbsolute(runnerScriptPath) && !runnerScriptPath.startsWith('/')) {
+    runnerScriptPath = join(worktreePath, runnerScriptPath)
+  }
+
   // Why: git runs inside WSL and returns a Linux path; convert to a UNC path so the Windows fs calls can reach it.
   if (wslWorktree) {
     const wslInfo = getHookWslContext(worktreePath, runtimeTarget)
-    if (wslInfo?.distro) {
+    if (wslInfo?.distro && runnerScriptPath.startsWith('/')) {
       runnerScriptPath = toWindowsWslPath(runnerScriptPath.trim(), wslInfo.distro)
     }
   }
 
   mkdirSync(dirname(runnerScriptPath), { recursive: true })
 
-  if (runnerShell.family === 'cmd') {
-    writeFileSync(runnerScriptPath, buildWindowsRunnerScript(script), 'utf-8')
-  } else {
-    writeFileSync(runnerScriptPath, buildPosixRunnerScript(script), 'utf-8')
-    if (!nativeWindowsWorktree) {
-      // Why: chmod over a UNC path to the WSL filesystem sets the execute bit correctly inside WSL.
-      chmodSync(runnerScriptPath, 0o755)
-    }
+  const runnerContent =
+    runnerShell.family === 'cmd'
+      ? buildWindowsRunnerScript(script)
+      : buildPosixRunnerScript(script)
+  // Why: a manual re-run can overwrite a script bash is still reading by byte offset;
+  // rename swaps the inode so the running shell keeps its own copy.
+  const tmpRunnerPath = `${runnerScriptPath}.tmp`
+  writeFileSync(tmpRunnerPath, runnerContent, 'utf-8')
+  if (runnerShell.family !== 'cmd' && !nativeWindowsWorktree) {
+    // Why: chmod over a UNC path to the WSL filesystem sets the execute bit correctly inside WSL.
+    chmodSync(tmpRunnerPath, 0o755)
+  }
+  try {
+    renameSync(tmpRunnerPath, runnerScriptPath)
+  } catch {
+    // Why: Windows can refuse to replace a runner cmd.exe still holds open.
+    writeFileSync(runnerScriptPath, runnerContent, 'utf-8')
+    rmSync(tmpRunnerPath, { force: true })
   }
 
   // Why: setup script runs inside WSL bash, so translate the Windows UNC env-var paths to Linux paths.

@@ -88,6 +88,7 @@ import {
   createSetupRunnerScript,
   getEffectiveHooks,
   getEffectiveHooksFromConfig,
+  getSetupCommandSource,
   getSetupRunnerEnvVars,
   loadHooks,
   parseOrcaYaml,
@@ -3179,11 +3180,23 @@ export function registerWorktreeHandlers(
     ): {
       status: 'ok' | 'error'
       setup: ReturnType<typeof createSetupRunnerScript> | null
-      reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
+      setupScript?: string
+      setupScriptSource?: 'yaml' | 'local' | 'both'
+      reason?: 'no-setup-configured' | 'folder-repo' | 'remote-host' | 'runner-failed'
       message?: string
     } => {
       const repo = getRepoForWorktreeRemoval(store, args.repoId, args.hostId)
       if (!repo) {
+        const matches = store.getRepos().filter((entry) => entry.id === args.repoId)
+        if (matches.length > 1) {
+          return {
+            status: 'error',
+            setup: null,
+            reason: 'runner-failed',
+            message:
+              'This project exists on multiple hosts; retry from the workspace list of the host that owns it.'
+          }
+        }
         throw new Error(`Repo not found: ${args.repoId}`)
       }
       if (isFolderRepo(repo)) {
@@ -3195,17 +3208,17 @@ export function registerWorktreeHandlers(
         return {
           status: 'error',
           setup: null,
-          reason: 'runner-failed',
+          reason: 'remote-host',
           message:
             'Run setup script is not yet supported for remote worktrees. Create a new worktree to run setup on that host, or open a local clone.'
         }
       }
 
-      let setupScript: string | undefined
+      let commandSource: ReturnType<typeof getSetupCommandSource>
       try {
-        // Prefer the worktree's orca.yaml so branch-specific setup matches create.
-        const hooks = getEffectiveHooks(repo, args.worktreePath)
-        setupScript = hooks?.scripts.setup?.trim()
+        // Prefer the worktree's orca.yaml so branch-specific setup matches create; the
+        // source lets the renderer confirm trust against the exact script that will run.
+        commandSource = getSetupCommandSource(repo, args.worktreePath)
       } catch (error) {
         return {
           status: 'error',
@@ -3215,6 +3228,7 @@ export function registerWorktreeHandlers(
         }
       }
 
+      const setupScript = commandSource?.command.trim()
       if (!setupScript) {
         return { status: 'ok', setup: null, reason: 'no-setup-configured' }
       }
@@ -3226,7 +3240,7 @@ export function registerWorktreeHandlers(
           setupScript,
           getLocalProjectWorktreeGitOptions(store, repo)
         )
-        return { status: 'ok', setup }
+        return { status: 'ok', setup, setupScript, setupScriptSource: commandSource?.source }
       } catch (error) {
         return {
           status: 'error',
