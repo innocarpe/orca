@@ -1,6 +1,9 @@
 import { extname } from 'node:path'
 import type { NativeChatMessage } from '../../shared/native-chat-types'
-import { resolveHostReadableTranscriptPath } from './host-readable-transcript-path'
+import {
+  isGuestAbsoluteLinuxPath,
+  resolveHostReadableTranscriptPath
+} from './host-readable-transcript-path'
 import { resolveSessionFilePath } from './session-file-resolver'
 import { installTranscriptWatcher } from './transcript-watch-engine'
 import type {
@@ -38,12 +41,18 @@ const INITIAL_RESOLVE_POLL_MS = 500
 const MAX_RESOLVE_POLL_MS = 5_000
 const FALLBACK_RESOLVE_POLL_MS = 5_000
 
-function exactTranscriptPath(args: SubscribeNativeChatTranscriptArgs): string | null {
+function reportedTranscriptPath(args: SubscribeNativeChatTranscriptArgs): string | null {
   const path = args.transcriptPath?.trim()
-  if (!path || extname(path) !== '.jsonl') {
-    return null
+  return path && extname(path) === '.jsonl' ? path : null
+}
+
+function exactTranscriptPath(path: string): string | null {
+  const hostReadable = resolveHostReadableTranscriptPath(path)
+  if (hostReadable) {
+    return hostReadable
   }
-  return resolveHostReadableTranscriptPath(path)
+  // Why: a missing WSL guest path must be retranslated, not probed as a drive-local path.
+  return process.platform === 'win32' && isGuestAbsoluteLinuxPath(path) ? null : path
 }
 
 /**
@@ -63,13 +72,13 @@ function subscribeViaResolvePoll(
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let delay = args.resolvePollIntervalMs ?? INITIAL_RESOLVE_POLL_MS
   let lastFallbackResolveAt = Date.now()
-  const exactPath = exactTranscriptPath(args)
+  const reportedPath = reportedTranscriptPath(args)
 
   function scheduleAttempt(): void {
     if (closed) {
       return
     }
-    const untilFallbackResolve = exactPath
+    const untilFallbackResolve = reportedPath
       ? Math.max(0, FALLBACK_RESOLVE_POLL_MS - (Date.now() - lastFallbackResolveAt))
       : delay
     pollTimer = setTimeout(
@@ -95,10 +104,11 @@ function subscribeViaResolvePoll(
     }
     let result: NativeChatTranscriptSubscription | null
     try {
+      const exactPath = reportedPath ? exactTranscriptPath(reportedPath) : null
       result = exactPath ? await attemptInstall({ ...args, filePath: exactPath }, decode) : null
       if (
         !result &&
-        (!exactPath || Date.now() - lastFallbackResolveAt >= FALLBACK_RESOLVE_POLL_MS)
+        (!reportedPath || Date.now() - lastFallbackResolveAt >= FALLBACK_RESOLVE_POLL_MS)
       ) {
         lastFallbackResolveAt = Date.now()
         result = await attemptInstall(args, decode)
