@@ -1,0 +1,138 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  isGuestAbsoluteLinuxPath,
+  resolveHostReadableTranscriptPath,
+  wslCodexSessionsDirs
+} from './host-readable-transcript-path'
+
+describe('isGuestAbsoluteLinuxPath', () => {
+  it('accepts absolute POSIX guest paths', () => {
+    expect(isGuestAbsoluteLinuxPath('/home/ada/.codex/sessions/rollout.jsonl')).toBe(true)
+    expect(isGuestAbsoluteLinuxPath('/tmp/x.jsonl')).toBe(true)
+  })
+
+  it('rejects UNC, relative, and drive-letter forms', () => {
+    expect(isGuestAbsoluteLinuxPath('\\\\wsl.localhost\\Ubuntu\\home\\ada\\x.jsonl')).toBe(false)
+    expect(isGuestAbsoluteLinuxPath('//wsl.localhost/Ubuntu/home/ada/x.jsonl')).toBe(false)
+    expect(isGuestAbsoluteLinuxPath('relative/path.jsonl')).toBe(false)
+    expect(isGuestAbsoluteLinuxPath('C:\\Users\\ada\\x.jsonl')).toBe(false)
+    expect(isGuestAbsoluteLinuxPath('/C:/Users/ada/x.jsonl')).toBe(false)
+  })
+})
+
+describe('resolveHostReadableTranscriptPath', () => {
+  it('returns a pre-existing Windows host path unchanged', () => {
+    const hostPath = 'C:\\Users\\ada\\session.jsonl'
+    expect(
+      resolveHostReadableTranscriptPath(hostPath, {
+        platform: 'win32',
+        pathExists: (candidate) => candidate === hostPath,
+        listDistros: () => ['Ubuntu']
+      })
+    ).toBe(hostPath)
+  })
+
+  it('does not accept a colliding local drive path for a guest transcript', () => {
+    const linux = '/exists'
+    const unc = '\\\\wsl.localhost\\Ubuntu\\exists'
+    const seen: string[] = []
+    expect(
+      resolveHostReadableTranscriptPath(linux, {
+        platform: 'win32',
+        pathExists: (candidate) => {
+          seen.push(candidate)
+          return candidate === linux || candidate === unc
+        },
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toBe(unc)
+    expect(seen).not.toContain(linux)
+  })
+
+  it('translates a Claude guest path to a readable WSL UNC path', () => {
+    const linux = '/home/ada/.claude/projects/-home-ada-repo/session.jsonl'
+    const unc =
+      '\\\\wsl.localhost\\Ubuntu\\home\\ada\\.claude\\projects\\-home-ada-repo\\session.jsonl'
+
+    expect(
+      resolveHostReadableTranscriptPath(linux, {
+        platform: 'win32',
+        pathExists: (candidate) => candidate === unc,
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toBe(unc)
+  })
+
+  it('leaves an existing local transcript path unchanged', () => {
+    const local = '/Users/ada/.claude/projects/repo/session.jsonl'
+    expect(
+      resolveHostReadableTranscriptPath(local, {
+        platform: 'darwin',
+        pathExists: (candidate) => candidate === local,
+        listDistros: () => ['Ubuntu']
+      })
+    ).toBe(local)
+  })
+
+  it('prefers the distro whose home owns the guest path', () => {
+    const linux = '/home/ada/.claude/projects/repo/session.jsonl'
+    const ubuntuUnc = '\\\\wsl.localhost\\Ubuntu\\home\\ada\\.claude\\projects\\repo\\session.jsonl'
+    const debianUnc = '\\\\wsl.localhost\\Debian\\home\\ada\\.claude\\projects\\repo\\session.jsonl'
+    const seen: string[] = []
+    expect(
+      resolveHostReadableTranscriptPath(linux, {
+        platform: 'win32',
+        pathExists: (candidate) => {
+          seen.push(candidate)
+          return candidate === ubuntuUnc || candidate === debianUnc
+        },
+        listDistros: () => ['Debian', 'Ubuntu'],
+        getDistroHome: (distro) =>
+          distro === 'Ubuntu'
+            ? '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+            : '\\\\wsl.localhost\\Debian\\home\\other'
+      })
+    ).toBe(ubuntuUnc)
+    expect(seen).toEqual([ubuntuUnc])
+  })
+
+  it('returns null when no distro maps to an existing path', () => {
+    expect(
+      resolveHostReadableTranscriptPath('/home/ada/missing.jsonl', {
+        platform: 'win32',
+        pathExists: () => false,
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toBeNull()
+  })
+})
+
+describe('wslCodexSessionsDirs', () => {
+  it('lists managed and system Codex roots for each readable WSL home', () => {
+    const home = '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+    expect(
+      wslCodexSessionsDirs({
+        platform: 'win32',
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => home
+      })
+    ).toEqual([
+      `${home}\\.local\\share\\orca\\codex-runtime-home\\home\\sessions`,
+      `${home}\\.codex\\sessions`
+    ])
+  })
+
+  it('does not add WSL roots outside Windows', () => {
+    expect(
+      wslCodexSessionsDirs({
+        platform: 'linux',
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toEqual([])
+  })
+})

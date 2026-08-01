@@ -9,6 +9,10 @@ import {
   findGrokChatHistoryBySessionId,
   resolveGrokSessionsDir
 } from '../../shared/grok-session-paths'
+import {
+  resolveHostReadableTranscriptPath,
+  wslCodexSessionsDirs
+} from './host-readable-transcript-path'
 
 // Why: these mirror the path constants in ai-vault/session-scanner.ts. Reads
 // run in the main process against the runtime's own home directory; over SSH
@@ -28,7 +32,8 @@ function claudeProjectsDir(): string {
 function codexSessionsDirs(): string[] {
   const candidates = [
     join(getOrcaManagedCodexHomePath(), 'sessions'),
-    join(process.env.CODEX_HOME?.trim() || join(homedir(), '.codex'), 'sessions')
+    join(process.env.CODEX_HOME?.trim() || join(homedir(), '.codex'), 'sessions'),
+    ...wslCodexSessionsDirs()
   ]
   return candidates.filter((dir, index) => candidates.indexOf(dir) === index)
 }
@@ -72,12 +77,15 @@ export async function resolveSessionFilePath(
     return null
   }
   // Why: the hook's transcript_path is the exact file the agent is writing, so it
-  // beats reconstructing a path from the session id. Guard with existsSync so a
-  // stale/remote path falls through to the id-based search rather than returning
-  // a non-existent file.
+  // beats reconstructing a path from the session id. Resolve through the host
+  // readability helper so a WSL Linux path becomes a readable UNC on Windows;
+  // missing/stale paths fall through to the id-based search.
   const hookPath = options.transcriptPath?.trim()
-  if (hookPath && extname(hookPath) === '.jsonl' && existsSync(hookPath)) {
-    return hookPath
+  if (hookPath && extname(hookPath) === '.jsonl') {
+    const hostReadable = resolveHostReadableTranscriptPath(hookPath)
+    if (hostReadable) {
+      return hostReadable
+    }
   }
 
   const trimmedId = sessionId.trim()
