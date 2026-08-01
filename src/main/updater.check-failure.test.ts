@@ -422,9 +422,11 @@ describe('updater check failure handling', () => {
     // Why: a real destroyed BrowserWindow throws "Object has been destroyed"
     // from the webContents getter itself; a plain destroyed-webContents mock
     // cannot catch a helper that touches webContents before checking the window.
+    let webContentsAccessed = false
     const mainWindow = {
       isDestroyed: () => true,
       get webContents(): never {
+        webContentsAccessed = true
         throw new TypeError('Object has been destroyed')
       }
     }
@@ -443,6 +445,7 @@ describe('updater check failure handling', () => {
         })
       })()
     ).resolves.toBeUndefined()
+    expect(webContentsAccessed).toBe(false)
   })
 
   it('still sends updater:status when main WebContents is live', async () => {
