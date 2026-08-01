@@ -2902,7 +2902,7 @@ const api = {
       hostId?: ExecutionHostId
     }): Promise<{
       status: 'ok' | 'error'
-      setup: { runnerScriptPath: string; envVars: Record<string, string>; command?: string } | null
+      setup: { runnerScriptPath: string; envVars: Record<string, string> } | null
       reason?: 'no-setup-configured' | 'folder-repo' | 'runner-failed'
       message?: string
     }> => ipcRenderer.invoke('hooks:prepareSetupRunner', args),
