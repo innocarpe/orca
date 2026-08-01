@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isGuestAbsoluteLinuxPath,
   resolveHostReadableTranscriptPath,
+  wslClaudeProjectsDirs,
   wslCodexSessionsDirs
 } from './host-readable-transcript-path'
 
@@ -129,6 +130,32 @@ describe('wslCodexSessionsDirs', () => {
   it('does not add WSL roots outside Windows', () => {
     expect(
       wslCodexSessionsDirs({
+        platform: 'linux',
+        listDistros: () => ['Ubuntu'],
+        getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toEqual([])
+  })
+})
+
+describe('wslClaudeProjectsDirs', () => {
+  it('lists the Claude projects root for every readable WSL home', () => {
+    const ubuntuHome = '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+    const debianHome = '\\\\wsl.localhost\\Debian\\home\\grace'
+
+    expect(
+      wslClaudeProjectsDirs({
+        platform: 'win32',
+        listDistros: () => ['Ubuntu', 'Missing', 'Debian'],
+        getDistroHome: (distro) =>
+          distro === 'Ubuntu' ? ubuntuHome : distro === 'Debian' ? debianHome : null
+      })
+    ).toEqual([`${ubuntuHome}\\.claude\\projects`, `${debianHome}\\.claude\\projects`])
+  })
+
+  it('does not add WSL roots outside Windows', () => {
+    expect(
+      wslClaudeProjectsDirs({
         platform: 'linux',
         listDistros: () => ['Ubuntu'],
         getDistroHome: () => '\\\\wsl.localhost\\Ubuntu\\home\\ada'

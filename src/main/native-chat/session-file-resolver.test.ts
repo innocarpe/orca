@@ -52,6 +52,23 @@ describe('resolveSessionFilePath', () => {
     ).resolves.toBe(target)
   })
 
+  it('searches an injected WSL Claude projects root after the local root', async () => {
+    const root = await makeRoot('orca-native-chat-resolve-wsl-claude-')
+    const localProjectsDir = join(root, 'local-claude-projects')
+    const wslProjectsDir = join(root, 'wsl', 'Ubuntu', 'home', 'ada', '.claude', 'projects')
+    const projectDir = join(wslProjectsDir, '-home-ada-repo')
+    await mkdir(localProjectsDir, { recursive: true })
+    await mkdir(projectDir, { recursive: true })
+    const target = join(projectDir, 'wsl-claude-session.jsonl')
+    await writeFile(target, '{}\n')
+
+    await expect(
+      resolveSessionFilePath('claude', 'wsl-claude-session', {
+        claudeProjectsDirs: [localProjectsDir, wslProjectsDir]
+      })
+    ).resolves.toBe(target)
+  })
+
   it('resolves Grok chat_history.jsonl under encodeURIComponent(cwd)/sessionId', async () => {
     const root = await makeRoot('orca-native-chat-resolve-grok-')
     const grokSessionsDir = join(root, 'grok-sessions')

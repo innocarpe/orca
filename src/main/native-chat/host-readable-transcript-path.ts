@@ -86,6 +86,26 @@ function rankDistrosForLinuxPath(
   return preferred.length > 0 ? [...preferred, ...others] : [...distros]
 }
 
+/** WSL Claude roots used when the exact hook path is absent. */
+export function wslClaudeProjectsDirs(
+  deps: Pick<HostReadableTranscriptPathDeps, 'platform' | 'listDistros' | 'getDistroHome'> = {}
+): string[] {
+  const platform = deps.platform ?? process.platform
+  if (platform !== 'win32') {
+    return []
+  }
+  const listDistros = deps.listDistros ?? listWslDistros
+  const getDistroHome = deps.getDistroHome ?? getWslHome
+  const dirs: string[] = []
+  for (const distro of listDistros()) {
+    const home = getDistroHome(distro)
+    if (home) {
+      dirs.push(joinWindowsUnc(home, '.claude', 'projects'))
+    }
+  }
+  return dirs
+}
+
 /** WSL Codex roots used when the exact hook path is absent. */
 export function wslCodexSessionsDirs(
   deps: Pick<HostReadableTranscriptPathDeps, 'platform' | 'listDistros' | 'getDistroHome'> = {}
