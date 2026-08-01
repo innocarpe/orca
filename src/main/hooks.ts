@@ -626,16 +626,17 @@ function createWorktreeRunnerScript(args: {
   // rename swaps the inode so the running shell keeps its own copy. The suffix is
   // per-call so overlapping preparations cannot race each other into the fallback.
   const tmpRunnerPath = `${runnerScriptPath}.tmp-${process.pid}-${++runnerTmpSequence}`
-  writeFileSync(tmpRunnerPath, runnerContent, 'utf-8')
-  if (runnerShell.family !== 'cmd' && !nativeWindowsWorktree) {
-    // Why: chmod over a UNC path to the WSL filesystem sets the execute bit correctly inside WSL.
-    chmodSync(tmpRunnerPath, 0o755)
-  }
   try {
+    writeFileSync(tmpRunnerPath, runnerContent, 'utf-8')
+    if (runnerShell.family !== 'cmd' && !nativeWindowsWorktree) {
+      // Why: chmod over a UNC path to the WSL filesystem sets the execute bit correctly inside WSL.
+      chmodSync(tmpRunnerPath, 0o755)
+    }
     renameSync(tmpRunnerPath, runnerScriptPath)
   } catch {
     try {
-      // Why: Windows can refuse to replace a runner cmd.exe still holds open.
+      // Why: Windows can refuse to replace a runner cmd.exe still holds open. The mode
+      // stays 0644 here, which is fine only while consumers run `bash <path>`.
       writeFileSync(runnerScriptPath, runnerContent, 'utf-8')
     } finally {
       rmSync(tmpRunnerPath, { force: true })
