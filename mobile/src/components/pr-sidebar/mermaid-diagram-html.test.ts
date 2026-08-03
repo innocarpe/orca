@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildHtml } from './MermaidDiagram'
+import { MERMAID_ENGINE_JS } from './mermaid-webview-engine.generated'
 
 vi.mock('react-native', () => ({
   ScrollView: 'ScrollView',
-  StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
+  StyleSheet: { create: <T>(styles: T) => styles, hairlineWidth: 1 },
   Text: 'Text',
   View: 'View'
 }))
@@ -37,5 +38,15 @@ describe('buildHtml source escaping', () => {
     const match = html.match(/\.textContent = (".*?");\n {4}mermaid\.initialize/s)
     expect(match).not.toBeNull()
     expect(JSON.parse(match![1]!)).toBe(payload)
+  })
+
+  // Same gate as the terminal document: mermaid is embedded from the lockfile-pinned
+  // package, so the document itself must load nothing external (offline-safe, no CDN
+  // supply-chain exposure). The engine's internal URL literals (xmlns, docs links)
+  // are inert data, so the gate checks the document with the engine stripped out.
+  it('embeds the mermaid engine and loads no external resource', () => {
+    const html = buildHtml('graph TD; A-->B')
+    expect(html).toContain(MERMAID_ENGINE_JS)
+    expect(html.replace(MERMAID_ENGINE_JS, '')).not.toMatch(/\bhttps?:\/\//)
   })
 })
