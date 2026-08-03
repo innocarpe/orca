@@ -49,4 +49,12 @@ describe('buildHtml source escaping', () => {
     expect(html).toContain(MERMAID_ENGINE_JS)
     expect(html.replace(MERMAID_ENGINE_JS, '')).not.toMatch(/\bhttps?:\/\//)
   })
+
+  it('blocks external resources requested by diagram syntax', () => {
+    const html = buildHtml('flowchart LR\nA@{ img: "https://example.com/pixel.png" }')
+    const policy = html.match(/Content-Security-Policy" content="([^"]+)"/)?.[1]
+    expect(policy).toContain("default-src 'none'")
+    expect(policy).toContain('img-src data: blob:')
+    expect(policy).not.toMatch(/https?:/)
+  })
 })

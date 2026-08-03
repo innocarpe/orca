@@ -98,6 +98,7 @@ export function buildHtml(source: string): string {
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'" />
 <style>
   html, body { margin: 0; padding: 0; background: ${colors.bgRaised}; }
   #c { padding: 8px; }
