@@ -67,6 +67,17 @@ describe('resolveHostReadableTranscriptPath', () => {
     ).toBe(unc)
   })
 
+  it('translates a mounted drive path without requiring distro discovery', () => {
+    const hostPath = 'C:\\Users\\ada\\.claude\\projects\\repo\\session.jsonl'
+    expect(
+      resolveHostReadableTranscriptPath('/mnt/c/Users/ada/.claude/projects/repo/session.jsonl', {
+        platform: 'win32',
+        pathExists: (candidate) => candidate === hostPath,
+        listDistros: () => []
+      })
+    ).toBe(hostPath)
+  })
+
   it('leaves an existing local transcript path unchanged', () => {
     const local = '/Users/ada/.claude/projects/repo/session.jsonl'
     expect(

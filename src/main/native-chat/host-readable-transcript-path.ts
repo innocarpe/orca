@@ -44,6 +44,12 @@ export function resolveHostReadableTranscriptPath(
     return null
   }
 
+  // Why: drvfs paths map directly to a Windows drive even when WSL distro discovery is stale.
+  if (/^\/mnt\/[a-z](?:\/|$)/.test(path)) {
+    const hostPath = toWindowsWslPath(path, '')
+    return pathExists(hostPath) ? hostPath : null
+  }
+
   const listDistros = deps.listDistros ?? listWslDistros
   const getDistroHome = deps.getDistroHome ?? getWslHome
   const distros = listDistros()
