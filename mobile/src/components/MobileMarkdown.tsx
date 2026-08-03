@@ -180,7 +180,9 @@ function MobileMarkdownInner({ content, fallback = '', textScale = 1, onOpenFile
         }
         if (block.type === 'code') {
           // Mermaid fences render as diagrams (WebView), not as raw code — same as PR sidebar.
-          if (isMobileMermaidLanguage(block.language)) {
+          // Unclosed fences are still streaming: mounting the WebView per tick would
+          // reload its document up to 20x/sec, so they stay raw code until terminated.
+          if (isMobileMermaidLanguage(block.language) && block.closed) {
             return <MermaidDiagram key={index} source={block.text} base={MERMAID_BASE} />
           }
           return (

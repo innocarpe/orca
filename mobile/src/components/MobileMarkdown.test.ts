@@ -21,9 +21,18 @@ describe('isMobileMermaidLanguage', () => {
 describe('parseMobileMarkdown', () => {
   it('parses mermaid fences as code blocks with language mermaid', () => {
     expect(parseMobileMarkdown('```mermaid\ngraph TD; A-->B\n```')).toEqual([
-      { type: 'code', text: 'graph TD; A-->B', language: 'mermaid' }
+      { type: 'code', text: 'graph TD; A-->B', language: 'mermaid', closed: true }
     ])
     expect(isMobileMermaidLanguage('mermaid')).toBe(true)
+  })
+
+  it('marks an unterminated fence as not closed while it streams', () => {
+    expect(parseMobileMarkdown('```mermaid\ngraph TD; A-->B')).toEqual([
+      { type: 'code', text: 'graph TD; A-->B', language: 'mermaid', closed: false }
+    ])
+    expect(parseMobileMarkdown('```mermaid\ngraph TD; A-->B\n```')[0]).toMatchObject({
+      closed: true
+    })
   })
 
   it('parses GFM tables into table blocks', () => {
