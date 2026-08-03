@@ -110,6 +110,8 @@ export function createHookStatusStatsBridge(
   return {
     apply(statuses, now = Date.now()) {
       const present = new Set<string>()
+      // Why: multiple stale rows can share a PTY-backed key; one snapshot rotates it once.
+      const rotatedSessionKeys = new Set<string>()
 
       for (const status of statuses) {
         present.add(status.paneKey)
@@ -131,6 +133,11 @@ export function createHookStatusStatsBridge(
             // A live turn whose tool call outlasts the horizon splits here too;
             // that granularity residual is documented above.
             if (status.receivedAt - open.lastEvidenceAt > AGENT_STATUS_STALE_AFTER_MS) {
+              if (rotatedSessionKeys.has(open.sessionKey)) {
+                open.lastEvidenceAt = Math.max(open.lastEvidenceAt, status.receivedAt)
+                continue
+              }
+              rotatedSessionKeys.add(open.sessionKey)
               closeSession(status.paneKey, open.lastEvidenceAt)
             } else {
               const previousEvidenceAt = open.lastEvidenceAt

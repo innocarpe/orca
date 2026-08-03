@@ -2219,7 +2219,7 @@ void app.whenReady().then(async () => {
     unsubscribeHookStatusStatsBridge = () => {
       unsubscribe()
       // Why: an empty snapshot closes every hook-opened session through the
-      // bridge's staleness bound. Without it stats.flush() below credits a pane
+      // bridge's staleness bound. Without it stats.flushAsync() below credits a pane
       // stuck at 'working' since a killed agent with wall-clock time to quit.
       bridge.apply([])
     }

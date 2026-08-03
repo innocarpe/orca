@@ -48,7 +48,7 @@ describe('hook status stats bridge wiring', () => {
 
     const willQuitSlice = source.slice(willQuitStart, windowAllClosedStart)
     const teardownIndex = willQuitSlice.indexOf('unsubscribeHookStatusStatsBridge?.()')
-    const flushIndex = willQuitSlice.indexOf('stats?.flush()')
+    const flushIndex = willQuitSlice.indexOf('stats?.flushAsync()')
     expect(teardownIndex).toBeGreaterThanOrEqual(0)
     expect(flushIndex).toBeGreaterThan(teardownIndex)
   })

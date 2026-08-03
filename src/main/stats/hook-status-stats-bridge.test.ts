@@ -219,6 +219,33 @@ describe('createHookStatusStatsBridge', () => {
       'hook'
     )
   })
+  it('rotates stale rows sharing a session key only once per snapshot', () => {
+    const stats = fakeStats()
+    const bridge = createHookStatusStatsBridge(stats, { resolvePtyId: () => 'pty-1' })
+    const nextDay = 1_000 + 24 * 60 * 60 * 1_000
+
+    bridge.apply([
+      status({ paneKey: 'tab-a:0', state: 'working', receivedAt: 1_000 }),
+      status({ paneKey: 'tab-b:0', state: 'working', receivedAt: 1_000 })
+    ])
+    bridge.apply([
+      status({ paneKey: 'tab-a:0', state: 'working', receivedAt: nextDay }),
+      status({ paneKey: 'tab-b:0', state: 'working', receivedAt: nextDay })
+    ])
+
+    expect(stats.onAgentStop).toHaveBeenCalledTimes(1)
+    expect(stats.onAgentStop).toHaveBeenCalledWith('pty-1', 1_000, 'hook')
+    // Both initial rows reach the collector; its shared-key dedupe makes the second a no-op.
+    expect(stats.onAgentStart).toHaveBeenCalledTimes(3)
+    expect(stats.onAgentStart).toHaveBeenLastCalledWith(
+      'pty-1',
+      nextDay,
+      undefined,
+      undefined,
+      'hook'
+    )
+    expect(stats.hasLiveAgent('pty-1')).toBe(true)
+  })
 
   it('reopens the shared session when a sibling row on the same PTY closed it', () => {
     const stats = fakeStats()
