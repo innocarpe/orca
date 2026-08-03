@@ -61,6 +61,7 @@ See also skill **`oss-pr-mirror`**.
 - [ ] Loaded **`orca-merge-playbook`** (3 gates)
 - [ ] BOARD → **PORTFOLIO** → HISTORY restored
 - [ ] Work from `upstream/main`-based worktree
+- [ ] `make worktree-audit` passes before parallel worktree delegation
 - [ ] Before every open-PR follow-up, rebased with `make pr-followup`
 - [ ] Change passes focused / preserves / regression before PR
 - [ ] Tests rerun after the latest-main rebase with the correct vitest config

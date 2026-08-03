@@ -79,6 +79,9 @@ make worktree-add ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
 # Existing worktree
 make worktree-bootstrap DIR=../orca-worktrees/fix-10633
 
+# Verify every registered worktree consumes the same canonical harness
+make worktree-audit
+
 # Remove (keeps remote branch)
 make worktree-rm ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
 ```

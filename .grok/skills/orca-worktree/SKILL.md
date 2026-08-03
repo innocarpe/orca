@@ -26,12 +26,18 @@ pnpm install
 - Symlinks primary `.grok` / `Makefile` / `codex.md` when missing
 - Installs Claude + Codex skills into this worktree
 - Adds **local git exclude** so overlays never enter a `fix/*` PR
+- Fails unless the canonical links, local excludes, and `pr-followup` target pass audit
 
 Re-bootstrap an existing worktree:
 
 ```bash
 make worktree-bootstrap DIR=../orca-worktrees/fix-10633
+make worktree-audit
 ```
+
+Run `make worktree-audit` before assigning parallel agents. It checks every
+registered worktree and fails if any Claude/Codex/Grok surface is copied, stale,
+missing, or visible in an upstream-bound Git diff.
 
 Mobile tests also need:
 

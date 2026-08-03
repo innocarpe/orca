@@ -124,5 +124,12 @@ else
   die "missing $PRIMARY/.grok/install-agent-skills.sh"
 fi
 
+AUDIT="$PRIMARY/.grok/scripts/audit-worktree-harness.sh"
+if [[ -x "$AUDIT" ]]; then
+  ORCA_PRIMARY="$PRIMARY" bash "$AUDIT" "$WT"
+else
+  die "missing executable harness audit: $AUDIT"
+fi
+
 echo "bootstrap-worktree: ok"
 echo "  Harness overlays are worktree-private (git status clean; not PR material)."

@@ -5,6 +5,7 @@
 # Usage:
 #   make worktree-add ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
 #   make worktree-bootstrap DIR=../orca-worktrees/fix-10633
+#   make worktree-audit
 #   make pr-followup
 #   make worktree-rm ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
 #   make agent-install
@@ -21,14 +22,16 @@ GIT ?= /usr/bin/git
 BOOTSTRAP := $(ORCA_PRIMARY)/.grok/scripts/bootstrap-worktree.sh
 INSTALL_SKILLS := $(ORCA_PRIMARY)/.grok/install-agent-skills.sh
 PREPARE_FOLLOWUP := $(ORCA_PRIMARY)/.grok/skills/oss-pr-mirror/scripts/prepare-pr-followup.sh
+AUDIT_WORKTREES := $(ORCA_PRIMARY)/.grok/scripts/audit-worktree-harness.sh
 
-.PHONY: help agent-install worktree-add worktree-bootstrap pr-followup worktree-rm worktree-list ensure-upstream
+.PHONY: help agent-install worktree-add worktree-bootstrap worktree-audit pr-followup worktree-rm worktree-list ensure-upstream
 
 help:
 	@echo "Orca multi-LLM agent harness"
 	@echo ""
 	@echo "  make worktree-add ISSUE=<n> BRANCH=fix/<name>   create from $(UPSTREAM_REF) + bootstrap"
 	@echo "  make worktree-bootstrap DIR=<path>              wire harness into existing worktree"
+	@echo "  make worktree-audit                             verify all worktrees use the canonical harness"
 	@echo "  make pr-followup                                rebase open PR branch onto latest upstream/main"
 	@echo "  make worktree-rm ISSUE=<n> [BRANCH=...]         remove worktree (+ optional local branch)"
 	@echo "  make worktree-list                              list git worktrees"
@@ -53,6 +56,7 @@ agent-install:
 worktree-add: ensure-upstream
 	@test -n "$(ISSUE)" || (echo "error: ISSUE= required" >&2; exit 1)
 	@test -n "$(BRANCH)" || (echo "error: BRANCH= required" >&2; exit 1)
+	@$(MAKE) agent-install
 	@mkdir -p "$(ORCA_WORKTREES)"
 	@test ! -e "$(ORCA_WORKTREES)/fix-$(ISSUE)" || \
 	  (echo "error: already exists $(ORCA_WORKTREES)/fix-$(ISSUE)" >&2; exit 1)
@@ -68,6 +72,11 @@ worktree-bootstrap:
 	@test -n "$(DIR)" || (echo "error: DIR= required" >&2; exit 1)
 	@test -x "$(BOOTSTRAP)" || chmod +x "$(BOOTSTRAP)"
 	@ORCA_PRIMARY="$(ORCA_PRIMARY)" bash "$(BOOTSTRAP)" "$(abspath $(DIR))"
+	@$(MAKE) worktree-audit
+
+worktree-audit:
+	@test -x "$(AUDIT_WORKTREES)" || chmod +x "$(AUDIT_WORKTREES)"
+	@ORCA_PRIMARY="$(ORCA_PRIMARY)" bash "$(AUDIT_WORKTREES)"
 
 # Rebase an open contribution branch before any public follow-up. The script
 # records the exact upstream/remote heads for the later lease-protected sync.

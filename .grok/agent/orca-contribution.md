@@ -39,17 +39,18 @@ Override with `ORCA_PRIMARY` if the primary checkout moves.
 
 1. **Never implement product fixes on primary `main`.** Primary stays clean.
 2. **Create worktrees from `upstream/main`** (fetch first). Fork `origin/main` may lag or hold harness-only commits.
-3. **Before every upstream-facing follow-up on an open PR**, run `make pr-followup` from the clean issue worktree. This fetches and rebases onto the latest `upstream/main`; rerun tests after it. Replies, resolves, PR-body edits, and comments are included—not only code pushes.
-4. **Dual-track PRs** for every contribution:
+3. **Before parallel worktree delegation**, run `make worktree-audit`. Every registered worktree must consume the primary `.grok`, Claude/Codex skills, contribution rule, Makefile, and `codex.md` through audited local-only links.
+4. **Before every upstream-facing follow-up on an open PR**, run `make pr-followup` from the clean issue worktree. This fetches and rebases onto the latest `upstream/main`; rerun tests after it. Replies, resolves, PR-body edits, and comments are included—not only code pushes.
+5. **Dual-track PRs** for every contribution:
    - Upstream review: `gh pr create --repo stablyai/orca --base main --head innocarpe:<branch>`
    - Fork portfolio mirror: `.grok/skills/oss-pr-mirror` (`mirror-upstream-pr.sh`)
-5. **After more commits on an open PR:** use `sync-contribution-push.sh` (not bare `git push`). It fails closed if upstream or the fork branch moved after preparation and uses an exact lease for the required rebase rewrite.
-6. **Session cold-start:** read BOARD → **PORTFOLIO** → HISTORY. Update SSOT on every state change.
-7. **Disk:** after dual PR is open and tree is clean, remove local worktree; keep remote branch. Recreate for review follow-ups.
-8. **Prefer `/usr/bin/git`** when shell wrappers break `PATH`.
-9. **Do not commit** `notes/`, harness-only files on contribution PR branches, or secrets.
-10. **Korean progress reports** for the human user when working in this contribution loop.
-11. **Merge-rate north star (not open-count):** every fix/PR/review follow-up should be a **focused fix**, **preserve product/security intent**, and include **regression coverage**.
+6. **After more commits on an open PR:** use `sync-contribution-push.sh` (not bare `git push`). It fails closed if upstream or the fork branch moved after preparation and uses an exact lease for the required rebase rewrite.
+7. **Session cold-start:** read BOARD → **PORTFOLIO** → HISTORY. Update SSOT on every state change.
+8. **Disk:** after dual PR is open and tree is clean, remove local worktree; keep remote branch. Recreate for review follow-ups.
+9. **Prefer `/usr/bin/git`** when shell wrappers break `PATH`.
+10. **Do not commit** `notes/`, harness-only files on contribution PR branches, or secrets.
+11. **Korean progress reports** for the human user when working in this contribution loop.
+12. **Merge-rate north star (not open-count):** every fix/PR/review follow-up should be a **focused fix**, **preserve product/security intent**, and include **regression coverage**.
     - **Skill (all agents):** [`.grok/skills/orca-merge-playbook/SKILL.md`](../skills/orca-merge-playbook/SKILL.md) — load at session start and before every PR.  
     - **Human SSOT mirror:** `notes/orca-contribution/PORTFOLIO.md` § 머지 플레이북 (from maintainer language on #10474).
 

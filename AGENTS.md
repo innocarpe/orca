@@ -79,7 +79,9 @@ before editing, rerun the relevant tests after the rebase, then publish only via
 `sync-contribution-push.sh`. The sync gate must fail closed if `upstream/main`
 moved after preparation or the fork branch changed concurrently. Never merge
 `upstream/main` into a contribution branch for follow-up work; use rebase plus
-the harness's exact `--force-with-lease` protection.
+the harness's exact `--force-with-lease` protection. Worktree bootstrap must run
+its harness audit, and `make worktree-audit` must pass before parallel work is
+delegated across existing worktrees.
 
 - [`.grok/agent/orca-contribution.md`](./.grok/agent/orca-contribution.md)
 - **Merge-rate skill:** [`.grok/skills/orca-merge-playbook/SKILL.md`](./.grok/skills/orca-merge-playbook/SKILL.md)  
