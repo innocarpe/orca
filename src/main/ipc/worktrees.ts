@@ -3240,7 +3240,8 @@ export function registerWorktreeHandlers(
           repo,
           args.worktreePath,
           setupScript,
-          getLocalProjectWorktreeGitOptions(store, repo)
+          getLocalProjectWorktreeGitOptions(store, repo),
+          resolveSetupRunnerShell(store.getSettings())
         )
         // Why: trust hashes must match the create path's canonical shape (setup +
         // defaultTabs commands) or the one per-repo slot ping-pongs between flows.

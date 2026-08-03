@@ -6766,8 +6766,13 @@ describe('registerWorktreeHandlers', () => {
     })
   })
 
-  it('prepares a setup runner for an existing worktree when setup is configured', async () => {
+  it('prepares a setup runner with the selected Windows shell for an existing worktree', async () => {
     getSetupCommandSourceMock.mockReturnValue({ source: 'yaml', command: 'pnpm install' })
+    const setupShell = {
+      family: 'posix' as const,
+      executable: 'C:\\Program Files\\Git\\bin\\bash.exe'
+    }
+    resolveSetupRunnerShellMock.mockReturnValue(setupShell)
 
     const result = await handlers['hooks:prepareSetupRunner'](null, {
       repoId: 'repo-1',
@@ -6778,11 +6783,13 @@ describe('registerWorktreeHandlers', () => {
       expect.objectContaining({ id: 'repo-1' }),
       '/workspace/improve-dashboard'
     )
+    expect(resolveSetupRunnerShellMock).toHaveBeenCalledWith(store.getSettings())
     expect(createSetupRunnerScriptMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'repo-1' }),
       '/workspace/improve-dashboard',
       'pnpm install',
-      {}
+      {},
+      setupShell
     )
     expect(result).toEqual({
       status: 'ok',
