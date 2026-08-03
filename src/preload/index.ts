@@ -2902,7 +2902,7 @@ const api = {
       hostId?: ExecutionHostId
     }): Promise<{
       status: 'ok' | 'error'
-      setup: { runnerScriptPath: string; envVars: Record<string, string> } | null
+      setup: WorktreeSetupLaunch | null
       setupScript?: string
       setupScriptSource?: 'yaml' | 'local' | 'both'
       trustContent?: string
