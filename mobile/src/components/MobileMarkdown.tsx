@@ -183,7 +183,7 @@ function MobileMarkdownInner({ content, fallback = '', textScale = 1, onOpenFile
           // Unclosed fences are still streaming: mounting the WebView per tick would
           // reload its document up to 20x/sec, so they stay raw code until terminated.
           if (isMobileMermaidLanguage(block.language) && block.closed) {
-            return <MermaidDiagram key={index} source={block.text} base={MERMAID_BASE} />
+            return <MermaidDiagram key={block.text} source={block.text} base={MERMAID_BASE} />
           }
           return (
             <View key={index} style={styles.codeBlock}>
