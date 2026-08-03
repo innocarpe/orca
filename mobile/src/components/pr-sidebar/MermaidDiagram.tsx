@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { colors, radii, spacing, typography } from '../../theme/mobile-theme'
@@ -13,7 +13,10 @@ type Props = {
 // SVG is themed dark to match the sidebar, and the WebView posts back its rendered
 // height so we can size to content. On any failure (no network, parse error,
 // render error) we fall back to the raw source in a labeled mono code box.
-export function MermaidDiagram({ source, base }: Props) {
+// memo: both props are primitives; without it every mounted diagram re-renders
+// per frame during pinch-to-zoom (textScale updates), marshalling the full HTML
+// string across the Fabric boundary each time.
+export const MermaidDiagram = memo(function MermaidDiagram({ source, base }: Props) {
   const [height, setHeight] = useState(0)
   const [failed, setFailed] = useState(false)
   const html = useMemo(() => buildHtml(source), [source])
@@ -58,7 +61,7 @@ export function MermaidDiagram({ source, base }: Props) {
       />
     </View>
   )
-}
+})
 
 function MermaidFallback({ source, base }: Props) {
   return (
@@ -87,6 +90,17 @@ function buildHtml(source: string): string {
   #c { padding: 8px; }
   #c svg { max-width: 100%; height: auto; }
 </style>
+<script>
+  /* A stalled CDN load blocks the parser, so the render script below never runs
+     and neither the diagram nor the fallback would appear. Timers set before a
+     blocking script still fire, so this watchdog forces the fallback. */
+  window.__mermaidRendered = false;
+  setTimeout(function () {
+    if (!window.__mermaidRendered && window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage('error');
+    }
+  }, 8000);
+</script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
@@ -114,8 +128,8 @@ function buildHtml(source: string): string {
       }
     });
     mermaid.run({ querySelector: '.mermaid' })
-      .then(reportHeight)
-      .catch(function () { post('error'); });
+      .then(function () { window.__mermaidRendered = true; reportHeight(); })
+      .catch(function () { window.__mermaidRendered = true; post('error'); });
   } catch (e) {
     post('error');
   }
