@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
 import { toWindowsWslPath } from '../../shared/wsl-paths'
 import { getWslHome, listWslDistros } from '../wsl'
 
@@ -11,7 +10,7 @@ export function isGuestAbsoluteLinuxPath(path: string): boolean {
   if (/^\/[A-Za-z]:(\/|$)/.test(path)) {
     return false
   }
-  return isAbsolute(path)
+  return true
 }
 
 export type HostReadableTranscriptPathDeps = {
@@ -83,7 +82,11 @@ function rankDistrosForLinuxPath(
       continue
     }
     const homeLinux = homeUnc.replace(/\\/g, '/').replace(/^\/\/(wsl\.localhost|wsl\$)\/[^/]+/i, '')
-    if (homeLinux && (linuxPath === homeLinux || linuxPath.startsWith(`${homeLinux}/`))) {
+    if (
+      homeLinux &&
+      homeLinux !== '/' &&
+      (linuxPath === homeLinux || linuxPath.startsWith(`${homeLinux}/`))
+    ) {
       preferred.push(distro)
     } else {
       others.push(distro)

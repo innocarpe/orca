@@ -111,6 +111,26 @@ describe('resolveHostReadableTranscriptPath', () => {
     expect(seen).toEqual([ubuntuUnc])
   })
 
+  it('does not prefer a distro whose reported home is the filesystem root', () => {
+    const linux = '/home/ada/.claude/projects/repo/session.jsonl'
+    const rootUnc = '\\\\wsl.localhost\\Root\\home\\ada\\.claude\\projects\\repo\\session.jsonl'
+    const ubuntuUnc = '\\\\wsl.localhost\\Ubuntu\\home\\ada\\.claude\\projects\\repo\\session.jsonl'
+    const seen: string[] = []
+    expect(
+      resolveHostReadableTranscriptPath(linux, {
+        platform: 'win32',
+        pathExists: (candidate) => {
+          seen.push(candidate)
+          return candidate === rootUnc || candidate === ubuntuUnc
+        },
+        listDistros: () => ['Root', 'Ubuntu'],
+        getDistroHome: (distro) =>
+          distro === 'Root' ? '\\\\wsl.localhost\\Root\\' : '\\\\wsl.localhost\\Ubuntu\\home\\ada'
+      })
+    ).toBe(ubuntuUnc)
+    expect(seen).toEqual([ubuntuUnc])
+  })
+
   it('returns null when no distro maps to an existing path', () => {
     expect(
       resolveHostReadableTranscriptPath('/home/ada/missing.jsonl', {
