@@ -4,7 +4,8 @@
 #   - fork mirror  (innocarpe/orca  main <- branch)
 #
 # One push to the fork is enough: both PRs share the same head branch on the fork.
-# This script makes that explicit, verifies both PRs, optionally comments both.
+# This script also enforces the prepare -> validate -> sync contract: every
+# follow-up must be rebased onto the latest upstream/main first.
 #
 # Usage:
 #   sync-contribution-push.sh                 # push current branch, verify both PRs
@@ -16,6 +17,8 @@
 #   UPSTREAM_REPO  default: stablyai/orca
 #   FORK_REPO      default: innocarpe/orca
 #   REMOTE         default: origin
+#   UPSTREAM_REMOTE default: upstream
+#   UPSTREAM_BRANCH default: main
 #   AUTHOR         default: gh api user
 
 set -euo pipefail
@@ -23,6 +26,8 @@ set -euo pipefail
 UPSTREAM_REPO="${UPSTREAM_REPO:-stablyai/orca}"
 FORK_REPO="${FORK_REPO:-innocarpe/orca}"
 REMOTE="${REMOTE:-origin}"
+UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-upstream}"
+UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
 AUTHOR="${AUTHOR:-$(gh api user -q .login)}"
 # Prefer sibling script (project skill under <repo>/.grok/skills/oss-pr-mirror/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,16 +82,66 @@ done
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 [[ -n "$branch" && "$branch" != "HEAD" ]] || die "not on a named branch"
 [[ "$branch" != "main" && "$branch" != "master" ]] || die "refuse to sync from main/master"
+[[ -z "$(git status --porcelain)" ]] || die "worktree must be clean before sync"
+
+upstream_ref="refs/remotes/${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH}"
+git fetch "$UPSTREAM_REMOTE" "+refs/heads/${UPSTREAM_BRANCH}:${upstream_ref}"
+upstream_sha="$(git rev-parse "$upstream_ref")"
+sha="$(git rev-parse HEAD)"
+remote_sha="$({ git ls-remote --exit-code --heads "$REMOTE" "refs/heads/${branch}" || true; } | awk 'NR == 1 { print $1 }')"
+[[ -n "$remote_sha" ]] || die "remote branch not found: ${REMOTE}/${branch}"
+
+git merge-base --is-ancestor "$upstream_ref" HEAD || \
+  die "branch does not contain latest ${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH} (${upstream_sha}); run prepare-pr-followup.sh, rerun tests, then sync"
+[[ -z "$(git rev-list --merges "${upstream_ref}..HEAD")" ]] || \
+  die "follow-up history contains merge commits; run prepare-pr-followup.sh and rerun tests"
 
 if [[ "$DO_PUSH" -eq 1 ]]; then
-  # Single source of truth for both PRs: the fork branch.
-  git push -u "$REMOTE" "HEAD:refs/heads/${branch}"
-  echo "pushed ${branch} -> ${REMOTE} (${FORK_REPO})"
+  state_file="$(git rev-parse --git-path orca-pr-followup-state)"
+  [[ -f "$state_file" ]] || die "missing follow-up preparation state; run prepare-pr-followup.sh before editing/testing"
+
+  state_value() {
+    awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$state_file"
+  }
+
+  state_version="$(state_value version)"
+  state_branch="$(state_value branch)"
+  state_remote="$(state_value remote)"
+  expected_remote_sha="$(state_value remote_sha)"
+  state_upstream_remote="$(state_value upstream_remote)"
+  state_upstream_branch="$(state_value upstream_branch)"
+  state_upstream_sha="$(state_value upstream_sha)"
+  prepared_head="$(state_value prepared_head)"
+
+  [[ "$state_version" == "1" ]] || die "unsupported or incomplete follow-up preparation state"
+  [[ -n "$expected_remote_sha" && -n "$state_upstream_sha" && -n "$prepared_head" ]] || \
+    die "incomplete follow-up preparation state"
+  [[ "$state_branch" == "$branch" ]] || die "prepared branch changed: expected ${state_branch}, got ${branch}"
+  [[ "$state_remote" == "$REMOTE" ]] || die "prepared remote changed: expected ${state_remote}, got ${REMOTE}"
+  [[ "$state_upstream_remote" == "$UPSTREAM_REMOTE" && "$state_upstream_branch" == "$UPSTREAM_BRANCH" ]] || \
+    die "prepared upstream changed; rerun prepare-pr-followup.sh"
+  [[ "$state_upstream_sha" == "$upstream_sha" ]] || \
+    die "${UPSTREAM_REMOTE}/${UPSTREAM_BRANCH} moved after preparation; rebase again and rerun tests"
+  [[ "$expected_remote_sha" == "$remote_sha" ]] || \
+    die "${REMOTE}/${branch} moved after preparation; reconcile the remote update before pushing"
+  git merge-base --is-ancestor "$prepared_head" HEAD || \
+    die "prepared history was rewritten after validation; rerun prepare-pr-followup.sh and tests"
+
+  echo "Public commit subjects:"
+  git log "${upstream_ref}..HEAD" --format='%h %s'
+  echo
+
+  # Rebase rewrites published history; pin the exact observed remote head so a
+  # concurrent maintainer/agent update cannot be overwritten.
+  git push --force-with-lease="refs/heads/${branch}:${expected_remote_sha}" \
+    -u "$REMOTE" "HEAD:refs/heads/${branch}"
+  rm -f "$state_file"
+  echo "rebased + lease-protected push ${branch} -> ${REMOTE} (${FORK_REPO})"
 else
+  [[ "$remote_sha" == "$sha" ]] || die "--no-push requires local HEAD to match ${REMOTE}/${branch}"
   echo "skip push (--no-push)"
 fi
 
-sha="$(git rev-parse HEAD)"
 short_sha="$(git rev-parse --short HEAD)"
 subject="$(git log -1 --pretty=%s)"
 

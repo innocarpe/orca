@@ -52,6 +52,21 @@ make agent-install
 Re-run after adding/editing skills so Claude (`.claude/skills/`) and Codex (`.agents/skills/`)
 pick up symlinks. Grok reads `.grok/skills/` directly.
 
+## Every open-PR follow-up starts from current upstream
+
+From the clean issue worktree, run this before editing, replying, resolving,
+changing the PR body, or posting a status comment:
+
+```bash
+make pr-followup
+# edit -> rerun tests -> commit
+.grok/skills/oss-pr-mirror/scripts/sync-contribution-push.sh
+```
+
+Preparation records the exact fork head and freshly fetched `upstream/main`.
+Sync fetches again and fails closed if either moved, then uses an exact
+`--force-with-lease` and verifies both PR heads.
+
 ## Worktrees always get the harness
 
 Upstream-based worktrees do **not** contain fork `.grok` history. Use the Makefile

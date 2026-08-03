@@ -3,7 +3,7 @@ name: oss-pr-mirror
 description: >
   Dual-track Orca (and similar) OSS PRs: upstream for real review (stablyai/orca)
   plus fork portfolio mirror (innocarpe/orca) for GitHub exhibition. Use when
-  opening an upstream PR, pushing review follow-ups, amending after PR open,
+  opening an upstream PR, rebasing and pushing review follow-ups, amending after PR open,
   or the user says "mirror PR", "fork PR", "portfolio PR", "내 레포에도",
   "전시용 PR", "양쪽 PR", "upstream이랑 내 레포", "추가 수정 push", "sync both PRs",
   or runs /oss-pr-mirror. ALWAYS after gh pr create to stablyai/orca AND after
@@ -66,7 +66,8 @@ if [[ -d "$(git rev-parse --show-toplevel)/.grok/skills/oss-pr-mirror" ]]; then
 fi
 MIRROR="$SKILL_ROOT/scripts/mirror-upstream-pr.sh"
 SYNC="$SKILL_ROOT/scripts/sync-contribution-push.sh"
-chmod +x "$MIRROR" "$SYNC"
+PREPARE="$SKILL_ROOT/scripts/prepare-pr-followup.sh"
+chmod +x "$MIRROR" "$PREPARE" "$SYNC"
 ```
 
 ---
@@ -98,10 +99,13 @@ Agent checklist:
 ## B) After PR open: more commits / review fixes (mandatory every push)
 
 ```bash
-# From the same worktree / branch:
+# From the clean issue worktree, before editing or replying:
+"$PREPARE" # or: make pr-followup
+
+# Then make the focused change and validate the rebased tree:
 git add ... && git commit -m "..."
 
-# Push once to fork + verify both PRs share HEAD (+ ensure mirror exists)
+# Lease-protected push + verify both PRs share HEAD (+ ensure mirror exists)
 "$SYNC"
 # with dual activity comment:
 "$SYNC" --comment "Address review: tighten Grok background HUD transition test"
@@ -109,26 +113,31 @@ git add ... && git commit -m "..."
 
 What `$SYNC` does:
 
-1. `git push -u origin HEAD:<branch>` (fork only — powers **both** PRs)
-2. Finds open upstream PR for this branch + author
-3. Runs mirror script if fork portfolio PR is missing
-4. Prints upstream URL, fork URL, both head SHAs vs local HEAD
-5. Optional `--comment` posts the **same** update note on both PRs
+1. Fetches `upstream/main` again and rejects stale preparation/validation
+2. Rejects concurrent fork-branch changes against the sealed remote SHA
+3. Pushes with exact `--force-with-lease` (fork only — powers **both** PRs)
+4. Finds the open upstream PR and ensures the fork mirror exists
+5. Prints upstream URL, fork URL, both head SHAs vs local HEAD
+6. Optionally posts the **same** update note on both PRs
 
 ### Agent rules for follow-up edits
 
 Whenever you amend code after an Orca upstream PR is open:
 
-1. Keep the change **in scope** (`orca-merge-playbook`: no drive-by expansions while addressing review)
-2. Commit on the **issue worktree branch** (not primary `main`)
-3. Run **`sync-contribution-push.sh`** (not bare `git push` alone)
-4. Confirm output shows both PRs at the same SHA
-5. Prefer **one clear human comment** over `--comment` spam for Sync update noise
-6. Update `HISTORY.md` with a short “follow-up push” line when non-trivial
+1. Start clean and run **`prepare-pr-followup.sh` / `make pr-followup`** before editing or replying
+2. Keep the change **in scope** (`orca-merge-playbook`: no drive-by expansions while addressing review)
+3. Rerun regression and quality checks after the rebase
+4. Commit on the **issue worktree branch** (not primary `main`)
+5. Run **`sync-contribution-push.sh`** (not bare `git push` alone)
+6. Confirm output shows both PRs at the same SHA
+7. Prefer **one clear human comment** over `--comment` spam for Sync update noise
+8. Update `HISTORY.md` with a short “follow-up push” line when non-trivial
 
 Do **not**:
 
 - Push only and forget to check fork mirror still exists
+- Reply/resolve/edit a PR while its branch is behind freshly fetched `upstream/main`
+- Test before rebasing and reuse those stale-base results afterward
 - Open a second upstream PR for the same branch
 - Merge the fork portfolio PR into fork `main` before upstream merges
 - Expand PR scope while “just fixing CR”
@@ -140,7 +149,8 @@ Do **not**:
 If you change the **upstream PR description**, mirror key facts onto the fork PR body or post a comment with the delta. Bodies are independent; commits are not.
 
 ```bash
-# Example: comment both after a meaningful description rewrite
+# Comment-only actions are allowed only when the remote branch already contains
+# the freshly fetched upstream/main; otherwise prepare, test, and sync first.
 "$SYNC" --no-push --comment "Updated PR description: added Evidence + tradeoffs"
 ```
 
@@ -151,8 +161,8 @@ If you change the **upstream PR description**, mirror key facts onto the fork PR
 | Event | Action |
 |-------|--------|
 | Open | upstream PR + `$MIRROR` |
-| More commits | `$SYNC` (push once) |
-| Review reply | commit + `$SYNC --comment "..."` |
+| More commits | `$PREPARE` → edit/test/commit → `$SYNC` |
+| Review reply | `$PREPARE` → edit/test/commit → `$SYNC --comment "..."` |
 | Upstream merged | close fork mirror; `gh repo sync innocarpe/orca --source stablyai/orca` (or UI Sync fork); BOARD/HISTORY `done` |
 | Upstream closed | close fork mirror |
 
@@ -167,7 +177,9 @@ If you change the **upstream PR description**, mirror key facts onto the fork PR
 # Ensure every open upstream PR has a fork mirror
 "$MIRROR" --all-open
 
-# After local commits on fix branch
+# Before every open-PR follow-up
+"$PREPARE"
+# Then edit, test, commit, and sync
 "$SYNC"
 "$SYNC" --comment "fix: address CodeRabbit transition-test suggestion"
 ```
@@ -176,5 +188,5 @@ If you change the **upstream PR description**, mirror key facts onto the fork PR
 
 - Thinking upstream and fork need two different push targets for code (they share one branch)
 - Skipping `$SYNC` / mirror after follow-up commits
-- Force-push without telling user (confirm first if rewriting published history)
+- Raw force-push; only the harness's sealed exact `--force-with-lease` is allowed
 - Merging portfolio PRs into fork main early

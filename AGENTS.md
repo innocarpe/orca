@@ -70,6 +70,17 @@ gitignored SSOT notes. Before every upstream-bound push, inspect
 this rule, rewrite it and push with `--force-with-lease`, then verify that both
 the upstream PR and fork mirror point to the replacement SHA.
 
+### Fresh upstream base for every follow-up
+
+Before **any** upstream-facing follow-up on an open PR—including code pushes,
+review replies/resolves, PR-body edits, or status comments—fetch and rebase the
+contribution branch onto the latest `upstream/main`. Run `make pr-followup`
+before editing, rerun the relevant tests after the rebase, then publish only via
+`sync-contribution-push.sh`. The sync gate must fail closed if `upstream/main`
+moved after preparation or the fork branch changed concurrently. Never merge
+`upstream/main` into a contribution branch for follow-up work; use rebase plus
+the harness's exact `--force-with-lease` protection.
+
 - [`.grok/agent/orca-contribution.md`](./.grok/agent/orca-contribution.md)
 - **Merge-rate skill:** [`.grok/skills/orca-merge-playbook/SKILL.md`](./.grok/skills/orca-merge-playbook/SKILL.md)  
   (focused fix · preserves intent · regression coverage — not open-PR volume)

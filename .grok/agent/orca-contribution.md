@@ -39,16 +39,17 @@ Override with `ORCA_PRIMARY` if the primary checkout moves.
 
 1. **Never implement product fixes on primary `main`.** Primary stays clean.
 2. **Create worktrees from `upstream/main`** (fetch first). Fork `origin/main` may lag or hold harness-only commits.
-3. **Dual-track PRs** for every contribution:
+3. **Before every upstream-facing follow-up on an open PR**, run `make pr-followup` from the clean issue worktree. This fetches and rebases onto the latest `upstream/main`; rerun tests after it. Replies, resolves, PR-body edits, and comments are included—not only code pushes.
+4. **Dual-track PRs** for every contribution:
    - Upstream review: `gh pr create --repo stablyai/orca --base main --head innocarpe:<branch>`
    - Fork portfolio mirror: `.grok/skills/oss-pr-mirror` (`mirror-upstream-pr.sh`)
-4. **After more commits on an open PR:** use `sync-contribution-push.sh` (not bare `git push` alone).
-5. **Session cold-start:** read BOARD → **PORTFOLIO** → HISTORY. Update SSOT on every state change.
-6. **Disk:** after dual PR is open and tree is clean, remove local worktree; keep remote branch. Recreate for review follow-ups.
-7. **Prefer `/usr/bin/git`** when shell wrappers break `PATH`.
-8. **Do not commit** `notes/`, harness-only files on contribution PR branches, or secrets.
-9. **Korean progress reports** for the human user when working in this contribution loop.
-10. **Merge-rate north star (not open-count):** every fix/PR/review follow-up should be a **focused fix**, **preserve product/security intent**, and include **regression coverage**.  
+5. **After more commits on an open PR:** use `sync-contribution-push.sh` (not bare `git push`). It fails closed if upstream or the fork branch moved after preparation and uses an exact lease for the required rebase rewrite.
+6. **Session cold-start:** read BOARD → **PORTFOLIO** → HISTORY. Update SSOT on every state change.
+7. **Disk:** after dual PR is open and tree is clean, remove local worktree; keep remote branch. Recreate for review follow-ups.
+8. **Prefer `/usr/bin/git`** when shell wrappers break `PATH`.
+9. **Do not commit** `notes/`, harness-only files on contribution PR branches, or secrets.
+10. **Korean progress reports** for the human user when working in this contribution loop.
+11. **Merge-rate north star (not open-count):** every fix/PR/review follow-up should be a **focused fix**, **preserve product/security intent**, and include **regression coverage**.
     - **Skill (all agents):** [`.grok/skills/orca-merge-playbook/SKILL.md`](../skills/orca-merge-playbook/SKILL.md) — load at session start and before every PR.  
     - **Human SSOT mirror:** `notes/orca-contribution/PORTFOLIO.md` § 머지 플레이북 (from maintainer language on #10474).
 
@@ -100,7 +101,8 @@ ORCA_PRIMARY="${ORCA_PRIMARY:-$HOME/Projects/OpenSources/orca}"
 SKILL="$ORCA_PRIMARY/.grok/skills/oss-pr-mirror"
 MIRROR="$SKILL/scripts/mirror-upstream-pr.sh"
 SYNC="$SKILL/scripts/sync-contribution-push.sh"
-chmod +x "$MIRROR" "$SYNC"
+PREPARE="$SKILL/scripts/prepare-pr-followup.sh"
+chmod +x "$MIRROR" "$PREPARE" "$SYNC"
 
 # From worktree after commit:
 git push -u origin HEAD
@@ -110,7 +112,9 @@ gh pr create --repo stablyai/orca --base main --head innocarpe:<branch> \
 
 "$MIRROR" <upstream-pr-number>
 
-# Later commits:
+# Every later response, before editing/replying:
+"$PREPARE" # or: make pr-followup
+# edit -> tests -> commit
 "$SYNC"
 "$SYNC" --comment "Address review: ..."
 ```

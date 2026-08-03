@@ -64,12 +64,23 @@ PATH quirks: use `/usr/bin/git` and `/bin/rm` if wrappers break.
 ```bash
 git fetch origin
 git worktree add "$WT_ROOT/fix-$ISSUE" "origin/$BRANCH"
-cd "$WT_ROOT/fix-$ISSUE" && pnpm install
+make -C "$ORCA_PRIMARY" worktree-bootstrap DIR="$WT_ROOT/fix-$ISSUE"
+cd "$WT_ROOT/fix-$ISSUE"
+make pr-followup
+pnpm install
 ```
+
+`make pr-followup` always fetches and rebases onto the latest `upstream/main`.
+Run it before editing or posting any public review response. If it conflicts,
+resolve or abort the rebase before touching the review request.
 
 ## Dual push after fixes
 
 ```bash
+# After make pr-followup -> edit -> tests -> commit:
 "$ORCA_PRIMARY/.grok/skills/oss-pr-mirror/scripts/sync-contribution-push.sh" \
   --comment "Address review: …"
 ```
+
+The sync gate fetches `upstream/main` again. If upstream moved after testing, it
+refuses the push; rerun `make pr-followup` and the affected checks.

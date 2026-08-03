@@ -38,13 +38,16 @@ Canonical tracked skills: `.grok/skills/*/SKILL.md`.
 ORCA_PRIMARY="${ORCA_PRIMARY:-$HOME/Projects/OpenSources/orca}"
 MIRROR="$ORCA_PRIMARY/.grok/skills/oss-pr-mirror/scripts/mirror-upstream-pr.sh"
 SYNC="$ORCA_PRIMARY/.grok/skills/oss-pr-mirror/scripts/sync-contribution-push.sh"
+PREPARE="$ORCA_PRIMARY/.grok/skills/oss-pr-mirror/scripts/prepare-pr-followup.sh"
 
 git push -u origin HEAD
 gh pr create --repo stablyai/orca --base main --head innocarpe:<branch> ...
 "$MIRROR" <upstream-pr-number>
-# later:
+# Every open-PR follow-up, before editing/replying:
+"$PREPARE" # then edit, rerun tests, commit
 "$SYNC" --comment "…"
 ```
 
 Do **not** implement on primary `main`. Do **not** PR harness-only `.grok/` commits to upstream.  
+Do **not** publish any open-PR follow-up before rebasing onto freshly fetched `upstream/main`.
 PR body must include **Focused fix / Preserves / Evidence** (`orca-merge-playbook`).

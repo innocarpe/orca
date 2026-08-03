@@ -5,6 +5,7 @@
 # Usage:
 #   make worktree-add ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
 #   make worktree-bootstrap DIR=../orca-worktrees/fix-10633
+#   make pr-followup
 #   make worktree-rm ISSUE=10633 BRANCH=fix/skill-freshness-attention-dialog
 #   make agent-install
 #   make agent-install DIR=../orca-worktrees/fix-10633
@@ -19,14 +20,16 @@ GIT ?= /usr/bin/git
 
 BOOTSTRAP := $(ORCA_PRIMARY)/.grok/scripts/bootstrap-worktree.sh
 INSTALL_SKILLS := $(ORCA_PRIMARY)/.grok/install-agent-skills.sh
+PREPARE_FOLLOWUP := $(ORCA_PRIMARY)/.grok/skills/oss-pr-mirror/scripts/prepare-pr-followup.sh
 
-.PHONY: help agent-install worktree-add worktree-bootstrap worktree-rm worktree-list ensure-upstream
+.PHONY: help agent-install worktree-add worktree-bootstrap pr-followup worktree-rm worktree-list ensure-upstream
 
 help:
 	@echo "Orca multi-LLM agent harness"
 	@echo ""
 	@echo "  make worktree-add ISSUE=<n> BRANCH=fix/<name>   create from $(UPSTREAM_REF) + bootstrap"
 	@echo "  make worktree-bootstrap DIR=<path>              wire harness into existing worktree"
+	@echo "  make pr-followup                                rebase open PR branch onto latest upstream/main"
 	@echo "  make worktree-rm ISSUE=<n> [BRANCH=...]         remove worktree (+ optional local branch)"
 	@echo "  make worktree-list                              list git worktrees"
 	@echo "  make agent-install [DIR=.]                      install Claude/Codex skills in DIR"
@@ -35,9 +38,8 @@ help:
 	@echo "ORCA_WORKTREES=$(ORCA_WORKTREES)"
 
 ensure-upstream:
-	@cd "$(ORCA_PRIMARY)" && $(GIT) fetch upstream main 2>/dev/null || \
-	  $(GIT) fetch upstream 2>/dev/null || \
-	  echo "warn: could not fetch upstream (using local $(UPSTREAM_REF))"
+	@cd "$(ORCA_PRIMARY)" && \
+	  $(GIT) fetch upstream "+refs/heads/main:refs/remotes/upstream/main"
 
 # Install skills into DIR (default: primary). DIR may be a worktree.
 agent-install:
@@ -66,6 +68,12 @@ worktree-bootstrap:
 	@test -n "$(DIR)" || (echo "error: DIR= required" >&2; exit 1)
 	@test -x "$(BOOTSTRAP)" || chmod +x "$(BOOTSTRAP)"
 	@ORCA_PRIMARY="$(ORCA_PRIMARY)" bash "$(BOOTSTRAP)" "$(abspath $(DIR))"
+
+# Rebase an open contribution branch before any public follow-up. The script
+# records the exact upstream/remote heads for the later lease-protected sync.
+pr-followup:
+	@test -x "$(PREPARE_FOLLOWUP)" || chmod +x "$(PREPARE_FOLLOWUP)"
+	@bash "$(PREPARE_FOLLOWUP)"
 
 worktree-rm:
 	@test -n "$(ISSUE)" || (echo "error: ISSUE= required" >&2; exit 1)

@@ -73,7 +73,8 @@ Copy into the agent’s working notes before coding and again before `gh pr crea
 | Free-issue scout | Prefer candidates that can pass all 3 gates in one PR |
 | Implementation | Scope lock before first commit; refuse scope creep mid-PR |
 | CodeRabbit / human review | Address thread **in scope**; no drive-by “improvements” |
-| Conflict rebase | Preserve focused intent; do not absorb unrelated main changes into the story |
+| Every open-PR follow-up | Rebase onto freshly fetched `upstream/main` before editing/replying; rerun tests afterward |
+| Rebase conflict | Preserve focused intent; do not absorb unrelated main changes into the story |
 | PR body | Template below |
 | Session prioritization | Babysit mergeable narrow PRs before opening more volume |
 
@@ -132,5 +133,6 @@ Fixes #<N>
 - [ ] Focused: no unrelated files in diff for “nice to have”
 - [ ] Preserves: stated in PR or review reply
 - [ ] Regression: test path green (or explicit untestable reason)
+- [ ] Fresh base: `make pr-followup` ran before this follow-up, and tests ran after it
 - [ ] Dual PR / SSOT updated if this is a contribution session
 - [ ] Did **not** prioritize open-count over mergeability

@@ -19,5 +19,6 @@ You are contributing via the **innocarpe** fork of **stablyai/orca**.
 | `orca-worktree` | Create/remove `orca-worktrees/fix-*` |
 
 **Never** implement product fixes on primary `main`. Use worktrees from `upstream/main`.  
+**Always** run `make pr-followup` before any open-PR push/reply/resolve/body/comment, then rerun tests and publish through the sync harness.
 **Never** put harness-only commits on branches that PR to upstream.  
 **North star:** merged count, not open PR volume — load `orca-merge-playbook` before coding or PR.
