@@ -157,6 +157,7 @@ function MobileMarkdownInner({ content, fallback = '', textScale = 1, onOpenFile
   if (!text) {
     return fallback ? <Text style={styles.paragraph}>{fallback}</Text> : null
   }
+  const mermaidSourceOccurrences = new Map<string, number>()
 
   return (
     <View style={styles.root}>
@@ -183,7 +184,15 @@ function MobileMarkdownInner({ content, fallback = '', textScale = 1, onOpenFile
           // Unclosed fences are still streaming: mounting the WebView per tick would
           // reload its document up to 20x/sec, so they stay raw code until terminated.
           if (isMobileMermaidLanguage(block.language) && block.closed) {
-            return <MermaidDiagram key={block.text} source={block.text} base={MERMAID_BASE} />
+            const occurrence = mermaidSourceOccurrences.get(block.text) ?? 0
+            mermaidSourceOccurrences.set(block.text, occurrence + 1)
+            return (
+              <MermaidDiagram
+                key={`${block.text}:${occurrence}`}
+                source={block.text}
+                base={MERMAID_BASE}
+              />
+            )
           }
           return (
             <View key={index} style={styles.codeBlock}>
