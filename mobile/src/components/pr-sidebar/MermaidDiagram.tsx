@@ -76,11 +76,22 @@ function MermaidFallback({ source, base }: Props) {
   )
 }
 
+// JSON.stringify escapes quotes and control chars but leaves `<`, `>`, `&`, and
+// the U+2028/U+2029 line separators raw — so a source containing `</script>`
+// would close this inline <script> and let the rest execute as markup. Diagram
+// source is untrusted (agent output, PR/chat content), so escape those to \uXXXX;
+// the literal still parses back to the exact original string inside the WebView.
+function encodeSourceForScript(source: string): string {
+  return JSON.stringify(source).replace(
+    /[<>&\u2028\u2029]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
+  )
+}
+
 // Self-contained HTML: load mermaid from CDN, render the graph, post the body
 // height (or "error") back to RN. Theme variables match the dark sidebar palette.
-function buildHtml(source: string): string {
-  // JSON.stringify safely escapes the user's diagram source for embedding.
-  const encoded = JSON.stringify(source)
+export function buildHtml(source: string): string {
+  const encoded = encodeSourceForScript(source)
   return `<!DOCTYPE html>
 <html>
 <head>
