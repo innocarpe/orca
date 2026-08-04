@@ -63,7 +63,7 @@ Direct AppImage URLs (always point at latest):
 
 ## Install
 
-### AppImage (any distro)
+### AppImage (distros with glibc 2.31+)
 
 ```bash
 curl -fL https://github.com/stablyai/orca/releases/latest/download/orca-linux.AppImage \
@@ -120,8 +120,8 @@ Update by installing a newer release over the old one:
 | Format | Update path |
 | --- | --- |
 | **AppImage** | Download the new AppImage, `chmod +x`, replace the old file (same path keeps any desktop shortcut you created). |
-| **`.deb`** | Download the new `.deb`, then `sudo apt install ./orca-ide_<new>_….deb` (or `dpkg -i`). |
-| **`.rpm`** | Download the new `.rpm`, then `sudo dnf upgrade ./orca-ide-<new>-….rpm` (or `rpm -U`). |
+| **`.deb`** | Download the new `.deb`, then `sudo apt install ./orca-ide_*_amd64.deb` (or `dpkg -i`). |
+| **`.rpm`** | Download the new `.rpm`, then `sudo dnf upgrade ./orca-ide-*.x86_64.rpm` (or `rpm -U`). |
 | **AUR** | `yay -Syu stably-orca-bin` (or your AUR helper’s upgrade). |
 
 AppImage auto-update may prompt inside the app when a newer release is
