@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import type { RelayDispatcher, RequestContext } from './dispatcher'
 import { terminateRelaySubprocessTree } from './subprocess-tree-termination'
-import { GLAB_EXEC_METHOD } from '../shared/ssh-types'
+
+// Why: relay is bundled separately from the app — do not import app-side shared
+// modules. Keep this string aligned with src/shared/ssh-types GLAB_EXEC_METHOD.
+const GLAB_EXEC_METHOD = 'glab.exec'
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const MAX_TIMEOUT_MS = 5 * 60 * 1000
@@ -77,6 +81,10 @@ export class GlabExecHandler {
       let stderr = ''
       let stdoutBytes = 0
       let stderrBytes = 0
+      // Why: multibyte UTF-8 can split across stream chunks; per-chunk toString
+      // would inject replacement characters into the captured output.
+      const stdoutDecoder = new StringDecoder('utf8')
+      const stderrDecoder = new StringDecoder('utf8')
       let timedOut = false
       let settled = false
       let timer: ReturnType<typeof setTimeout> | null = null
@@ -95,6 +103,10 @@ export class GlabExecHandler {
         detachChildListeners()
         resolve(result)
       }
+      const flushDecoders = (): { stdout: string; stderr: string } => ({
+        stdout: stdout + stdoutDecoder.end(),
+        stderr: stderr + stderrDecoder.end()
+      })
       const cancelCurrent = (): void => {
         terminateRelaySubprocessTree(child)
       }
@@ -102,7 +114,8 @@ export class GlabExecHandler {
       timer = setTimeout(() => {
         timedOut = true
         terminateRelaySubprocessTree(child)
-        finish({ stdout, stderr, exitCode: null, timedOut })
+        const flushed = flushDecoders()
+        finish({ ...flushed, exitCode: null, timedOut })
       }, timeoutMs)
 
       const onStdoutData = (chunk: Buffer): void => {
@@ -111,43 +124,44 @@ export class GlabExecHandler {
           // Why: finish inline like timeout — deferred onClose yields exitCode null
           // and "exited with code unknown" with no signal the 4 MiB guard fired.
           terminateRelaySubprocessTree(child)
+          const flushed = flushDecoders()
           finish({
-            stdout,
-            stderr,
+            ...flushed,
             exitCode: null,
             timedOut: false,
             outputLimitExceeded: 'stdout'
           })
           return
         }
-        stdout += chunk.toString('utf-8')
+        stdout += stdoutDecoder.write(chunk)
       }
       const onStderrData = (chunk: Buffer): void => {
         stderrBytes += chunk.byteLength
         if (stderrBytes > MAX_OUTPUT_BYTES) {
           terminateRelaySubprocessTree(child)
+          const flushed = flushDecoders()
           finish({
-            stdout,
-            stderr,
+            ...flushed,
             exitCode: null,
             timedOut: false,
             outputLimitExceeded: 'stderr'
           })
           return
         }
-        stderr += chunk.toString('utf-8')
+        stderr += stderrDecoder.write(chunk)
       }
       const onError = (error: Error): void => {
+        const flushed = flushDecoders()
         finish({
-          stdout,
-          stderr,
+          ...flushed,
           exitCode: null,
           timedOut,
           spawnError: error.message
         })
       }
       const onClose = (code: number | null): void => {
-        finish({ stdout, stderr, exitCode: code, timedOut })
+        const flushed = flushDecoders()
+        finish({ ...flushed, exitCode: code, timedOut })
       }
       child.stdout?.on('data', onStdoutData)
       child.stderr?.on('data', onStderrData)

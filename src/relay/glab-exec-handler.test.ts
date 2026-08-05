@@ -150,6 +150,30 @@ describe('GlabExecHandler', () => {
     await expect(pending).resolves.toMatchObject({ outputLimitExceeded: 'stdout' })
   })
 
+  it('preserves a multibyte UTF-8 character split across stream chunks', async () => {
+    const child = createFakeChild()
+    spawnMock.mockReturnValue(child as never)
+    const handlers = createHandler()
+
+    const pending = handlers.get(GLAB_EXEC_METHOD)!({
+      args: ['api', 'user'],
+      timeoutMs: 5_000
+    })
+
+    // € is three bytes (0xE2 0x82 0xAC) — emit split across two data events.
+    const euro = Buffer.from('€', 'utf8')
+    child.stdout.emit('data', euro.subarray(0, 2))
+    child.stdout.emit('data', euro.subarray(2))
+    child.emit('close', 0)
+
+    await expect(pending).resolves.toEqual({
+      stdout: '€',
+      stderr: '',
+      exitCode: 0,
+      timedOut: false
+    })
+  })
+
   it('finishes immediately with outputLimitExceeded when stderr exceeds 4 MiB', async () => {
     const child = createFakeChild()
     spawnMock.mockReturnValue(child as never)
