@@ -195,4 +195,47 @@ describe('GlabExecHandler', () => {
     })
     expect(child.kill).toHaveBeenCalled()
   })
+
+  it('terminates glab when the request is already aborted', async () => {
+    const child = createFakeChild()
+    spawnMock.mockReturnValue(child as never)
+    const handlers = createHandler()
+    const controller = new AbortController()
+    controller.abort()
+
+    const pending = handlers.get(GLAB_EXEC_METHOD)!(
+      { args: ['version'], timeoutMs: 5_000 },
+      { signal: controller.signal }
+    )
+
+    // Why: abort before spawn still spawns then cancelCurrent kills immediately.
+    expect(child.kill).toHaveBeenCalled()
+    child.emit('close', null)
+    await expect(pending).resolves.toMatchObject({
+      exitCode: null,
+      timedOut: false
+    })
+  })
+
+  it('terminates glab when the request is aborted after spawn', async () => {
+    const child = createFakeChild()
+    spawnMock.mockReturnValue(child as never)
+    const handlers = createHandler()
+    const controller = new AbortController()
+
+    const pending = handlers.get(GLAB_EXEC_METHOD)!(
+      { args: ['version'], timeoutMs: 5_000 },
+      { signal: controller.signal }
+    )
+
+    expect(child.kill).not.toHaveBeenCalled()
+    controller.abort()
+    expect(child.kill).toHaveBeenCalled()
+    // Why: kill is best-effort; the handler settles only on child close.
+    child.emit('close', null)
+    await expect(pending).resolves.toMatchObject({
+      exitCode: null,
+      timedOut: false
+    })
+  })
 })
