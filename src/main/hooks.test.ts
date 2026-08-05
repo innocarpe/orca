@@ -36,6 +36,12 @@ vi.mock('./git/runner', async () => ({
   gitExecFileSync: gitExecFileSyncMock
 }))
 
+// Why: runner scripts are written to a unique tmp path then renamed over the target.
+const tmpPathFor = (finalPath: string) =>
+  expect.stringMatching(
+    new RegExp(`^${finalPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.tmp-\\d+-\\d+$`)
+  )
+
 const TEST_REPO_PATH = join('/test/repo')
 const TEST_WORKTREE_PATH = join('/test/worktree')
 const TEST_REPO_ORCA_YAML_PATH = join(TEST_REPO_PATH, 'orca.yaml')
@@ -1297,7 +1303,7 @@ describe('createSetupRunnerScript', () => {
         { cwd: 'C:\\repo-worktree' }
       )
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\orca\\setup-runner.sh',
+        tmpPathFor('C:\\repo\\.git\\orca\\setup-runner.sh'),
         '#!/usr/bin/env bash\nset -e\npnpm install\nnpm run build\n',
         'utf-8'
       )
@@ -1337,7 +1343,7 @@ describe('createSetupRunnerScript', () => {
         { cwd: 'C:\\repo-worktree' }
       )
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\orca\\setup-runner.cmd',
+        tmpPathFor('C:\\repo\\.git\\orca\\setup-runner.cmd'),
         expect.stringContaining('call copy .env.example .env\r\n'),
         'utf-8'
       )
@@ -1404,7 +1410,7 @@ describe('createSetupRunnerScript', () => {
       )
 
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\orca\\setup-runner.sh',
+        tmpPathFor('C:\\repo\\.git\\orca\\setup-runner.sh'),
         '#!/usr/bin/env bash\nset -e\nset -euo pipefail\nmake build | tee build.log\n',
         'utf-8'
       )
@@ -1437,12 +1443,12 @@ describe('createSetupRunnerScript', () => {
         { cwd: 'C:\\repo-worktree' }
       )
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\orca\\setup-runner.cmd',
+        tmpPathFor('C:\\repo\\.git\\orca\\setup-runner.cmd'),
         expect.stringContaining('call pnpm install\r\nif errorlevel 1 exit /b %errorlevel%'),
         'utf-8'
       )
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\orca\\setup-runner.cmd',
+        tmpPathFor('C:\\repo\\.git\\orca\\setup-runner.cmd'),
         expect.stringContaining('call npm run build\r\nif errorlevel 1 exit /b %errorlevel%'),
         'utf-8'
       )
@@ -1472,11 +1478,14 @@ describe('createSetupRunnerScript', () => {
         { cwd: '/test/worktree' }
       )
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        '/test/repo/.git/orca/setup-runner.sh',
+        tmpPathFor('/test/repo/.git/orca/setup-runner.sh'),
         '#!/usr/bin/env bash\nset -e\npnpm install\n',
         'utf-8'
       )
-      expect(chmodSyncMock).toHaveBeenCalledWith('/test/repo/.git/orca/setup-runner.sh', 0o755)
+      expect(chmodSyncMock).toHaveBeenCalledWith(
+        tmpPathFor('/test/repo/.git/orca/setup-runner.sh'),
+        0o755
+      )
       expect(result.shell).toBeUndefined()
     } finally {
       Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform })
@@ -1551,7 +1560,7 @@ describe('createIssueCommandRunnerScript', () => {
         { cwd: 'C:\\repo-worktree' }
       )
       expect(writeFileSyncMock).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\orca\\issue-command-runner.sh',
+        tmpPathFor('C:\\repo\\.git\\orca\\issue-command-runner.sh'),
         '#!/usr/bin/env bash\nset -e\ngh issue view 42\n',
         'utf-8'
       )

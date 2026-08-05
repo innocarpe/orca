@@ -158,13 +158,13 @@ describe('createSetupRunnerScript', () => {
         shell: { family: 'posix' }
       })
       expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalledWith(
-        'C:\\repo\\.git\\worktrees\\feature\\orca\\setup-runner.sh',
+        tmpPathFor('C:\\repo\\.git\\worktrees\\feature\\orca\\setup-runner.sh'),
         '#!/usr/bin/env bash\nset -e\npnpm install\n',
         'utf-8'
       )
       // Why: chmod over a native Windows path is meaningless; only the WSL branch sets the bit.
       expect(vi.mocked(fs.chmodSync)).not.toHaveBeenCalledWith(
-        'C:\\repo\\.git\\worktrees\\feature\\orca\\setup-runner.sh',
+        tmpPathFor('C:\\repo\\.git\\worktrees\\feature\\orca\\setup-runner.sh'),
         0o755
       )
     } finally {
