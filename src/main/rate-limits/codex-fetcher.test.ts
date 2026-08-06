@@ -415,7 +415,7 @@ describe('fetchCodexRateLimits', () => {
         tokens: { access_token: 'access-token', account_id: 'account-id' }
       })
     )
-    vi.mocked(fetch).mockResolvedValue({
+    netFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
         plan_type: 'plus',
@@ -447,7 +447,7 @@ describe('fetchCodexRateLimits', () => {
       weekly: { usedPercent: 23, windowMinutes: 10080, resetsAt: 1_800_100_000_000 },
       status: 'ok'
     })
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(netFetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('does not map a duplicate session-duration window into the weekly slot', async () => {

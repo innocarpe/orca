@@ -107,7 +107,7 @@ describe('Codex backend rate-limit requests', () => {
         tokens: { access_token: 'access-token', account_id: 'account-id' }
       })
     )
-    vi.mocked(fetch)
+    netFetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
