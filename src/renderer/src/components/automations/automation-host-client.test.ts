@@ -4,6 +4,7 @@ import {
   buildAutomationListHostOptions,
   createAutomationForTarget,
   getAutomationListTarget,
+  getValidatedAutomationHostTargetKey,
   listAutomationsForTarget,
   resolveAutomationListHostTarget,
   runAutomationNowForTarget,
@@ -138,6 +139,35 @@ describe('automation host client', () => {
         target: { kind: 'environment', environmentId: 'gpu' }
       }
     ])
+  })
+
+  it('normalizes environment ids and omits empty host options', () => {
+    expect(
+      buildAutomationListHostOptions({
+        localLabel: 'This Mac',
+        environments: [
+          { id: '  gpu  ', name: '' },
+          { id: ' \t', name: 'Invalid' }
+        ]
+      })
+    ).toEqual([
+      { key: 'local', label: 'This Mac', target: { kind: 'local' } },
+      {
+        key: 'environment:gpu',
+        label: 'gpu',
+        target: { kind: 'environment', environmentId: 'gpu' }
+      }
+    ])
+  })
+
+  it('clears a selected host key when its environment disappears', () => {
+    const options = buildAutomationListHostOptions({
+      localLabel: 'This Mac',
+      environments: [{ id: 'gpu', name: 'GPU box' }]
+    })
+
+    expect(getValidatedAutomationHostTargetKey('environment:gpu', options)).toBe('environment:gpu')
+    expect(getValidatedAutomationHostTargetKey('environment:retired', options)).toBeNull()
   })
 
   it('creates and manually runs runtime-host automations through that server', async () => {

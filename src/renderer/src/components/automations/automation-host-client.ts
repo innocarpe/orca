@@ -42,8 +42,17 @@ export function getAutomationListTarget(
   return environmentId ? { kind: 'environment', environmentId } : { kind: 'local' }
 }
 
-export function getAutomationHostTargetKey(target: AutomationHostTarget): string {
-  return target.kind === 'environment' ? `environment:${target.environmentId}` : 'local'
+function normalizeAutomationEnvironmentId(environmentId: string): string | null {
+  const normalized = environmentId.trim()
+  return normalized || null
+}
+
+export function getAutomationHostTargetKey(target: AutomationHostTarget): string | null {
+  if (target.kind === 'local') {
+    return 'local'
+  }
+  const environmentId = normalizeAutomationEnvironmentId(target.environmentId)
+  return environmentId ? `environment:${environmentId}` : null
 }
 
 export function getAutomationHostTargetFromKey(key: string | null): AutomationHostTarget | null {
@@ -86,17 +95,36 @@ export type AutomationListHostOption = {
   target: AutomationHostTarget
 }
 
+export function getValidatedAutomationHostTargetKey(
+  selectedKey: string | null,
+  options: readonly AutomationListHostOption[]
+): string | null {
+  return selectedKey && options.some((option) => option.key === selectedKey) ? selectedKey : null
+}
+
 export function buildAutomationListHostOptions(args: {
   localLabel: string
   environments: readonly { id: string; name: string }[]
 }): AutomationListHostOption[] {
   return [
     { key: 'local', label: args.localLabel, target: { kind: 'local' } },
-    ...args.environments.map((environment) => ({
-      key: getAutomationHostTargetKey({ kind: 'environment', environmentId: environment.id }),
-      label: environment.name || environment.id,
-      target: { kind: 'environment' as const, environmentId: environment.id }
-    }))
+    ...args.environments.flatMap((environment) => {
+      const environmentId = normalizeAutomationEnvironmentId(environment.id)
+      if (!environmentId) {
+        return []
+      }
+      const key = getAutomationHostTargetKey({ kind: 'environment', environmentId })
+      if (!key) {
+        return []
+      }
+      return [
+        {
+          key,
+          label: environment.name || environmentId,
+          target: { kind: 'environment' as const, environmentId }
+        }
+      ]
+    })
   ]
 }
 

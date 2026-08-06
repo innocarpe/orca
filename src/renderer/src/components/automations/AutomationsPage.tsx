@@ -87,6 +87,7 @@ import {
   getAutomationListTarget,
   getAutomationOwnerTarget,
   getAutomationTargetFromHostId,
+  getValidatedAutomationHostTargetKey,
   listAutomationRunsForTarget,
   listAutomationsForTarget,
   resolveAutomationListHostTarget,
@@ -420,10 +421,33 @@ export default function AutomationsPage(): React.JSX.Element {
     () => worktreesByRepo[draft.projectId] ?? [],
     [draft.projectId, worktreesByRepo]
   )
-  const automationHostTarget = useMemo(
-    () => getAutomationHostTargetFromKey(automationHostTargetKey),
-    [automationHostTargetKey]
+  const automationListHostOptions = useMemo(
+    () =>
+      buildAutomationListHostOptions({
+        localLabel: getLocalExecutionHostLabel(),
+        environments: runtimeEnvironments.map((environment) => ({
+          id: environment.id,
+          name: environment.name
+        }))
+      }),
+    [runtimeEnvironments]
   )
+  const validatedAutomationHostTargetKey = useMemo(
+    () => getValidatedAutomationHostTargetKey(automationHostTargetKey, automationListHostOptions),
+    [automationHostTargetKey, automationListHostOptions]
+  )
+  const automationHostTarget = useMemo(
+    () => getAutomationHostTargetFromKey(validatedAutomationHostTargetKey),
+    [validatedAutomationHostTargetKey]
+  )
+
+  useEffect(() => {
+    if (automationHostTargetKey && !validatedAutomationHostTargetKey) {
+      setAutomationHostTargetKey(null)
+      selectAutomationId(null)
+      setSelectedAutomationRunPageId(null)
+    }
+  }, [automationHostTargetKey, selectAutomationId, validatedAutomationHostTargetKey])
 
   useEffect(() => {
     for (const [workspaceId, worktree] of worktreeMap) {
@@ -769,18 +793,6 @@ export default function AutomationsPage(): React.JSX.Element {
     }
   }, [activeWorktreeId, repoMap, repos, worktreeMap, worktreesByRepo])
 
-  const automationListHostOptions = useMemo(
-    () =>
-      buildAutomationListHostOptions({
-        localLabel: getLocalExecutionHostLabel(),
-        environments: runtimeEnvironments.map((environment) => ({
-          id: environment.id,
-          name: environment.name
-        }))
-      }),
-    [runtimeEnvironments]
-  )
-
   const refresh = useCallback(async () => {
     setIsLoading(true)
     const pendingNavigation = useAppStore.getState().pendingAutomationRunNavigation
@@ -788,7 +800,7 @@ export default function AutomationsPage(): React.JSX.Element {
     // visible without flipping the global active runtime (#9964).
     const automationHostTarget = resolveAutomationListHostTarget({
       pendingHostId: pendingNavigation?.hostId,
-      selectedKey: automationHostTargetKey,
+      selectedKey: validatedAutomationHostTargetKey,
       settings
     })
     try {
@@ -830,7 +842,7 @@ export default function AutomationsPage(): React.JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [automationHostTargetKey, selectAutomationId, settings])
+  }, [selectAutomationId, settings, validatedAutomationHostTargetKey])
 
   const handleAutomationHostTargetChange = useCallback(
     (nextKey: string) => {
