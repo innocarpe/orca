@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import type * as fsPromises from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import type { WindowsProcessRow } from './providers/windows-foreground-process-rows'
 import {
@@ -98,7 +99,9 @@ describe('commandLineTargetsWorktreeSetupRunner', () => {
 
 describe('resolveWorktreeGitDirPath', () => {
   it('returns an absolute gitdir path as-is', async () => {
-    const readFileImpl = vi.fn(async () => 'gitdir: D:/repo/.git/worktrees/feature\n')
+    const readFileImpl = vi.fn(
+      async () => 'gitdir: D:/repo/.git/worktrees/feature\n'
+    ) as unknown as typeof fsPromises.readFile
     await expect(
       resolveWorktreeGitDirPath('D:\\orca\\workspaces\\repo\\feature', { readFileImpl })
     ).resolves.toBe('D:/repo/.git/worktrees/feature')
@@ -224,6 +227,95 @@ describe('terminateWindowsSetupRunnersForWorktree', () => {
       })
     ).resolves.toBe(0)
     expect(killTree).not.toHaveBeenCalled()
+  })
+
+  it('bounds gitdir resolution by the teardown deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      let resolveGitDir: (value: string | null) => void = () => {}
+      const listProcessRows = vi.fn(async () => [])
+      const deadlineMs = Date.now() + 10
+      const sweep = terminateWindowsSetupRunnersForWorktree('D:\\orca\\workspaces\\repo\\feature', {
+        platform: 'win32',
+        resolveGitDirPath: () =>
+          new Promise<string | null>((resolve) => {
+            resolveGitDir = resolve
+          }),
+        listProcessRows,
+        deadlineMs,
+        now: Date.now
+      })
+
+      await vi.advanceTimersByTimeAsync(10)
+      await expect(sweep).resolves.toBe(0)
+      expect(listProcessRows).not.toHaveBeenCalled()
+      resolveGitDir(null)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('bounds process enumeration by the teardown deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      let resolveRows: (value: WindowsProcessRow[]) => void = () => {}
+      const killTree = vi.fn(async () => {})
+      const deadlineMs = Date.now() + 10
+      const sweep = terminateWindowsSetupRunnersForWorktree('D:\\orca\\workspaces\\repo\\feature', {
+        platform: 'win32',
+        pathAnchors: ['D:/repo/.git/worktrees/feature'],
+        listProcessRows: () =>
+          new Promise<WindowsProcessRow[]>((resolve) => {
+            resolveRows = resolve
+          }),
+        killTree,
+        deadlineMs,
+        now: Date.now
+      })
+
+      await vi.advanceTimersByTimeAsync(10)
+      await expect(sweep).resolves.toBe(0)
+      expect(killTree).not.toHaveBeenCalled()
+      resolveRows([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('bounds process-tree termination aggregation by the teardown deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      let resolveKill: () => void = () => {}
+      const listProcessRows = vi.fn(async () => [
+        row({
+          pid: 42,
+          command: 'cmd.exe /c D:/repo/.git/worktrees/feature/orca/setup-runner.cmd'
+        })
+      ])
+      const killTree = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveKill = resolve
+          })
+      )
+      const deadlineMs = Date.now() + 10
+      const sweep = terminateWindowsSetupRunnersForWorktree('D:\\orca\\workspaces\\repo\\feature', {
+        platform: 'win32',
+        pathAnchors: ['D:/repo/.git/worktrees/feature'],
+        listProcessRows,
+        killTree,
+        deadlineMs,
+        now: Date.now
+      })
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(killTree).toHaveBeenCalledWith(42)
+      await vi.advanceTimersByTimeAsync(10)
+      await expect(sweep).resolves.toBe(0)
+      resolveKill()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

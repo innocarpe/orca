@@ -24,6 +24,40 @@ export type WindowsSetupRunnerKillDeps = {
   now?: () => number
 }
 
+async function settleWindowsSweepBeforeDeadline<T>(
+  run: () => Promise<T>,
+  fallback: T,
+  deadlineMs: number | undefined,
+  now: () => number
+): Promise<T> {
+  if (deadlineMs === undefined) {
+    return run()
+  }
+  const remaining = deadlineMs - now()
+  if (remaining <= 0) {
+    return fallback
+  }
+  return new Promise((resolve) => {
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const finish = (value: T): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      if (timer) {
+        clearTimeout(timer)
+      }
+      resolve(value)
+    }
+    timer = setTimeout(() => finish(fallback), remaining)
+    timer.unref?.()
+    void Promise.resolve()
+      .then(run)
+      .then(finish, () => finish(fallback))
+  })
+}
+
 /** Best-effort linked-worktree gitdir (or bare `.git` dir) for path anchoring. */
 export async function resolveWorktreeGitDirPath(
   worktreePath: string,
@@ -155,6 +189,10 @@ export async function terminateWindowsSetupRunnersForWorktree(
   worktreePath: string,
   deps: WindowsSetupRunnerKillDeps = {}
 ): Promise<number> {
+  const now = deps.now ?? Date.now
+  if (deps.deadlineMs !== undefined && now() >= deps.deadlineMs) {
+    return 0
+  }
   const platform = deps.platform ?? process.platform
   if (platform !== 'win32') {
     return 0
@@ -167,19 +205,24 @@ export async function terminateWindowsSetupRunnersForWorktree(
   const pathAnchors = [...(deps.pathAnchors ?? [])]
   if (deps.pathAnchors === undefined) {
     const resolveGitDir = deps.resolveGitDirPath ?? resolveWorktreeGitDirPath
-    const gitDir = await resolveGitDir(trimmed).catch(() => null)
+    const gitDir = await settleWindowsSweepBeforeDeadline(
+      () => resolveGitDir(trimmed).catch(() => null),
+      null,
+      deps.deadlineMs,
+      now
+    )
     if (gitDir) {
       pathAnchors.push(gitDir)
     }
   }
 
-  let rows: WindowsProcessRow[]
-  try {
-    const list = deps.listProcessRows ?? queryWindowsProcessRowsFresh
-    rows = await list()
-  } catch {
-    return 0
-  }
+  const list = deps.listProcessRows ?? queryWindowsProcessRowsFresh
+  const rows = await settleWindowsSweepBeforeDeadline(
+    () => list().catch(() => []),
+    [],
+    deps.deadlineMs,
+    now
+  )
 
   const killTree = deps.killTree ?? terminateWindowsProcessTree
   const targetPids = new Set<number>()
@@ -196,12 +239,20 @@ export async function terminateWindowsSetupRunnersForWorktree(
     return 0
   }
 
-  await Promise.all(
-    [...targetPids].map((pid) =>
-      killTree(pid).catch(() => {
-        /* already dead or access denied — Git removal will surface leftovers */
-      })
-    )
+  const killedPids = await settleWindowsSweepBeforeDeadline(
+    async () => {
+      await Promise.all(
+        [...targetPids].map((pid) =>
+          killTree(pid).catch(() => {
+            /* already dead or access denied — Git removal will surface leftovers */
+          })
+        )
+      )
+      return [...targetPids]
+    },
+    [],
+    deps.deadlineMs,
+    now
   )
-  return targetPids.size
+  return killedPids.length
 }
