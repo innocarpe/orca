@@ -568,7 +568,9 @@ describe('killWithDescendantSweep', () => {
       platform: 'win32',
       killWindowsTree,
       sendSignal,
-      readTable
+      readTable,
+      // Why: identity probe must return own before taskkill (PID reuse guard).
+      verifyTreeKillTarget: async () => 'own'
     })
     expect(killWindowsTree).toHaveBeenCalledWith(4242)
     expect(killRoot).toHaveBeenCalledOnce()
