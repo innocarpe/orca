@@ -51,6 +51,7 @@ import {
   type TerminalContextMenuLinkTarget
 } from './terminal-context-menu-link-target'
 import { openDetectedFilePath } from './terminal-file-open-routing'
+import { resolveTerminalHttpLinkSourceOwner } from './terminal-http-link-source-owner'
 import {
   openTerminalHttpLink,
   type TerminalLinkRoutingPreferenceRequester
@@ -540,7 +541,8 @@ export function useTerminalPaneContextMenu({
       startupCwd,
       worktreeId,
       worktreePath: worktreePath || startupCwd,
-      runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+      runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId),
+      sourceOwner: resolveTerminalHttpLinkSourceOwner(paneTransportsRef.current.get(clickedPane.id))
     })
   }
 
@@ -634,6 +636,7 @@ export function useTerminalPaneContextMenu({
     if (linkTarget.kind === 'http') {
       openTerminalHttpLink(linkTarget.url, {
         worktreeId,
+        sourceOwner: linkTarget.sourceOwner,
         requestOpenLinksInAppPreference
       })
       return
@@ -655,8 +658,17 @@ export function useTerminalPaneContextMenu({
     if (!linkTarget) {
       return
     }
-    await window.api.ui.writeClipboardText(getTerminalContextMenuLinkCopyText(linkTarget))
-    resolveMenuPane()?.terminal.focus()
+    const pane = resolveMenuPane()
+    if (!pane) {
+      return
+    }
+    await runTerminalCopy({
+      selection: getTerminalContextMenuLinkCopyText(linkTarget),
+      writeClipboardText: window.api.ui.writeClipboardText,
+      // Why: a rejected clipboard write must not leave xterm unfocused after
+      // Radix closes the context menu.
+      focus: () => pane.terminal.focus()
+    })
   }, [linkTarget, resolveMenuPane])
 
   const onRevealLinkTarget = useCallback((): void => {
