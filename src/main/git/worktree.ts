@@ -92,7 +92,26 @@ const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
 
 // Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); generous enough for a legit large checkout (#7225).
-export const WORKTREE_ADD_TIMEOUT_MS = 180_000
+export const WORKTREE_ADD_TIMEOUT_MS_DEFAULT = 180_000
+/** Closed upper bound — slow checkouts may raise the default, not remove it. */
+export const WORKTREE_ADD_TIMEOUT_MS_MAX = 30 * 60_000
+
+export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.ORCA_WORKTREE_ADD_TIMEOUT_MS?.trim()
+  if (!raw) {
+    return WORKTREE_ADD_TIMEOUT_MS_DEFAULT
+  }
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return WORKTREE_ADD_TIMEOUT_MS_DEFAULT
+  }
+  return Math.min(
+    Math.max(Math.floor(parsed), WORKTREE_ADD_TIMEOUT_MS_DEFAULT),
+    WORKTREE_ADD_TIMEOUT_MS_MAX
+  )
+}
+
+export const WORKTREE_ADD_TIMEOUT_MS = resolveWorktreeAddTimeoutMs()
 export const WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS = 30_000
 export const WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS = 30_000
 // Why: one wedged shared scan otherwise hangs every later list, including create's post-add re-list.

@@ -42,6 +42,9 @@ import {
   parseWorktreeList,
   removeWorktree,
   WORKTREE_ADD_TIMEOUT_MS,
+  WORKTREE_ADD_TIMEOUT_MS_DEFAULT,
+  WORKTREE_ADD_TIMEOUT_MS_MAX,
+  resolveWorktreeAddTimeoutMs,
   WORKTREE_LIST_TIMEOUT_MS
 } from './worktree'
 
@@ -1873,5 +1876,21 @@ describe('removeWorktree', () => {
       ['worktree', 'prune'],
       ['branch', '-d', '--', 'feature/test']
     ])
+  })
+})
+
+describe('resolveWorktreeAddTimeoutMs', () => {
+  it('defaults to 180s and clamps override into a closed range', () => {
+    expect(resolveWorktreeAddTimeoutMs({})).toBe(WORKTREE_ADD_TIMEOUT_MS_DEFAULT)
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000' })).toBe(300_000)
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS_MAX
+    )
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '1000' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS_DEFAULT
+    )
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: 'nope' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS_DEFAULT
+    )
   })
 })
