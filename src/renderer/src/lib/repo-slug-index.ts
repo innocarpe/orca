@@ -140,16 +140,27 @@ async function buildIndex(
   }
   const next: SlugIndex = new Map()
   const results = await Promise.all(
-    repos.map(async (r) => ({
-      repo: r,
+    repos.map(async (r) => {
+      const ownerSettings = settingsForRepoOwner(r, settings)
       // Why: the project slug index spans repos from multiple hosts; each
       // repo's remote metadata must be read from its owner.
-      slug: await resolveRepoSlug(r, settingsForRepoOwner(r, settings))
-    }))
+      const slug = await resolveRepoSlug(r, ownerSettings)
+      // Why: Project cards often reference the upstream public repo while the
+      // open clone's origin is a personal fork. Index the parent slug too so
+      // filterProjectTableRowsBySelectedRepos does not drop every row (#12647).
+      const upstreamSlug = await resolveRepoUpstreamSlug(r, ownerSettings)
+      return { repo: r, slug, upstreamSlug }
+    })
   )
-  for (const { repo, slug } of results) {
+  for (const { repo, slug, upstreamSlug } of results) {
     if (slug) {
       next.set(slug, [...(next.get(slug) ?? []), repo])
+    }
+    if (upstreamSlug && upstreamSlug !== slug) {
+      const existing = next.get(upstreamSlug) ?? []
+      if (!existing.some((entry) => entry.id === repo.id)) {
+        next.set(upstreamSlug, [...existing, repo])
+      }
     }
   }
   return { index: next, retryDelayMs: nextRepoSlugFailureRetryDelay(liveKeys) }
