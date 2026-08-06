@@ -48,6 +48,22 @@ function cachedSlugStateForRepo(
   return { status: 'resolved', repository: cached.repository }
 }
 
+/** Identity key of the repo's fork parent, or null when it is not a fork.
+ *  Why: the host is stripped from the persisted `upstream`, and a fork's parent
+ *  lives on the fork's own server — without scoping the key to the repo's own
+ *  origin host a GHES parent would collide with github.com. */
+function upstreamIdentityKeyForRepo(
+  repo: GitHubProjectRepoMatch,
+  originState: CachedSlugState | undefined
+): string | null {
+  const upstream = repo.upstream
+  if (!upstream?.owner || !upstream.repo) {
+    return null
+  }
+  const originHost = originState?.status === 'resolved' ? originState.repository?.host : undefined
+  return githubRepoIdentityKey({ ...upstream, host: upstream.host ?? originHost })
+}
+
 export function findRepoForGitHubProjectRepository(
   repository: string | null | undefined,
   repos: GitHubProjectRepoMatch[],
@@ -87,7 +103,7 @@ export function findRepoForGitHubProjectRepository(
   // (#12647). Checked after origin so an open clone of the upstream repo itself
   // always wins over someone's fork of it.
   const upstreamMatches = repos.filter(
-    (repo) => repo.upstream && githubRepoIdentityKey(repo.upstream) === requestedIdentityKey
+    (repo) => upstreamIdentityKeyForRepo(repo, slugStates.get(repo.id)) === requestedIdentityKey
   )
   if (upstreamMatches.length === 1) {
     return upstreamMatches[0]!

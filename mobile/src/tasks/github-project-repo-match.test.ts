@@ -184,8 +184,45 @@ describe('GitHub project repo matching', () => {
     }
 
     expect(
-      findRepoForGitHubProjectRepository('SciPhi-AI/R2R', [fork], {}, 'github.acme-corp.com')
+      findRepoForGitHubProjectRepository(
+        'SciPhi-AI/R2R',
+        [fork],
+        {
+          'repo-1': {
+            path: '/Users/me/r2r-mirror',
+            repository: { owner: 'me', repo: 'r2r-mirror', host: 'github.com' }
+          }
+        },
+        'github.acme-corp.com'
+      )
     ).toBeNull()
+  })
+
+  // Why: the host is stripped from the persisted `upstream`, so the fork's own
+  // origin host is the only evidence of which server its parent lives on.
+  it('scopes a host-less fork parent to the host the fork itself was cloned from', () => {
+    const enterpriseFork = {
+      id: 'repo-1',
+      path: '/Users/me/widgets-mirror',
+      displayName: 'widgets-mirror',
+      upstream: { owner: 'acme', repo: 'widgets' }
+    }
+    const slugs = {
+      'repo-1': {
+        path: '/Users/me/widgets-mirror',
+        repository: { owner: 'me', repo: 'widgets', host: 'github.acme-corp.com' }
+      }
+    }
+
+    expect(
+      findRepoForGitHubProjectRepository(
+        'acme/widgets',
+        [enterpriseFork],
+        slugs,
+        'github.acme-corp.com'
+      )
+    ).toBe(enterpriseFork)
+    expect(findRepoForGitHubProjectRepository('acme/widgets', [enterpriseFork], slugs)).toBeNull()
   })
 
   it('does not use hostless path heuristics for Enterprise Project rows', () => {

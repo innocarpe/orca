@@ -26,9 +26,13 @@ import {
   settingsForRepoOwner,
   slugByRepoId,
   slugCacheKey,
+  type RepoSlugMatches,
   type SlugIndex
 } from './repo-slug-cache'
-import { githubRepoIdentityKey } from '../../../shared/github-repository-identity-key'
+import {
+  githubHostFromIdentityKey,
+  githubRepoIdentityKey
+} from '../../../shared/github-repository-identity-key'
 
 export { lookupReposBySlugFromCache } from './repo-slug-cache'
 
@@ -155,9 +159,9 @@ async function buildIndex(
     }
     // Why: a Project card references the upstream repo, but a contributor's
     // clone has their personal fork as `origin`, so the origin-only index
-    // dropped every row (#12647). `repo.upstream` is already resolved at
-    // repo-add time and backfilled at startup, so this costs no extra IPC.
-    const upstreamKey = repoUpstreamIdentityKey(repo)
+    // dropped every row (#12647). `repo.upstream` is already resolved when the
+    // repo is added, so this costs no extra IPC.
+    const upstreamKey = repoUpstreamIdentityKey(repo, githubHostFromIdentityKey(slug))
     if (upstreamKey && upstreamKey !== slug) {
       upstreamNext.set(upstreamKey, [...(upstreamNext.get(upstreamKey) ?? []), repo])
     }
@@ -170,7 +174,9 @@ async function buildIndex(
 }
 
 export type RepoSlugIndexState = {
+  /** Best available matches: origin when anything owns the slug, else forks. */
   lookupSlug: (slug: string | null | undefined, host?: string) => Repo[]
+  lookupSlugMatches: (slug: string | null | undefined, host?: string) => RepoSlugMatches
   ready: boolean
 }
 
@@ -213,22 +219,26 @@ export function useRepoSlugIndex(): RepoSlugIndexState {
     }
   }, [repos, retryGeneration, settings])
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const lookupSlugMatches = (slug: string | null | undefined, host?: string): RepoSlugMatches => {
+      const [owner, repo] = slug?.split('/') ?? []
+      if (!owner || !repo) {
+        return { origin: [], upstream: [] }
+      }
+      const key = githubRepoIdentityKey({ owner, repo, host })
+      return { origin: index.get(key) ?? [], upstream: upstreamIndex.get(key) ?? [] }
+    }
+    return {
+      lookupSlugMatches,
+      // Why: origin wins — when the upstream repo itself is open, a row must
+      // resolve to that clone rather than becoming ambiguous with someone's
+      // fork of it. Callers that also filter by selection use
+      // `lookupSlugMatches` so an unselected clone cannot hide a selected fork.
       lookupSlug: (slug: string | null | undefined, host?: string): Repo[] => {
-        const [owner, repo] = slug?.split('/') ?? []
-        if (!owner || !repo) {
-          return []
-        }
-        const key = githubRepoIdentityKey({ owner, repo, host })
-        // Why: origin matches win — when the upstream repo itself is open, a
-        // row must resolve to that clone rather than becoming ambiguous with
-        // someone's fork of it. Fall back to forks only when nothing owns the
-        // slug directly.
-        return index.get(key) ?? upstreamIndex.get(key) ?? []
+        const { origin, upstream } = lookupSlugMatches(slug, host)
+        return origin.length > 0 ? origin : upstream
       },
       ready
-    }),
-    [index, upstreamIndex, ready]
-  )
+    }
+  }, [index, upstreamIndex, ready])
 }

@@ -73,8 +73,27 @@ describe('repo slug cache host identity', () => {
 
   it('does not route a GHES row to a same-named github.com fork parent', () => {
     const fork = { ...repo('fork'), upstream: { owner: 'acme', repo: 'widgets' } }
+    slugByRepoId.set(
+      slugCacheKey(fork.id, settingsForRepoOwner(fork, null)),
+      githubRepoIdentityKey({ owner: 'me', repo: 'widgets' })
+    )
 
     expect(lookupReposBySlugFromCache([fork], null, 'acme/widgets', 'ghe.example:8443')).toEqual([])
+  })
+
+  // Why: persistence strips `upstream.host`, so the fork's own origin host is the
+  // only evidence of which server its parent lives on.
+  it('scopes a host-less fork parent to the host the fork itself was cloned from', () => {
+    const enterpriseFork = { ...repo('fork'), upstream: { owner: 'acme', repo: 'widgets' } }
+    slugByRepoId.set(
+      slugCacheKey(enterpriseFork.id, settingsForRepoOwner(enterpriseFork, null)),
+      githubRepoIdentityKey({ owner: 'me', repo: 'widgets', host: 'ghe.example:8443' })
+    )
+
+    expect(
+      lookupReposBySlugFromCache([enterpriseFork], null, 'acme/widgets', 'ghe.example:8443')
+    ).toEqual([enterpriseFork])
+    expect(lookupReposBySlugFromCache([enterpriseFork], null, 'acme/widgets')).toEqual([])
   })
 
   it('expires negative slug resolutions so an external GHES login can recover', () => {

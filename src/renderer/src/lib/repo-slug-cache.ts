@@ -4,19 +4,36 @@
 import type { GlobalSettings, Repo } from '../../../shared/types'
 import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { getSettingsForRepoRuntimeOwner } from './repo-runtime-owner'
-import { githubRepoIdentityKey } from '../../../shared/github-repository-identity-key'
+import {
+  githubHostFromIdentityKey,
+  githubRepoIdentityKey
+} from '../../../shared/github-repository-identity-key'
 
 /** Lowercased `owner/repo` → Repo[]. */
 export type SlugIndex = Map<string, Repo[]>
+
+/** The two ways a slug can match a repo, kept apart so callers that also filter
+ *  by repo selection can fall through to `upstream` instead of letting an
+ *  unselected clone of the upstream repo shadow the selected fork. */
+export type RepoSlugMatches = { origin: Repo[]; upstream: Repo[] }
 
 /** Identity key of a fork's upstream parent, resolved once at repo-add time and
  *  persisted on the Repo record (`undefined` = unresolved, `null` = not a fork).
  *  Why: Project cards reference the upstream repo while a contributor's clone
  *  has the personal fork as `origin`, so upstream is a second identity a row
- *  may legitimately match. */
-export function repoUpstreamIdentityKey(repo: Repo): string | null {
+ *  may legitimately match.
+ *
+ *  `originHost` is the host of the repo's own origin remote. Persistence strips
+ *  `upstream.host` (`sanitizeRepoUpstream`), and a fork's parent always lives on
+ *  the fork's own server — without this the key lands in the github.com
+ *  namespace, so a GHES row would never match and a github.com row would bind
+ *  the wrong clone. */
+export function repoUpstreamIdentityKey(repo: Repo, originHost?: string): string | null {
   const upstream = repo.upstream
-  return upstream?.owner && upstream.repo ? githubRepoIdentityKey(upstream) : null
+  if (!upstream?.owner || !upstream.repo) {
+    return null
+  }
+  return githubRepoIdentityKey({ ...upstream, host: upstream.host ?? originHost })
 }
 
 /** Module-scope cache keyed by runtime scope + repo.id. A Repo that has already
@@ -114,9 +131,10 @@ export function lookupReposBySlugFromCache(
   const upstreamMatched: Repo[] = []
   for (const repo of repos) {
     const cacheKey = slugCacheKey(repo.id, settingsForRepoOwner(repo, settings))
-    if (slugByRepoId.get(cacheKey) === target) {
+    const originKey = slugByRepoId.get(cacheKey)
+    if (originKey === target) {
       matched.push(repo)
-    } else if (repoUpstreamIdentityKey(repo) === target) {
+    } else if (repoUpstreamIdentityKey(repo, githubHostFromIdentityKey(originKey)) === target) {
       upstreamMatched.push(repo)
     }
   }
