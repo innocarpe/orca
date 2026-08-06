@@ -779,10 +779,12 @@ export async function importCookiesFromFile(
 // CFBundleShortVersionString. Persisting that as Chrome/1.x makes sites treat the
 // session as ancient Chromium. Only engine-scale majors are safe to advertise.
 export function isAdvertisableChromiumEngineVersion(version: string): boolean {
-  const majorToken = version.trim().split('.')[0] ?? ''
-  if (!/^\d+$/.test(majorToken)) {
+  const normalizedVersion = version.trim()
+  // Reject malformed tokens (e.g. 70.not-a-version) so they never become Chrome/… in the UA.
+  if (!/^\d+(?:\.\d+)*$/.test(normalizedVersion)) {
     return false
   }
+  const [majorToken = ''] = normalizedVersion.split('.')
   // Chrome 70+ covers every Chromium engine we still support; product versions stay below.
   return Number(majorToken) >= 70
 }
@@ -825,24 +827,24 @@ export function getUserAgentForBrowser(
 
   switch (family) {
     case 'chrome': {
-      return chromeShapedUa(readBrowserVersion('/Applications/Google Chrome.app'))
+      return chromeShapedUa(readBrowserVersion(join('/Applications', 'Google Chrome.app')))
     }
     case 'edge': {
-      return chromeShapedUa(readBrowserVersion('/Applications/Microsoft Edge.app'), true)
+      return chromeShapedUa(readBrowserVersion(join('/Applications', 'Microsoft Edge.app')), true)
     }
     case 'arc': {
-      return chromeShapedUa(readBrowserVersion('/Applications/Arc.app'))
+      return chromeShapedUa(readBrowserVersion(join('/Applications', 'Arc.app')))
     }
     case 'chromium': {
-      return chromeShapedUa(readBrowserVersion('/Applications/Brave Browser.app'))
+      return chromeShapedUa(readBrowserVersion(join('/Applications', 'Brave Browser.app')))
     }
     case 'comet': {
       // Why: Comet is Chromium-based; use Chrome's UA shape so Google-bound auth cookies survive import.
-      return chromeShapedUa(readBrowserVersion('/Applications/Comet.app'))
+      return chromeShapedUa(readBrowserVersion(join('/Applications', 'Comet.app')))
     }
     case 'helium': {
       // Why: Helium is Chromium-based; use Chrome's UA shape so Google-bound auth cookies survive import.
-      return chromeShapedUa(readBrowserVersion('/Applications/Helium.app'))
+      return chromeShapedUa(readBrowserVersion(join('/Applications', 'Helium.app')))
     }
     case 'firefox':
     case 'safari':

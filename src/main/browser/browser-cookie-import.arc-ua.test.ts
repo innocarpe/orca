@@ -9,6 +9,9 @@ describe('isAdvertisableChromiumEngineVersion', () => {
     expect(isAdvertisableChromiumEngineVersion('1.158.1')).toBe(false)
     expect(isAdvertisableChromiumEngineVersion('1.0.0')).toBe(false)
     expect(isAdvertisableChromiumEngineVersion('not-a-version')).toBe(false)
+    // Malformed components with a valid major must not pass (would become Chrome/70.not-a-version).
+    expect(isAdvertisableChromiumEngineVersion('70.not-a-version')).toBe(false)
+    expect(isAdvertisableChromiumEngineVersion('120.0.invalid.1')).toBe(false)
   })
 })
 
