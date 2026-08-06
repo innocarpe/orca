@@ -49,9 +49,9 @@ function cachedSlugStateForRepo(
 }
 
 /** Identity key of the repo's fork parent, or null when it is not a fork or its
- *  origin has not resolved. Why: the host is stripped from the persisted
- *  `upstream`, so the fork's own origin is the only evidence of which server its
- *  parent lives on — a host-less key would let a github.com row bind a GHES clone. */
+ *  origin has not resolved. Why: when `upstream.host` is absent (older persisted
+ *  forks), the fork's origin host is the fallback so GHES parents do not collapse
+ *  into github.com. Unresolved origins refuse the alias. */
 function upstreamIdentityKeyForRepo(
   repo: GitHubProjectRepoMatch,
   originState: CachedSlugState | undefined

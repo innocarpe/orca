@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../../shared/types'
 import { useAppStore } from '@/store'
 import { useRepoSlugIndex } from './repo-slug-index'
-import { clearRepoSlugCacheValues } from './repo-slug-cache'
+import { REPO_SLUG_FAILURE_TTL_MS, clearRepoSlugCacheValues } from './repo-slug-cache'
 
 const repoSlug = vi.fn()
 
@@ -139,5 +139,45 @@ describe('useRepoSlugIndex fork upstream matching', () => {
       origin: [upstreamClone],
       upstream: [fork]
     })
+  })
+})
+
+describe('useRepoSlugIndex failure retry', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('re-resolves a failed slug after the failure TTL and stops once unmounted', async () => {
+    vi.useFakeTimers()
+    const repo = makeRepo({ id: 'flaky' })
+    setRepos([repo])
+    // Why: a null result is the negative-cached "not a GitHub repo" answer that
+    // arms the bounded retry.
+    repoSlug.mockResolvedValueOnce(null)
+
+    const { result } = renderHook(() => useRepoSlugIndex())
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)))
+    expect(result.current.ready).toBe(true)
+    expect(result.current.lookupSlug('acme/widgets')).toEqual([])
+    expect(repoSlug).toHaveBeenCalledTimes(1)
+
+    repoSlug.mockResolvedValue({ owner: 'acme', repo: 'widgets' })
+    await act(async () => void (await vi.advanceTimersByTimeAsync(REPO_SLUG_FAILURE_TTL_MS + 10)))
+    expect(repoSlug.mock.calls.length).toBeGreaterThan(1)
+    expect(result.current.lookupSlug('acme/widgets')).toEqual([repo])
+  })
+
+  it('clears the pending retry timer on unmount', async () => {
+    vi.useFakeTimers()
+    setRepos([makeRepo({ id: 'flaky' })])
+    // Why: a permanently failing resolution keeps a retry armed, so an
+    // uncleaned timer is observable after teardown. The hook mounts once per
+    // project row, so such a timer would leak per row.
+    repoSlug.mockResolvedValue(null)
+
+    const { unmount } = renderHook(() => useRepoSlugIndex())
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)))
+    const armedCount = vi.getTimerCount()
+
+    unmount()
+    expect(vi.getTimerCount()).toBeLessThan(armedCount)
   })
 })
