@@ -737,7 +737,7 @@ export class CodexAccountService {
     const { managedHomePath } = managedHome
     try {
       const canonicalConfig = this.readCanonicalConfigForManagedHome(managedHomePath)
-      this.assertOAuthAccountAddAllowed(canonicalConfig)
+      this.assertOAuthAccountAddAllowed(canonicalConfig?.contents ?? null)
       this.safeSyncCanonicalConfigIntoManagedHome(managedHomePath, canonicalConfig, accountId)
       await this.runCodexLogin(managedHomePath)
       return await this.persistCapturedCodexAccount(accountId, managedHome)
@@ -756,7 +756,7 @@ export class CodexAccountService {
     const { managedHomePath } = managedHome
     try {
       const canonicalConfig = this.readCanonicalConfigForManagedHome(managedHomePath)
-      this.assertOAuthAccountAddAllowed(canonicalConfig)
+      this.assertOAuthAccountAddAllowed(canonicalConfig?.contents ?? null)
       this.safeSyncCanonicalConfigIntoManagedHome(managedHomePath, canonicalConfig, accountId)
       this.importCodexAuthFromHome(sourceHome, managedHomePath, accountId)
       return await this.persistCapturedCodexAccount(accountId, managedHome)
@@ -766,7 +766,7 @@ export class CodexAccountService {
     }
   }
 
-/**
+  /**
    * Import an already-authenticated external CODEX_HOME into Orca managed storage
    * without running `codex login` again (Option B from issue #10366).
    */
@@ -794,13 +794,17 @@ export class CodexAccountService {
       )
     }
 
+    // Why: when the canonical home has no config, the import copy is the config
+    // Codex will use. Apply the same OAuth provider policy before copying it.
+    const sourceConfig = this.readImportConfigForOAuthPolicy(resolvedSource)
+
     const accountId = randomUUID()
     const managedHome = this.createManagedHome(accountId, target)
     const { managedHomePath } = managedHome
 
     try {
       const canonicalConfig = this.readCanonicalConfigForManagedHome(managedHomePath)
-      this.assertOAuthAccountAddAllowed(canonicalConfig)
+      this.assertOAuthAccountAddAllowed(canonicalConfig?.contents ?? sourceConfig)
       await copyExistingCodexHomeIntoManaged({
         sourceHomePath: resolvedSource,
         managedHomePath,
@@ -1375,6 +1379,19 @@ export class CodexAccountService {
     }
   }
 
+  private readImportConfigForOAuthPolicy(sourceHomePath: string): string | null {
+    const configPath = join(sourceHomePath, 'config.toml')
+    if (!existsSync(configPath)) {
+      return null
+    }
+
+    try {
+      return readFileSync(configPath, 'utf-8')
+    } catch (error) {
+      throw new Error(`Could not read imported CODEX_HOME config: ${configPath}`, { cause: error })
+    }
+  }
+
   private readCanonicalConfigForManagedHome(managedHomePath: string): CanonicalCodexConfig | null {
     const wslInfo = parseWslUncPath(managedHomePath)
     if (!wslInfo) {
@@ -1406,10 +1423,8 @@ export class CodexAccountService {
     }
   }
 
-  private assertOAuthAccountAddAllowed(canonicalConfig: CanonicalCodexConfig | null): void {
-    const modelProvider = canonicalConfig
-      ? readCodexTopLevelModelProvider(canonicalConfig.contents)
-      : null
+  private assertOAuthAccountAddAllowed(configContents: string | null): void {
+    const modelProvider = configContents ? readCodexTopLevelModelProvider(configContents) : null
     if (!modelProvider || modelProvider === 'openai') {
       return
     }
@@ -1417,7 +1432,7 @@ export class CodexAccountService {
     // Why: mirroring a custom-provider pin into an OAuth managed home makes
     // the new OAuth credentials inert; fail before login and leave user config intact.
     throw new Error(
-      `Orca cannot add a Codex OAuth account while ~/.codex/config.toml pins the custom provider ${JSON.stringify(modelProvider)}. Keep using the system-default account for this provider, or remove model_provider (or set it to "openai") before adding an OAuth account. Orca left your config unchanged.`
+      `Orca cannot add a Codex OAuth account while the active Codex config pins the custom provider ${JSON.stringify(modelProvider)}. Keep using the system-default account for this provider, or remove model_provider (or set it to "openai") before adding an OAuth account. Orca left your config unchanged.`
     )
   }
 
