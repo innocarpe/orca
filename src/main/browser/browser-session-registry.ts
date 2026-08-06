@@ -25,7 +25,11 @@ import type {
 } from '../../shared/types'
 import { browserManager } from './browser-manager'
 import { hasSystemMediaAccess, requestSystemMediaAccess } from './browser-media-access'
-import { cleanElectronUserAgent, setupClientHintsOverride } from './browser-session-ua'
+import {
+  cleanElectronUserAgent,
+  isUnadvertisableChromeUserAgent,
+  setupClientHintsOverride
+} from './browser-session-ua'
 import { resolveChromiumCookiesPath } from './chromium-cookie-path'
 import { isAutoGrantedBrowserSessionPermission } from './browser-session-permission-policy'
 import {
@@ -192,9 +196,15 @@ class BrowserSessionRegistry {
         const sess = session.fromPartition(partition)
         const persistedUa = meta.userAgentByPartition[partition]
         if (persistedUa) {
-          sess.setUserAgent(persistedUa)
-          setupClientHintsOverride(sess, persistedUa)
-          continue
+          // Why: imports before the engine-version gate stored a fork's product version (Chrome/1.x);
+          // it is reapplied every launch, so drop it here or the profile stays blocked forever.
+          if (isUnadvertisableChromeUserAgent(persistedUa)) {
+            this.persistUserAgent(partition, null)
+          } else {
+            sess.setUserAgent(persistedUa)
+            setupClientHintsOverride(sess, persistedUa)
+            continue
+          }
         }
 
         if (profile.userAgentMode === 'native') {
