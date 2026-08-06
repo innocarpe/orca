@@ -56,4 +56,46 @@ describe('serve-mode-argv', () => {
     const argv = ['orca', '--serve', '--serve-json']
     expect(normalizeServeModeArgv(argv)).toEqual(argv)
   })
+
+  it('splits `--flag=value` CLI form, which getServeOptions cannot read', () => {
+    expect(
+      normalizeServeModeArgv(['/AppRun', 'serve', '--port=9090', '--pairing-address=0.0.0.0'])
+    ).toEqual(['/AppRun', '--serve', '--serve-port', '9090', '--serve-pairing-address', '0.0.0.0'])
+  })
+
+  it('translates serve flags in the mixed `--serve --port` form', () => {
+    // Why: leaving these untranslated silently kept pairing enabled despite --no-pairing.
+    expect(normalizeServeModeArgv(['orca', '--serve', '--port', '9090', '--no-pairing'])).toEqual([
+      'orca',
+      '--serve',
+      '--serve-port',
+      '9090',
+      '--serve-no-pairing'
+    ])
+  })
+
+  it('leaves a non-serve launch untouched', () => {
+    const argv = ['orca', '--no-sandbox', '/home/u/project']
+    expect(argvRequestsServeMode(argv)).toBe(false)
+    expect(normalizeServeModeArgv(argv)).toEqual(argv)
+  })
+
+  it('does not splice prototype members onto argv for stray positionals', () => {
+    expect(normalizeServeModeArgv(['/AppRun', 'serve', 'toString'])).toEqual([
+      '/AppRun',
+      '--serve',
+      'toString'
+    ])
+  })
+
+  it('passes args after `--` through verbatim', () => {
+    expect(normalizeServeModeArgv(['/AppRun', 'serve', '--json', '--', '--port', '1'])).toEqual([
+      '/AppRun',
+      '--serve',
+      '--serve-json',
+      '--',
+      '--port',
+      '1'
+    ])
+  })
 })

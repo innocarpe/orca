@@ -6,22 +6,24 @@
 
 const SERVE_FLAG = '--serve'
 
-const CLI_TO_SERVE_FLAG: Record<string, string> = {
-  '--json': '--serve-json',
-  '--no-pairing': '--serve-no-pairing',
-  '--mobile-pairing': '--serve-mobile-pairing',
-  '--recipe-json': '--serve-recipe-json'
-}
+// Why Map, not a record: `'toString' in {}` is true, so an object lookup turns a
+// stray `serve toString` positional into a function spliced onto argv.
+const CLI_TO_SERVE_FLAG = new Map([
+  ['--json', '--serve-json'],
+  ['--no-pairing', '--serve-no-pairing'],
+  ['--mobile-pairing', '--serve-mobile-pairing'],
+  ['--recipe-json', '--serve-recipe-json']
+])
 
-const CLI_TO_SERVE_VALUE_FLAG: Record<string, string> = {
-  '--port': '--serve-port',
-  '--pairing-address': '--serve-pairing-address',
-  '--project-root': '--serve-project-root'
-}
+const CLI_TO_SERVE_VALUE_FLAG = new Map([
+  ['--port', '--serve-port'],
+  ['--pairing-address', '--serve-pairing-address'],
+  ['--project-root', '--serve-project-root']
+])
 
 /** Flags that consume the next argv token as a value (CLI-form + Electron passthrough). */
 const VALUE_TAKING_FLAGS = new Set([
-  ...Object.keys(CLI_TO_SERVE_VALUE_FLAG),
+  ...CLI_TO_SERVE_VALUE_FLAG.keys(),
   '--serve-port',
   '--serve-pairing-address',
   '--serve-project-root',
@@ -73,33 +75,53 @@ export function argvRequestsServeMode(argv: readonly string[]): boolean {
 /**
  * Rewrite CLI-form `serve` invocations into the `--serve*` flag shape that
  * `getServeOptions` already understands. Idempotent when already in flag form.
+ *
+ * Serve flags are translated whenever serve mode is requested, including the
+ * mixed `--serve --port 6768` form: leaving them untranslated is what makes a
+ * security-shaped flag like `--no-pairing` read as accepted while pairing stays
+ * on (#12677).
  */
 export function normalizeServeModeArgv(argv: readonly string[]): string[] {
-  if (argv.includes(SERVE_FLAG)) {
-    return [...argv]
-  }
   const serveIndex = findServeSubcommandIndex(argv)
-  if (serveIndex === -1) {
+  if (serveIndex === -1 && !argv.includes(SERVE_FLAG)) {
     return [...argv]
   }
 
-  const next = [...argv.slice(0, serveIndex), SERVE_FLAG]
-  for (let i = serveIndex + 1; i < argv.length; i += 1) {
-    const token = argv[i]
-    if (token in CLI_TO_SERVE_FLAG) {
-      next.push(CLI_TO_SERVE_FLAG[token]!)
+  const next: string[] = []
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i]!
+    if (i === serveIndex) {
+      next.push(SERVE_FLAG)
       continue
     }
-    if (token in CLI_TO_SERVE_VALUE_FLAG) {
-      next.push(CLI_TO_SERVE_VALUE_FLAG[token]!)
-      const value = argv[i + 1]
-      if (value !== undefined && !isFlagToken(value)) {
-        next.push(value)
-        i += 1
-      }
+    if (token === '--') {
+      next.push(...argv.slice(i))
+      break
+    }
+    // Why: the CLI accepts `--port=6768` as well as `--port 6768`, but
+    // getServeOptions only reads the next token, so `=` must be split apart.
+    const eq = token.indexOf('=')
+    const name = eq === -1 ? token : token.slice(0, eq)
+    const booleanFlag = CLI_TO_SERVE_FLAG.get(name)
+    if (booleanFlag) {
+      next.push(booleanFlag)
       continue
     }
-    next.push(token)
+    const valueFlag = CLI_TO_SERVE_VALUE_FLAG.get(name)
+    if (!valueFlag) {
+      next.push(token)
+      continue
+    }
+    if (eq !== -1) {
+      next.push(valueFlag, token.slice(eq + 1))
+      continue
+    }
+    next.push(valueFlag)
+    const value = argv[i + 1]
+    if (value !== undefined && !isFlagToken(value)) {
+      next.push(value)
+      i += 1
+    }
   }
   return next
 }
