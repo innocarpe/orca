@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { agentKindToTuiAgent, tuiAgentToAgentKind } from './agent-kind'
 import { AGENT_KIND_VALUES, agentKindSchema } from './telemetry-events'
-import { TUI_AGENT_CONFIG } from './tui-agent-config'
+import { isTuiAgent, TUI_AGENT_CONFIG } from './tui-agent-config'
+import { TUI_AGENT_DISPLAY_NAMES } from './tui-agent-display-names'
 import type { TuiAgent } from './types'
 
 describe('tuiAgentToAgentKind', () => {
@@ -28,6 +29,18 @@ describe('tuiAgentToAgentKind', () => {
   it('uses the product id for Claude and the TuiAgent id for Pi', () => {
     expect(tuiAgentToAgentKind('claude')).toBe('claude-code')
     expect(tuiAgentToAgentKind('pi')).toBe('pi')
+  })
+
+  it('registers Reasonix as a first-class TUI agent', () => {
+    expect(isTuiAgent('reasonix')).toBe(true)
+    expect(TUI_AGENT_CONFIG.reasonix).toMatchObject({
+      detectCmd: 'reasonix',
+      launchCmd: 'reasonix',
+      expectedProcess: 'reasonix',
+      promptInjectionMode: 'stdin-after-start'
+    })
+    expect(TUI_AGENT_DISPLAY_NAMES.reasonix).toBe('Reasonix')
+    expect(tuiAgentToAgentKind('reasonix')).toBe('reasonix')
   })
 })
 

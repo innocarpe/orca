@@ -98,6 +98,13 @@ export const getAgentCatalog = createLocalizedCatalog((): AgentCatalogEntry[] =>
     homepageUrl: 'https://mimo.xiaomi.com/coder'
   },
   {
+    id: 'reasonix',
+    label: translate('auto.lib.agent.catalog.reasonix_label', 'Reasonix'),
+    cmd: 'reasonix',
+    faviconDomain: 'deepseek.com',
+    homepageUrl: 'https://github.com/esengine/DeepSeek-Reasonix'
+  },
+  {
     id: 'ante',
     label: translate('auto.lib.agent.catalog.da41abbdd4', 'Ante'),
     cmd: 'ante',
