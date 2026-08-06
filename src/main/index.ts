@@ -127,6 +127,7 @@ import {
   installUnhandledRejectionLogging
 } from './startup/main-process-error-guards'
 import { enableRendererHeapHeadroom } from './startup/renderer-heap-headroom'
+import { argvRequestsServeMode, normalizeServeModeArgv } from './startup/serve-mode-argv'
 import { ensureVirtualDisplayForHeadlessServe } from './startup/ensure-virtual-display'
 import {
   readActiveGpuFallbackMarker,
@@ -379,6 +380,11 @@ let gpuFeatureStatus: Electron.GPUFeatureStatus | null = null
 let localPtyStartupReady: Promise<void> = Promise.resolve()
 let localPtyProviderStartupReady: Promise<void> = Promise.resolve()
 const AGENT_STATE_CRASH_BREADCRUMB_MIN_INTERVAL_MS = 30_000
+// Why: extracted AppRun / binary launches can land CLI-form `serve` args on the
+// Electron process without the CLI rewrite that injects `--serve` (#12677).
+if (argvRequestsServeMode(process.argv) && !process.argv.includes('--serve')) {
+  process.argv = normalizeServeModeArgv(process.argv)
+}
 const isServeMode = process.argv.includes('--serve')
 
 function updateGpuAccelerationAboutPanel(): void {
