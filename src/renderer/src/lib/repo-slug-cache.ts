@@ -21,11 +21,9 @@ export type RepoSlugMatches = { origin: Repo[]; upstream: Repo[] }
  *  may legitimately match, since a contributor's clone has the personal fork as
  *  `origin`. `null` when the repo is not a fork or the key cannot be trusted.
  *
- *  Why `originIdentityKey` is required: persistence strips `upstream.host`
- *  (`sanitizeRepoUpstream`), so the fork's own origin is the only evidence of
- *  which server its parent lives on. Without it the key falls into the
- *  github.com namespace, where a GHES row would never match and an unrelated
- *  public row would bind the Enterprise clone. */
+ *  Why `originIdentityKey` is required: when `upstream.host` is absent (older
+ *  persisted forks), the fork's origin host is the fallback so GHES parents do
+ *  not collapse into github.com. Unresolved origins refuse the alias. */
 export function repoUpstreamIdentityKey(
   repo: Repo,
   originIdentityKey: string | null | undefined
