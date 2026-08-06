@@ -775,6 +775,18 @@ export async function importCookiesFromFile(
 // Direct import from installed Chromium browser
 // ---------------------------------------------------------------------------
 
+// Why: Chromium forks (Arc, etc.) often put their product version (1.x) in
+// CFBundleShortVersionString. Persisting that as Chrome/1.x makes sites treat the
+// session as ancient Chromium. Only engine-scale majors are safe to advertise.
+export function isAdvertisableChromiumEngineVersion(version: string): boolean {
+  const majorToken = version.trim().split('.')[0] ?? ''
+  if (!/^\d+$/.test(majorToken)) {
+    return false
+  }
+  // Chrome 70+ covers every Chromium engine we still support; product versions stay below.
+  return Number(majorToken) >= 70
+}
+
 // Why: services bind auth cookies to the creating User-Agent, so build a UA matching the source browser's real version.
 export function getUserAgentForBrowser(
   family: BrowserSessionProfileSource['browserFamily']
@@ -803,32 +815,34 @@ export function getUserAgentForBrowser(
     }
   }
 
+  function chromeShapedUa(version: string | null, edgeSuffix = false): string | null {
+    if (!version || !isAdvertisableChromiumEngineVersion(version)) {
+      return null
+    }
+    const base = `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${version} Safari/537.36`
+    return edgeSuffix ? `${base} Edg/${version}` : base
+  }
+
   switch (family) {
     case 'chrome': {
-      const v = readBrowserVersion('/Applications/Google Chrome.app')
-      return v ? `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${v} Safari/537.36` : null
+      return chromeShapedUa(readBrowserVersion('/Applications/Google Chrome.app'))
     }
     case 'edge': {
-      const v = readBrowserVersion('/Applications/Microsoft Edge.app')
-      return v ? `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${v} Safari/537.36 Edg/${v}` : null
+      return chromeShapedUa(readBrowserVersion('/Applications/Microsoft Edge.app'), true)
     }
     case 'arc': {
-      const v = readBrowserVersion('/Applications/Arc.app')
-      return v ? `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${v} Safari/537.36` : null
+      return chromeShapedUa(readBrowserVersion('/Applications/Arc.app'))
     }
     case 'chromium': {
-      const v = readBrowserVersion('/Applications/Brave Browser.app')
-      return v ? `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${v} Safari/537.36` : null
+      return chromeShapedUa(readBrowserVersion('/Applications/Brave Browser.app'))
     }
     case 'comet': {
       // Why: Comet is Chromium-based; use Chrome's UA shape so Google-bound auth cookies survive import.
-      const v = readBrowserVersion('/Applications/Comet.app')
-      return v ? `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${v} Safari/537.36` : null
+      return chromeShapedUa(readBrowserVersion('/Applications/Comet.app'))
     }
     case 'helium': {
       // Why: Helium is Chromium-based; use Chrome's UA shape so Google-bound auth cookies survive import.
-      const v = readBrowserVersion('/Applications/Helium.app')
-      return v ? `Mozilla/5.0 (${platform}) ${chromeBase} Chrome/${v} Safari/537.36` : null
+      return chromeShapedUa(readBrowserVersion('/Applications/Helium.app'))
     }
     case 'firefox':
     case 'safari':
