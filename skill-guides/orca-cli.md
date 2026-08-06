@@ -207,9 +207,9 @@ Terminal rules:
 
 ### Terminal titles vs agent panes
 
-`terminal rename` / the GUI rename set the **tab** title. That is not always what `terminal list` reports:
+`terminal create --title`, `terminal rename`, and the GUI rename all set the **tab** title — not `terminals[].title`. That is not always what `terminal list` reports:
 
-- `terminals[].title` is the pane OSC/PTY title (agents repaint it constantly). On newer builds it may fall back to the tab title when the PTY title is empty; older builds only show the PTY title. Do **not** treat rename as a reliable key for later `terminals[].title` greps.
+- `terminals[].title` is the pane OSC/PTY title (agents repaint it constantly). On newer builds it may fall back to the tab title when the PTY title is empty; older builds only show the PTY title. Do **not** treat create/rename as a reliable key for later `terminals[].title` greps.
 - The tab title is visible under `visualLayouts` — pass `--include-visual-layouts` on `terminal list` when you need tab/pane topology and tab titles.
 - For **agent** panes, prefer the agent registry join instead of titles: `worktree ps --json` → `.result.worktrees[].agents[]` gives `agentType` + `paneKey` (`tabId:leafId`). Match that against `terminal list`'s `tabId`/`leafId` (or handle) to find the live agent terminal.
 
