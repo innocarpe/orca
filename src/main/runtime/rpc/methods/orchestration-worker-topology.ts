@@ -67,7 +67,12 @@ export async function createExistingWorktreeWorkerTerminal(args: {
     title: `worker-${args.taskId}`,
     // Why: dispatching a worker is background work; it must not pull the sidebar
     // to the worker's workspace while the user is reading somewhere else.
-    surfaceOwner: false
+    surfaceOwner: false,
+    // Why: pure background create on some macOS setups produced a shell whose
+    // stdin was /dev/null, so the agent never launched and terminal send was a
+    // no-op (#12630). Prefer the renderer-backed PTY path when a window exists;
+    // with no window, createTerminal still falls back to background spawn.
+    rendererBacked: true
   })
   args.effects.push({
     kind: 'terminal',
