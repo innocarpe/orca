@@ -187,34 +187,43 @@ export function useRepoSlugIndex(): RepoSlugIndexState {
   const [upstreamIndex, setUpstreamIndex] = useState<SlugIndex>(() => new Map())
   const [ready, setReady] = useState(false)
   const [retryGeneration, setRetryGeneration] = useState(0)
+  // Why: schedule retry in a dedicated effect so setTimeout cleanup is owned
+  // synchronously (react-doctor effect-needs-cleanup); async .then assignment
+  // was not statically owned by the buildIndex effect cleanup.
+  const [retryDelayMs, setRetryDelayMs] = useState<number | null>(null)
   // Why: track the current repos snapshot so the effect can ignore stale
   // resolutions when repos change mid-flight.
   const generationRef = useRef(0)
 
   useEffect(() => {
     const gen = ++generationRef.current
-    let retryTimer: ReturnType<typeof setTimeout> | undefined
     setReady(false)
+    setRetryDelayMs(null)
     void buildIndex(repos, settings).then(
-      ({ index: next, upstreamIndex: nextUpstream, retryDelayMs }) => {
+      ({ index: next, upstreamIndex: nextUpstream, retryDelayMs: nextRetryDelayMs }) => {
         if (gen !== generationRef.current) {
           return
         }
         setIndex(next)
         setUpstreamIndex(nextUpstream)
         setReady(true)
-        if (retryDelayMs !== null) {
-          retryTimer = setTimeout(() => setRetryGeneration((value) => value + 1), retryDelayMs)
-        }
+        setRetryDelayMs(nextRetryDelayMs)
       }
     )
     return () => {
       generationRef.current += 1
-      if (retryTimer) {
-        clearTimeout(retryTimer)
-      }
     }
   }, [repos, retryGeneration, settings])
+
+  useEffect(() => {
+    if (retryDelayMs === null) {
+      return
+    }
+    const retryTimer = setTimeout(() => setRetryGeneration((value) => value + 1), retryDelayMs)
+    return () => {
+      clearTimeout(retryTimer)
+    }
+  }, [retryDelayMs])
 
   return useMemo(() => {
     const lookupSlugMatches = (slug: string | null | undefined, host?: string): RepoSlugMatches => {
