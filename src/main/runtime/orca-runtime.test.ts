@@ -15087,28 +15087,69 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
-  it('resolves tui-idle from a Kimi welcome banner preview (#10336)', async () => {
-    const runtime = new OrcaRuntimeService(store)
-    runtime.setPtyController({
-      spawn: vi.fn().mockResolvedValue({ id: 'pty-kimi' }),
-      write: () => true,
-      kill: () => true,
-      getForegroundProcess: async () => 'kimi'
-    })
-    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
-    runtime.onPtyData(
-      'pty-kimi',
-      '╭─────────────────────────────────────────╮\n│  Welcome to Kimi Code!                   │\n╰─────────────────────────────────────────╯\n',
-      Date.now()
-    )
+  it('resolves tui-idle after Kimi welcome banner then process quiet (#10336/#10369)', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-kimi' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => 'kimi'
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+      runtime.onPtyData(
+        'pty-kimi',
+        '╭─────────────────────────────────────────╮\n│  Welcome to Kimi Code!                   │\n╰─────────────────────────────────────────╯\n',
+        Date.now()
+      )
 
-    await expect(
-      runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 1_000 })
-    ).resolves.toMatchObject({
-      handle,
-      condition: 'tui-idle',
-      status: 'running'
-    })
+      const waitPromise = runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: 10_000
+      })
+      // Why: banner is no longer an immediate known-ready match — quiet after welcome.
+      await vi.advanceTimersByTimeAsync(5_000)
+
+      await expect(waitPromise).resolves.toMatchObject({
+        handle,
+        condition: 'tui-idle',
+        status: 'running'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not treat a Kimi welcome banner alone as tui-idle while output is still arriving (#10369)', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-kimi-busy' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => 'kimi'
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+      runtime.onPtyData('pty-kimi-busy', 'Welcome to Kimi Code!\n', Date.now())
+
+      const waitPromise = runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: 4_000
+      })
+      const timeoutAssertion = expect(waitPromise).rejects.toThrow('timeout')
+      // Why: keep lastOutputAt fresh so quiet fallback cannot fire despite banner,
+      // and advance past the wait timeout so the rejection settles under fake timers.
+      for (let i = 0; i < 10; i += 1) {
+        await vi.advanceTimersByTimeAsync(450)
+        runtime.onPtyData('pty-kimi-busy', `generating ${i}\n`, Date.now())
+      }
+
+      await timeoutAssertion
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not treat a quiet Kimi process as tui-idle before the welcome banner (#10336)', async () => {

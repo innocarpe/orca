@@ -1271,6 +1271,10 @@ type RuntimePtyWorktreeRecord = {
   title: string | null
   titleUpdatedAt: number | null
   lastOutputAt: number | null
+  // Why: Kimi has no idle OSC; once "Welcome to Kimi" has been observed, quiet
+  // may mean composer-ready. Before that, process quiet alone is a false idle
+  // during TUI mount (#10336 / #10369).
+  kimiWelcomeBannerSeen: boolean
   tailBuffer: string[]
   tailTranscriptBuffer: string[]
   tailTranscriptChars: number
@@ -28983,6 +28987,7 @@ export class OrcaRuntimeService {
         title: state.title ?? null,
         titleUpdatedAt: titleObservedAt,
         lastOutputAt: state.lastOutputAt ?? null,
+        kimiWelcomeBannerSeen: false,
         tailBuffer: [],
         tailTranscriptBuffer: [],
         tailTranscriptChars: 0,
@@ -31695,9 +31700,13 @@ export class OrcaRuntimeService {
           foregroundPollInFlight = true
           startedForegroundPoll = true
           const fg = await this.ptyController.getForegroundProcess(leaf.ptyId)
-          // Why: Kimi's process is live long before the TUI accepts input; quiet
-          // alone false-positives and drops orchestration dispatch paste (#10336).
-          if (fg && !isShellProcess(fg) && !isExpectedAgentProcess(fg, 'kimi')) {
+          const leafPty = this.ptysById.get(leaf.ptyId)
+          // Why: Kimi process quiet before "Welcome to Kimi" is not composer-ready;
+          // after the banner has been seen once, quiet is a normal later-turn idle.
+          const kimiOk =
+            !isExpectedAgentProcess(fg, 'kimi') ||
+            kimiAllowsQuietIdleFallback(leafPty, leafWaitText)
+          if (fg && !isShellProcess(fg) && kimiOk) {
             const quietMs = leaf.lastOutputAt ? Date.now() - leaf.lastOutputAt : 0
             if (quietMs >= TUI_IDLE_QUIESCENCE_MS) {
               if (waiter.pollInterval) {
@@ -31763,8 +31772,10 @@ export class OrcaRuntimeService {
           foregroundPollInFlight = true
           startedForegroundPoll = true
           const fg = await this.ptyController.getForegroundProcess(pty.ptyId)
-          // Why: Kimi process liveness + quiet is not composer-ready (#10336).
-          if (fg && !isShellProcess(fg) && !isExpectedAgentProcess(fg, 'kimi')) {
+          // Why: require welcome once, then allow quiet for later turns (#10336/#10369).
+          const kimiOk =
+            !isExpectedAgentProcess(fg, 'kimi') || kimiAllowsQuietIdleFallback(pty, ptyWaitText)
+          if (fg && !isShellProcess(fg) && kimiOk) {
             const quietMs = pty.lastOutputAt ? Date.now() - pty.lastOutputAt : 0
             if (quietMs >= TUI_IDLE_QUIESCENCE_MS) {
               if (waiter.pollInterval) {
@@ -36595,22 +36606,38 @@ function findDismissedStartupModalIndex(normalized: string): number | null {
 }
 
 function findKnownReadyPromptIndex(normalized: string): number | null {
+  // Why: do not include Kimi's welcome banner here — `isKnownReadyPromptPreview`
+  // satisfies every later `tui-idle` wait, and a sticky banner in the tail would
+  // resolve while Kimi is still generating. Kimi readiness is process-quiet
+  // gated on `kimiWelcomeBannerSeen` instead (#10369 CodeRabbit).
   const indexes = [
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
-    findCursorReadyPromptIndex(normalized),
-    // Why: Kimi has no reliable agent-status OSC; "Welcome to Kimi" is the
-    // composer-ready marker used for stdin-after-start injection (#10336).
-    findKimiReadyPromptIndex(normalized)
+    findCursorReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
 
-// Why: match the same stream marker as draftPasteReadySignal `kimi-welcome-banner`
-// so orchestration worker-start's tui-idle wait and worktree follow-up stay aligned.
-function findKimiReadyPromptIndex(normalized: string): number | null {
-  const index = normalized.lastIndexOf('welcome to kimi')
-  return index === -1 ? null : index
+const KIMI_WELCOME_BANNER_PREVIEW = 'welcome to kimi'
+
+function noteKimiWelcomeBannerSeen(
+  pty: RuntimePtyWorktreeRecord | null | undefined,
+  waitText: string
+): void {
+  if (!pty || pty.kimiWelcomeBannerSeen) {
+    return
+  }
+  if (waitText.toLowerCase().includes(KIMI_WELCOME_BANNER_PREVIEW)) {
+    pty.kimiWelcomeBannerSeen = true
+  }
+}
+
+function kimiAllowsQuietIdleFallback(
+  pty: RuntimePtyWorktreeRecord | null | undefined,
+  waitText: string
+): boolean {
+  noteKimiWelcomeBannerSeen(pty, waitText)
+  return Boolean(pty?.kimiWelcomeBannerSeen)
 }
 
 // Why: match the banner's last occurrence to skip the trust dialog's own "Cursor Agent" text; "→" is cursor-agent's persistent input prompt.
