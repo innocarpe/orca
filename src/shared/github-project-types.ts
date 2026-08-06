@@ -146,6 +146,18 @@ export type GitHubProjectFieldValue =
   | { kind: 'date'; fieldId: string; date: string }
   | { kind: 'labels'; fieldId: string; labels: GitHubProjectLabel[] }
   | { kind: 'users'; fieldId: string; users: GitHubProjectUser[] }
+  | {
+      kind: 'pull-requests'
+      fieldId: string
+      pullRequests: { number: number; title: string; url: string }[]
+    }
+  | {
+      kind: 'sub-issues-progress'
+      fieldId: string
+      percent: number
+      completed: number
+      total: number
+    }
 
 export type GitHubProjectRowItemType = 'ISSUE' | 'PULL_REQUEST' | 'DRAFT_ISSUE' | 'REDACTED'
 

@@ -333,6 +333,10 @@ type RawFieldValue = {
   date?: string
   labels?: { nodes?: RawLabel[] }
   users?: { nodes?: RawUser[] }
+  pullRequests?: { nodes?: ({ number?: number; title?: string; url?: string } | null)[] }
+  percentComplete?: number
+  completedCount?: number
+  totalCount?: number
 }
 
 export function normalizeFieldValue(
@@ -386,6 +390,27 @@ export function normalizeFieldValue(
         .map(normalizeUser)
         .filter((u): u is GitHubProjectUser => u !== null)
       return { kind: 'users', fieldId, users }
+    }
+    case 'ProjectV2ItemFieldPullRequestValue': {
+      const pullRequests = (raw.pullRequests?.nodes ?? [])
+        .map((node) => {
+          if (!node || typeof node.number !== 'number') {
+            return null
+          }
+          return {
+            number: node.number,
+            title: typeof node.title === 'string' ? node.title : '',
+            url: typeof node.url === 'string' ? node.url : ''
+          }
+        })
+        .filter((pr): pr is { number: number; title: string; url: string } => pr !== null)
+      return { kind: 'pull-requests', fieldId, pullRequests }
+    }
+    case 'ProjectV2ItemFieldProgressValue': {
+      const percent = typeof raw.percentComplete === 'number' ? raw.percentComplete : 0
+      const completed = typeof raw.completedCount === 'number' ? raw.completedCount : 0
+      const total = typeof raw.totalCount === 'number' ? raw.totalCount : 0
+      return { kind: 'sub-issues-progress', fieldId, percent, completed, total }
     }
     case undefined:
     default:
@@ -598,6 +623,16 @@ const FIELD_VALUES_SELECTION = `
       ... on ProjectV2ItemFieldDateValue         { field { ...FieldConfig } date }
       ... on ProjectV2ItemFieldLabelValue        { field { ...FieldConfig } labels(first:10) { nodes { name color } } }
       ... on ProjectV2ItemFieldUserValue         { field { ...FieldConfig } users(first:5) { nodes { login name avatarUrl } } }
+      ... on ProjectV2ItemFieldPullRequestValue  {
+        field { ...FieldConfig }
+        pullRequests(first:10) { nodes { number title url } }
+      }
+      ... on ProjectV2ItemFieldProgressValue {
+        field { ...FieldConfig }
+        percentComplete
+        completedCount
+        totalCount
+      }
     }
   }
 `
