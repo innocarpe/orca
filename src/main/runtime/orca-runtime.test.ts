@@ -15087,6 +15087,58 @@ describe('OrcaRuntimeService', () => {
     })
   })
 
+  it('resolves tui-idle from a Kimi welcome banner preview (#10336)', async () => {
+    const runtime = new OrcaRuntimeService(store)
+    runtime.setPtyController({
+      spawn: vi.fn().mockResolvedValue({ id: 'pty-kimi' }),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => 'kimi'
+    })
+    const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+    runtime.onPtyData(
+      'pty-kimi',
+      '╭─────────────────────────────────────────╮\n│  Welcome to Kimi Code!                   │\n╰─────────────────────────────────────────╯\n',
+      Date.now()
+    )
+
+    await expect(
+      runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 1_000 })
+    ).resolves.toMatchObject({
+      handle,
+      condition: 'tui-idle',
+      status: 'running'
+    })
+  })
+
+  it('does not treat a quiet Kimi process as tui-idle before the welcome banner (#10336)', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-kimi-quiet' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => 'kimi'
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`)
+      // Why: some early process noise then silence — quiet fallback must not fire for kimi.
+      runtime.onPtyData('pty-kimi-quiet', 'starting kimi...\n', Date.now())
+
+      const waitPromise = runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: 8_000
+      })
+      const timeoutAssertion = expect(waitPromise).rejects.toThrow('timeout')
+
+      await vi.advanceTimersByTimeAsync(8_000)
+
+      await timeoutAssertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('resolves tui-idle from an Antigravity ready prompt preview', async () => {
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({

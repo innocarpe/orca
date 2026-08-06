@@ -1747,6 +1747,10 @@ const BRACKETED_PASTE_BEGIN = '\x1b[200~'
 const BRACKETED_PASTE_END = '\x1b[201~'
 const BRACKETED_PASTE_QUIET_MS = 1500
 const DRAFT_PASTE_READY_TIMEOUT_MS = 8000
+// Why: post-paste quiet settle is ~8s; full TUI mount (e.g. Kimi welcome banner
+// on a loaded remote/headless host) regularly needs longer before stdin is safe
+// (#10336 / issuecomment-5204525896).
+const STARTUP_FOLLOWUP_DRAFT_READY_TIMEOUT_MS = 20_000
 const MOBILE_TERMINAL_SURFACE_TIMEOUT_MS = 10_000
 const MOBILE_TERMINAL_READY_FALLBACK_MS = 1000
 const RECENT_PTY_PATH_CANDIDATE_LIMIT = 1024
@@ -21212,7 +21216,11 @@ export class OrcaRuntimeService {
         // later (Kimi); wait for the configured stream marker when present (#10336).
         let ptyId = processPtyId
         if (followup.agent && TUI_AGENT_CONFIG[followup.agent].draftPasteReadySignal) {
-          const draftReadyPtyId = await this.waitForStartupDraftReady(handle, followup.agent)
+          const draftReadyPtyId = await this.waitForStartupDraftReady(
+            handle,
+            followup.agent,
+            STARTUP_FOLLOWUP_DRAFT_READY_TIMEOUT_MS
+          )
           if (!draftReadyPtyId) {
             console.warn(
               '[worktree-create] agent process started but draft-ready signal never fired; skipping follow-up prompt'
@@ -21388,7 +21396,11 @@ export class OrcaRuntimeService {
     return null
   }
 
-  private waitForStartupDraftReady(handle: string, agent: TuiAgent): Promise<string | null> {
+  private waitForStartupDraftReady(
+    handle: string,
+    agent: TuiAgent,
+    timeoutMs: number = DRAFT_PASTE_READY_TIMEOUT_MS
+  ): Promise<string | null> {
     const livePty = this.getLivePtyForHandle(handle)
     const ptyId = livePty?.pty.ptyId
     if (!ptyId) {
@@ -21441,7 +21453,7 @@ export class OrcaRuntimeService {
       if (replay) {
         observeData(replay)
       }
-      hardTimer = setTimeout(() => finish(null), DRAFT_PASTE_READY_TIMEOUT_MS)
+      hardTimer = setTimeout(() => finish(null), timeoutMs)
     })
   }
 
@@ -31683,7 +31695,9 @@ export class OrcaRuntimeService {
           foregroundPollInFlight = true
           startedForegroundPoll = true
           const fg = await this.ptyController.getForegroundProcess(leaf.ptyId)
-          if (fg && !isShellProcess(fg)) {
+          // Why: Kimi's process is live long before the TUI accepts input; quiet
+          // alone false-positives and drops orchestration dispatch paste (#10336).
+          if (fg && !isShellProcess(fg) && !isExpectedAgentProcess(fg, 'kimi')) {
             const quietMs = leaf.lastOutputAt ? Date.now() - leaf.lastOutputAt : 0
             if (quietMs >= TUI_IDLE_QUIESCENCE_MS) {
               if (waiter.pollInterval) {
@@ -31749,7 +31763,8 @@ export class OrcaRuntimeService {
           foregroundPollInFlight = true
           startedForegroundPoll = true
           const fg = await this.ptyController.getForegroundProcess(pty.ptyId)
-          if (fg && !isShellProcess(fg)) {
+          // Why: Kimi process liveness + quiet is not composer-ready (#10336).
+          if (fg && !isShellProcess(fg) && !isExpectedAgentProcess(fg, 'kimi')) {
             const quietMs = pty.lastOutputAt ? Date.now() - pty.lastOutputAt : 0
             if (quietMs >= TUI_IDLE_QUIESCENCE_MS) {
               if (waiter.pollInterval) {
@@ -36583,9 +36598,19 @@ function findKnownReadyPromptIndex(normalized: string): number | null {
   const indexes = [
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
-    findCursorReadyPromptIndex(normalized)
+    findCursorReadyPromptIndex(normalized),
+    // Why: Kimi has no reliable agent-status OSC; "Welcome to Kimi" is the
+    // composer-ready marker used for stdin-after-start injection (#10336).
+    findKimiReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
+}
+
+// Why: match the same stream marker as draftPasteReadySignal `kimi-welcome-banner`
+// so orchestration worker-start's tui-idle wait and worktree follow-up stay aligned.
+function findKimiReadyPromptIndex(normalized: string): number | null {
+  const index = normalized.lastIndexOf('welcome to kimi')
+  return index === -1 ? null : index
 }
 
 // Why: match the banner's last occurrence to skip the trust dialog's own "Cursor Agent" text; "→" is cursor-agent's persistent input prompt.
