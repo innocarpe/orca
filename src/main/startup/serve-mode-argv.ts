@@ -19,34 +19,55 @@ const CLI_TO_SERVE_VALUE_FLAG: Record<string, string> = {
   '--project-root': '--serve-project-root'
 }
 
+/** Flags that consume the next argv token as a value (CLI-form + Electron passthrough). */
+const VALUE_TAKING_FLAGS = new Set([
+  ...Object.keys(CLI_TO_SERVE_VALUE_FLAG),
+  '--serve-port',
+  '--serve-pairing-address',
+  '--serve-project-root',
+  '--config',
+  '--user-data-dir',
+  '--environment',
+  '--pairing-code'
+])
+
 function isFlagToken(token: string | undefined): boolean {
   return Boolean(token && token.startsWith('-'))
 }
 
-/** True when argv already has `--serve` or a bare `serve` subcommand. */
-export function argvRequestsServeMode(argv: readonly string[]): boolean {
-  if (argv.includes(SERVE_FLAG)) {
-    return true
-  }
-  // Skip executable path; treat a bare `serve` token that is not a flag value as the subcommand.
-  for (let i = 1; i < argv.length; i += 1) {
+/**
+ * Index of the CLI `serve` subcommand: the first positional token after flags
+ * (and their values). Option *values* named `serve` are never treated as the
+ * subcommand.
+ */
+export function findServeSubcommandIndex(argv: readonly string[]): number {
+  let i = 1
+  while (i < argv.length) {
     const token = argv[i]
-    if (token === 'serve') {
-      const prev = argv[i - 1]
-      // Value of a previous flag would be `serve` only for weird paths; still accept.
-      if (
-        prev === undefined ||
-        isFlagToken(prev) ||
-        prev.endsWith('.js') ||
-        prev.endsWith('.mjs')
-      ) {
-        return true
-      }
-      // Previous token was a non-flag path (e.g. AppRun); still a subcommand.
-      return true
+    if (token === '--') {
+      return -1
     }
+    if (isFlagToken(token)) {
+      const eq = token!.indexOf('=')
+      if (eq !== -1) {
+        i += 1
+        continue
+      }
+      if (VALUE_TAKING_FLAGS.has(token!)) {
+        i += 2
+        continue
+      }
+      i += 1
+      continue
+    }
+    return token === 'serve' ? i : -1
   }
-  return false
+  return -1
+}
+
+/** True when argv already has `--serve` or a bare `serve` CLI subcommand. */
+export function argvRequestsServeMode(argv: readonly string[]): boolean {
+  return argv.includes(SERVE_FLAG) || findServeSubcommandIndex(argv) !== -1
 }
 
 /**
@@ -57,7 +78,7 @@ export function normalizeServeModeArgv(argv: readonly string[]): string[] {
   if (argv.includes(SERVE_FLAG)) {
     return [...argv]
   }
-  const serveIndex = argv.findIndex((token, index) => index > 0 && token === 'serve')
+  const serveIndex = findServeSubcommandIndex(argv)
   if (serveIndex === -1) {
     return [...argv]
   }
@@ -78,7 +99,6 @@ export function normalizeServeModeArgv(argv: readonly string[]): string[] {
       }
       continue
     }
-    // Already-normalized --serve-* or unrelated Electron flags pass through.
     next.push(token)
   }
   return next
