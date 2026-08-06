@@ -150,13 +150,9 @@ export type GitHubProjectFieldValue =
       kind: 'pull-requests'
       fieldId: string
       pullRequests: { number: number; title: string; url: string }[]
-    }
-  | {
-      kind: 'sub-issues-progress'
-      fieldId: string
-      percent: number
-      completed: number
-      total: number
+      /** True when GraphQL returned fewer nodes than totalCount (page truncated). */
+      truncated: boolean
+      totalCount: number
     }
 
 export type GitHubProjectRowItemType = 'ISSUE' | 'PULL_REQUEST' | 'DRAFT_ISSUE' | 'REDACTED'

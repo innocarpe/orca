@@ -116,23 +116,18 @@ export default function ProjectCell({
   }
 
   if (field.dataType === 'LINKED_PULL_REQUESTS') {
-    const prs = value?.kind === 'pull-requests' ? value.pullRequests : []
-    if (prs.length === 0) {
+    if (value?.kind !== 'pull-requests' || value.pullRequests.length === 0) {
       return <span className="text-xs text-muted-foreground" />
     }
+    const labels = value.pullRequests.map((pr) => `#${pr.number}`)
+    const overflow =
+      value.truncated || value.totalCount > value.pullRequests.length
+        ? ` +${Math.max(value.totalCount - value.pullRequests.length, 1)}`
+        : ''
     return (
       <span className="truncate text-xs text-muted-foreground">
-        {prs.map((pr) => `#${pr.number}`).join(', ')}
-      </span>
-    )
-  }
-  if (field.dataType === 'SUB_ISSUES_PROGRESS') {
-    if (value?.kind !== 'sub-issues-progress' || value.total <= 0) {
-      return <span className="text-xs text-muted-foreground" />
-    }
-    return (
-      <span className="truncate text-xs text-muted-foreground">
-        {value.completed}/{value.total} ({Math.round(value.percent)}%)
+        {labels.join(', ')}
+        {overflow}
       </span>
     )
   }
