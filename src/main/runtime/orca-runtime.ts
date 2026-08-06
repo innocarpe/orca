@@ -502,6 +502,7 @@ import {
   countTerminalLayoutLeaves
 } from './headless-terminal-split-layout'
 import { RECENT_PTY_OUTPUT_LIMIT, RecentPtyOutputBuffer } from './recent-pty-output-buffer'
+import { pruneExpiredProvenAbsentLeafPtyVerdicts } from './proven-absent-leaf-pty-verdicts'
 import {
   buildHeadlessTabGroupMove,
   buildHeadlessTabGroupSplit
@@ -16348,6 +16349,13 @@ export class OrcaRuntimeService {
     // distinguish live from stale. The controller's exact-id hasPty is the
     // provider's own synchronous inventory: a known id is alive, skip probing
     // and supersede any cached verdict (the id came back).
+    // Why: expired entries are otherwise retained until that ptyId is probed
+    // again; sweep on every consult so long-lived runtimes do not keep dead ids.
+    pruneExpiredProvenAbsentLeafPtyVerdicts(
+      this.provenAbsentLeafPtyVerdicts,
+      Date.now(),
+      PROVEN_ABSENT_LEAF_PTY_TTL_MS
+    )
     if (this.controllerKnowsPtyIsLive(ptyId)) {
       this.provenAbsentLeafPtyVerdicts.delete(ptyId)
       return Promise.resolve(false)
@@ -16372,7 +16380,13 @@ export class OrcaRuntimeService {
         if ((await probeLiveness(ptyId)) !== false) {
           return false
         }
-        this.provenAbsentLeafPtyVerdicts.set(ptyId, Date.now())
+        const now = Date.now()
+        pruneExpiredProvenAbsentLeafPtyVerdicts(
+          this.provenAbsentLeafPtyVerdicts,
+          now,
+          PROVEN_ABSENT_LEAF_PTY_TTL_MS
+        )
+        this.provenAbsentLeafPtyVerdicts.set(ptyId, now)
         return true
       } catch {
         // Why: a failed probe is unknown, and unknown never rejects a write.
