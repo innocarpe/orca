@@ -9,6 +9,16 @@ import { githubRepoIdentityKey } from '../../../shared/github-repository-identit
 /** Lowercased `owner/repo` → Repo[]. */
 export type SlugIndex = Map<string, Repo[]>
 
+/** Identity key of a fork's upstream parent, resolved once at repo-add time and
+ *  persisted on the Repo record (`undefined` = unresolved, `null` = not a fork).
+ *  Why: Project cards reference the upstream repo while a contributor's clone
+ *  has the personal fork as `origin`, so upstream is a second identity a row
+ *  may legitimately match. */
+export function repoUpstreamIdentityKey(repo: Repo): string | null {
+  const upstream = repo.upstream
+  return upstream?.owner && upstream.repo ? githubRepoIdentityKey(upstream) : null
+}
+
 /** Module-scope cache keyed by runtime scope + repo.id. A Repo that has already
  *  failed resolution is recorded as `null` briefly so it is not retried on every
  *  cell mount, while still recovering after an external GHES auth login. */
@@ -87,7 +97,8 @@ export function settingsForRepoOwner(
 /** Synchronous slug → Repo lookup against the already-resolved module cache.
  *  Used by store slices (which can't run the async hook-based index) to route
  *  project-row mutations to the matched repo's owner host; callers fall back to
- *  focused settings when nothing matches. */
+ *  focused settings when nothing matches. Origin matches win over upstream ones
+ *  so a clone of the upstream repo itself is never shadowed by someone's fork. */
 export function lookupReposBySlugFromCache(
   repos: readonly Repo[],
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
@@ -100,11 +111,14 @@ export function lookupReposBySlugFromCache(
   }
   const target = githubRepoIdentityKey({ owner, repo, host })
   const matched: Repo[] = []
+  const upstreamMatched: Repo[] = []
   for (const repo of repos) {
     const cacheKey = slugCacheKey(repo.id, settingsForRepoOwner(repo, settings))
     if (slugByRepoId.get(cacheKey) === target) {
       matched.push(repo)
+    } else if (repoUpstreamIdentityKey(repo) === target) {
+      upstreamMatched.push(repo)
     }
   }
-  return matched
+  return matched.length > 0 ? matched : upstreamMatched
 }

@@ -22,6 +22,7 @@ import {
   nextRepoSlugFailureRetryDelay,
   readRepoSlugCache,
   rememberRepoSlug,
+  repoUpstreamIdentityKey,
   settingsForRepoOwner,
   slugByRepoId,
   slugCacheKey,
@@ -126,7 +127,7 @@ async function resolveRepoSlug(
 async function buildIndex(
   repos: Repo[],
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined
-): Promise<{ index: SlugIndex; retryDelayMs: number | null }> {
+): Promise<{ index: SlugIndex; upstreamIndex: SlugIndex; retryDelayMs: number | null }> {
   // Why: evict cached entries for repos that no longer exist in state so
   // the cache cannot grow unbounded across long sessions where users add
   // and remove repos. Without this, every removed repo's id (and its
@@ -139,31 +140,33 @@ async function buildIndex(
     }
   }
   const next: SlugIndex = new Map()
+  const upstreamNext: SlugIndex = new Map()
   const results = await Promise.all(
-    repos.map(async (r) => {
-      const ownerSettings = settingsForRepoOwner(r, settings)
+    repos.map(async (r) => ({
+      repo: r,
       // Why: the project slug index spans repos from multiple hosts; each
       // repo's remote metadata must be read from its owner.
-      const slug = await resolveRepoSlug(r, ownerSettings)
-      // Why: Project cards often reference the upstream public repo while the
-      // open clone's origin is a personal fork. Index the parent slug too so
-      // filterProjectTableRowsBySelectedRepos does not drop every row (#12647).
-      const upstreamSlug = await resolveRepoUpstreamSlug(r, ownerSettings)
-      return { repo: r, slug, upstreamSlug }
-    })
+      slug: await resolveRepoSlug(r, settingsForRepoOwner(r, settings))
+    }))
   )
-  for (const { repo, slug, upstreamSlug } of results) {
+  for (const { repo, slug } of results) {
     if (slug) {
       next.set(slug, [...(next.get(slug) ?? []), repo])
     }
-    if (upstreamSlug && upstreamSlug !== slug) {
-      const existing = next.get(upstreamSlug) ?? []
-      if (!existing.some((entry) => entry.id === repo.id)) {
-        next.set(upstreamSlug, [...existing, repo])
-      }
+    // Why: a Project card references the upstream repo, but a contributor's
+    // clone has their personal fork as `origin`, so the origin-only index
+    // dropped every row (#12647). `repo.upstream` is already resolved at
+    // repo-add time and backfilled at startup, so this costs no extra IPC.
+    const upstreamKey = repoUpstreamIdentityKey(repo)
+    if (upstreamKey && upstreamKey !== slug) {
+      upstreamNext.set(upstreamKey, [...(upstreamNext.get(upstreamKey) ?? []), repo])
     }
   }
-  return { index: next, retryDelayMs: nextRepoSlugFailureRetryDelay(liveKeys) }
+  return {
+    index: next,
+    upstreamIndex: upstreamNext,
+    retryDelayMs: nextRepoSlugFailureRetryDelay(liveKeys)
+  }
 }
 
 export type RepoSlugIndexState = {
@@ -178,6 +181,7 @@ export function useRepoSlugIndex(): RepoSlugIndexState {
   const repos = useAppStore((s) => s.repos)
   const settings = useAppStore((s) => s.settings)
   const [index, setIndex] = useState<SlugIndex>(() => new Map())
+  const [upstreamIndex, setUpstreamIndex] = useState<SlugIndex>(() => new Map())
   const [ready, setReady] = useState(false)
   const [retryGeneration, setRetryGeneration] = useState(0)
   // Why: track the current repos snapshot so the effect can ignore stale
@@ -188,16 +192,19 @@ export function useRepoSlugIndex(): RepoSlugIndexState {
     const gen = ++generationRef.current
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     setReady(false)
-    void buildIndex(repos, settings).then(({ index: next, retryDelayMs }) => {
-      if (gen !== generationRef.current) {
-        return
+    void buildIndex(repos, settings).then(
+      ({ index: next, upstreamIndex: nextUpstream, retryDelayMs }) => {
+        if (gen !== generationRef.current) {
+          return
+        }
+        setIndex(next)
+        setUpstreamIndex(nextUpstream)
+        setReady(true)
+        if (retryDelayMs !== null) {
+          retryTimer = setTimeout(() => setRetryGeneration((value) => value + 1), retryDelayMs)
+        }
       }
-      setIndex(next)
-      setReady(true)
-      if (retryDelayMs !== null) {
-        retryTimer = setTimeout(() => setRetryGeneration((value) => value + 1), retryDelayMs)
-      }
-    })
+    )
     return () => {
       generationRef.current += 1
       if (retryTimer) {
@@ -213,10 +220,15 @@ export function useRepoSlugIndex(): RepoSlugIndexState {
         if (!owner || !repo) {
           return []
         }
-        return index.get(githubRepoIdentityKey({ owner, repo, host })) ?? []
+        const key = githubRepoIdentityKey({ owner, repo, host })
+        // Why: origin matches win — when the upstream repo itself is open, a
+        // row must resolve to that clone rather than becoming ambiguous with
+        // someone's fork of it. Fall back to forks only when nothing owns the
+        // slug directly.
+        return index.get(key) ?? upstreamIndex.get(key) ?? []
       },
       ready
     }),
-    [index, ready]
+    [index, upstreamIndex, ready]
   )
 }

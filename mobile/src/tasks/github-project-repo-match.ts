@@ -7,6 +7,9 @@ export type GitHubProjectRepoMatch = {
   id: string
   path: string
   displayName: string
+  /** Fork parent resolved by the host and carried on `repo.list`. Absent = not
+   *  a fork or not yet resolved. */
+  upstream?: { owner: string; repo: string; host?: string } | null
 }
 
 export type GitHubRepoSlugCacheEntry = {
@@ -76,6 +79,20 @@ export function findRepoForGitHubProjectRepository(
     return slugMatches[0]!
   }
   if (slugMatches.length > 1) {
+    return null
+  }
+
+  // Why: a Project card references the upstream repo, but a contributor's clone
+  // has their personal fork as `origin`, so origin-only matching hid every row
+  // (#12647). Checked after origin so an open clone of the upstream repo itself
+  // always wins over someone's fork of it.
+  const upstreamMatches = repos.filter(
+    (repo) => repo.upstream && githubRepoIdentityKey(repo.upstream) === requestedIdentityKey
+  )
+  if (upstreamMatches.length === 1) {
+    return upstreamMatches[0]!
+  }
+  if (upstreamMatches.length > 1) {
     return null
   }
 
