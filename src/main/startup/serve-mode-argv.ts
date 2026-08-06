@@ -21,48 +21,84 @@ const CLI_TO_SERVE_VALUE_FLAG = new Map([
   ['--project-root', '--serve-project-root']
 ])
 
-/** Flags that consume the next argv token as a value (CLI-form + Electron passthrough). */
+/**
+ * Flags that consume the next argv token as a value (CLI-form + Electron passthrough).
+ * Residual class: a flag outside this list whose space-separated value is literally `serve` would
+ * read as the subcommand. Chromium switches are `--flag=value` only, so no real launch does that.
+ */
 const VALUE_TAKING_FLAGS = new Set([
   ...CLI_TO_SERVE_VALUE_FLAG.keys(),
   '--serve-port',
   '--serve-pairing-address',
   '--serve-project-root',
-  '--config',
   '--user-data-dir',
   '--environment',
   '--pairing-code'
 ])
+
+// Why: a CLI-form `serve` is not a serve launch when help was asked for. The AppImage redirect
+// already hands these to the CLI (the same three tokens); without the refusal here,
+// `<binary> serve --help` binds a network-exposed runtime server with pairing on and prints nothing.
+// Scoped to the subcommand form on purpose: `--serve` is the CLI's own contract and never carries
+// `--help`, so widening this would risk the one path that already works.
+const HELP_FLAGS = new Set(['--help', '-h', 'help'])
 
 function isFlagToken(token: string | undefined): boolean {
   return Boolean(token && token.startsWith('-'))
 }
 
 /**
+ * Value consumption for the two scans that walk argv looking for a position: a flag takes the next
+ * token only when that token is not itself flag-shaped. `normalizeServeModeArgv` consumes a strict
+ * subset of this (only the CLI value flags it translates), which is the property
+ * `findServeSubcommandIndex` documents below.
+ */
+function indexAfterToken(argv: readonly string[], i: number): number {
+  return i + (VALUE_TAKING_FLAGS.has(argv[i]!) && !isFlagToken(argv[i + 1]) ? 2 : 1)
+}
+
+function requestsHelp(argv: readonly string[]): boolean {
+  let i = 1
+  while (i < argv.length) {
+    const token = argv[i]!
+    if (token === '--') {
+      return false
+    }
+    // Skipping values matters for the bare `help` token: `serve --project-root help` names a
+    // directory, it does not ask for help.
+    if (HELP_FLAGS.has(token)) {
+      return true
+    }
+    i = indexAfterToken(argv, i)
+  }
+  return false
+}
+
+/**
  * Index of the CLI `serve` subcommand: the first positional token after flags
  * (and their values). Option *values* named `serve` are never treated as the
  * subcommand.
+ *
+ * What the tokens this skips must satisfy: they are a superset of the ones `normalizeServeModeArgv`
+ * consumes as values. That one-directional property is what keeps the serve index off a token the
+ * rewrite treats as a value — if the two ever disagreed, one half would swallow the `serve` token
+ * the other half is rewriting and `--serve` would never be injected: #12677 again in a new shape.
+ * Shrinking VALUE_TAKING_FLAGS to "restore symmetry" breaks it (see `--user-data-dir serve`).
  */
 export function findServeSubcommandIndex(argv: readonly string[]): number {
+  if (requestsHelp(argv)) {
+    return -1
+  }
   let i = 1
   while (i < argv.length) {
     const token = argv[i]
     if (token === '--') {
       return -1
     }
-    if (isFlagToken(token)) {
-      const eq = token!.indexOf('=')
-      if (eq !== -1) {
-        i += 1
-        continue
-      }
-      if (VALUE_TAKING_FLAGS.has(token!)) {
-        i += 2
-        continue
-      }
-      i += 1
-      continue
+    if (!isFlagToken(token)) {
+      return token === 'serve' ? i : -1
     }
-    return token === 'serve' ? i : -1
+    i = indexAfterToken(argv, i)
   }
   return -1
 }
@@ -102,7 +138,11 @@ export function normalizeServeModeArgv(argv: readonly string[]): string[] {
     // getServeOptions only reads the next token, so `=` must be split apart.
     const eq = token.indexOf('=')
     const name = eq === -1 ? token : token.slice(0, eq)
-    const booleanFlag = CLI_TO_SERVE_FLAG.get(name)
+    // Why only the bare form: the CLI reads its serve booleans as `flags.get(name) === true`
+    // (src/cli/handlers/core.ts), so `--no-pairing=false` is NOT no-pairing there. Translating it
+    // anyway dropped the value and disabled pairing for an operator who wrote `=false` — the
+    // security-shaped inversion of #12677. Passing it through leaves pairing on, as the CLI does.
+    const booleanFlag = eq === -1 ? CLI_TO_SERVE_FLAG.get(name) : undefined
     if (booleanFlag) {
       next.push(booleanFlag)
       continue

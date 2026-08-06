@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getAppImageCliArgs } from './appimage-cli-redirect'
 import { argvRequestsServeMode, normalizeServeModeArgv } from './serve-mode-argv'
@@ -41,5 +43,22 @@ describe('serve argv rewrite vs AppImage CLI redirect ordering', () => {
     const argv = ['/opt/orca/orca-ide', 'status']
     expect(rewriteAsIndexDoes(argv)).toEqual(argv)
     expect(getAppImageCliArgs(argv, MOUNTED_APPIMAGE_ENV, REDIRECT_OPTIONS)).toEqual(['status'])
+  })
+
+  // Why source text: the ordering only exists as statement order at index.ts module scope, and the
+  // cases above stay green if it is reversed — nothing else would catch the regression.
+  it('keeps index.ts running both CLI redirects before the argv rewrite', () => {
+    const source = readFileSync(join(process.cwd(), 'src/main/index.ts'), 'utf8')
+    const packagedRedirect = source.indexOf('maybeRedirectPackagedCliEntryLaunch({')
+    const appImageRedirect = source.indexOf('maybeRedirectAppImageCliLaunch({')
+    const rewrite = source.indexOf('process.argv = normalizeServeModeArgv(process.argv)')
+    const serveModeCheck = source.indexOf("const isServeMode = process.argv.includes('--serve')")
+
+    expect(packagedRedirect).toBeGreaterThanOrEqual(0)
+    expect(appImageRedirect).toBeGreaterThanOrEqual(0)
+    expect(rewrite).toBeGreaterThan(packagedRedirect)
+    expect(rewrite).toBeGreaterThan(appImageRedirect)
+    // The rewrite is pointless unless it lands before the flag it exists to inject is read.
+    expect(serveModeCheck).toBeGreaterThan(rewrite)
   })
 })

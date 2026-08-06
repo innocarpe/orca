@@ -381,9 +381,10 @@ let localPtyStartupReady: Promise<void> = Promise.resolve()
 let localPtyProviderStartupReady: Promise<void> = Promise.resolve()
 const AGENT_STATE_CRASH_BREADCRUMB_MIN_INTERVAL_MS = 30_000
 // Why: on Windows a CLI launch that lost ELECTRON_RUN_AS_NODE would boot the GUI and exit silently; redirect to node mode before the lock gate below.
-// Both redirects run before the serve-argv rewrite so they still match on the
-// launch argv verbatim; rewriting first would hide `serve` from their CLI
-// command-name lookup and strand AppImage launches in an in-process serve.
+// Both redirects run before the serve-argv rewrite so they still match on the launch argv verbatim.
+// It is load-bearing for the AppImage one: rewriting first replaces the `serve` positional, so its
+// command-name lookup finds a port number and strands the launch in an in-process serve. The
+// packaged-CLI one matches on the entry path instead, so order cannot affect it either way.
 const packagedCliEntryRedirect = maybeRedirectPackagedCliEntryLaunch({
   isPackaged: app.isPackaged,
   resourcesPath: process.resourcesPath,
