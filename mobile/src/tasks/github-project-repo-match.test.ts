@@ -172,7 +172,12 @@ describe('GitHub project repo matching', () => {
       }
     ]
 
-    expect(findRepoForGitHubProjectRepository('SciPhi-AI/R2R', forks, {})).toBeNull()
+    expect(
+      findRepoForGitHubProjectRepository('SciPhi-AI/R2R', forks, {
+        'repo-1': { path: '/Users/me/a', repository: { owner: 'me', repo: 'a' } },
+        'repo-2': { path: '/Users/me/b', repository: { owner: 'me', repo: 'b' } }
+      })
+    ).toBeNull()
   })
 
   it('does not bind a github.com fork parent to a same-named Enterprise row', () => {
@@ -198,8 +203,23 @@ describe('GitHub project repo matching', () => {
     ).toBeNull()
   })
 
-  // Why: the host is stripped from the persisted `upstream`, so the fork's own
-  // origin host is the only evidence of which server its parent lives on.
+  it('drops the fork alias while its own origin is unresolved', () => {
+    const fork = {
+      id: 'repo-1',
+      path: '/Users/me/widgets-mirror',
+      displayName: 'widgets-mirror',
+      upstream: { owner: 'acme', repo: 'widgets' }
+    }
+
+    for (const slugs of [
+      {},
+      { 'repo-1': { path: '/Users/me/widgets-mirror', repository: null } },
+      { 'repo-1': { path: '/moved', repository: { owner: 'me', repo: 'widgets' } } }
+    ]) {
+      expect(findRepoForGitHubProjectRepository('acme/widgets', [fork], slugs)).toBeNull()
+    }
+  })
+
   it('scopes a host-less fork parent to the host the fork itself was cloned from', () => {
     const enterpriseFork = {
       id: 'repo-1',

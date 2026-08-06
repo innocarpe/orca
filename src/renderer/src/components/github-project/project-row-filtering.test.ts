@@ -130,6 +130,19 @@ describe('filterProjectTableRowsBySelectedRepos', () => {
     expect(filtered.totalCount).toBe(0)
   })
 
+  it('keeps a row whose only selected match is a fork of the row s repo', () => {
+    const rows = [row('fork-only', 'acme/orca')]
+    const filtered = filterProjectTableRowsBySelectedRepos(
+      table(rows),
+      () => ({ origin: [], upstream: [repo('fork')] }),
+      true,
+      new Set(['fork'])
+    )
+
+    expect(filtered.rows.map((r) => r.id)).toEqual(['fork-only'])
+    expect(filtered.totalCount).toBe(1)
+  })
+
   it('keeps a row with multiple selected matches for action ambiguity handling', () => {
     const rows = [row('ambiguous', 'acme/orca')]
     const filtered = filterProjectTableRowsBySelectedRepos(

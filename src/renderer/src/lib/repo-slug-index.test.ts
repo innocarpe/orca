@@ -91,8 +91,6 @@ describe('useRepoSlugIndex fork upstream matching', () => {
     expect(repoSlug).toHaveBeenCalledTimes(1)
   })
 
-  // Why: persistence strips `upstream.host`, so the fork's own origin host is the
-  // only evidence of which server its parent lives on.
   it('scopes a host-less fork parent to the host the fork itself was cloned from', async () => {
     const fork = makeRepo({ id: 'fork', upstream: { owner: 'acme', repo: 'widgets' } })
     setRepos([fork])
@@ -102,6 +100,27 @@ describe('useRepoSlugIndex fork upstream matching', () => {
     await waitFor(() => expect(result.current.ready).toBe(true))
     expect(result.current.lookupSlug('acme/widgets', 'ghe.example')).toEqual([fork])
     expect(result.current.lookupSlug('acme/widgets')).toEqual([])
+  })
+
+  it('drops the fork alias while its own origin is unresolved', async () => {
+    const fork = makeRepo({ id: 'fork', upstream: { owner: 'acme', repo: 'widgets' } })
+    setRepos([fork])
+    repoSlug.mockResolvedValue(null)
+
+    expect(await lookup('acme/widgets')).toEqual([])
+  })
+
+  it('lists a repo once when its upstream is its own origin', async () => {
+    const selfAliased = makeRepo({ id: 'self', upstream: { owner: 'acme', repo: 'widgets' } })
+    setRepos([selfAliased])
+    repoSlug.mockResolvedValue({ owner: 'acme', repo: 'widgets' })
+
+    const { result } = renderHook(() => useRepoSlugIndex())
+    await waitFor(() => expect(result.current.ready).toBe(true))
+    expect(result.current.lookupSlugMatches('acme/widgets')).toEqual({
+      origin: [selfAliased],
+      upstream: []
+    })
   })
 
   it('reports origin and upstream matches separately for selection filtering', async () => {

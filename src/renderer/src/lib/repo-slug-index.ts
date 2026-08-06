@@ -29,10 +29,7 @@ import {
   type RepoSlugMatches,
   type SlugIndex
 } from './repo-slug-cache'
-import {
-  githubHostFromIdentityKey,
-  githubRepoIdentityKey
-} from '../../../shared/github-repository-identity-key'
+import { githubRepoIdentityKey } from '../../../shared/github-repository-identity-key'
 
 export { lookupReposBySlugFromCache } from './repo-slug-cache'
 
@@ -161,7 +158,7 @@ async function buildIndex(
     // clone has their personal fork as `origin`, so the origin-only index
     // dropped every row (#12647). `repo.upstream` is already resolved when the
     // repo is added, so this costs no extra IPC.
-    const upstreamKey = repoUpstreamIdentityKey(repo, githubHostFromIdentityKey(slug))
+    const upstreamKey = repoUpstreamIdentityKey(repo, slug)
     if (upstreamKey && upstreamKey !== slug) {
       upstreamNext.set(upstreamKey, [...(upstreamNext.get(upstreamKey) ?? []), repo])
     }

@@ -17,23 +17,27 @@ export type SlugIndex = Map<string, Repo[]>
  *  unselected clone of the upstream repo shadow the selected fork. */
 export type RepoSlugMatches = { origin: Repo[]; upstream: Repo[] }
 
-/** Identity key of a fork's upstream parent, resolved once at repo-add time and
- *  persisted on the Repo record (`undefined` = unresolved, `null` = not a fork).
- *  Why: Project cards reference the upstream repo while a contributor's clone
- *  has the personal fork as `origin`, so upstream is a second identity a row
- *  may legitimately match.
+/** Identity key of a fork's upstream parent — the second identity a Project row
+ *  may legitimately match, since a contributor's clone has the personal fork as
+ *  `origin`. `null` when the repo is not a fork or the key cannot be trusted.
  *
- *  `originHost` is the host of the repo's own origin remote. Persistence strips
- *  `upstream.host` (`sanitizeRepoUpstream`), and a fork's parent always lives on
- *  the fork's own server — without this the key lands in the github.com
- *  namespace, so a GHES row would never match and a github.com row would bind
- *  the wrong clone. */
-export function repoUpstreamIdentityKey(repo: Repo, originHost?: string): string | null {
+ *  Why `originIdentityKey` is required: persistence strips `upstream.host`
+ *  (`sanitizeRepoUpstream`), so the fork's own origin is the only evidence of
+ *  which server its parent lives on. Without it the key falls into the
+ *  github.com namespace, where a GHES row would never match and an unrelated
+ *  public row would bind the Enterprise clone. */
+export function repoUpstreamIdentityKey(
+  repo: Repo,
+  originIdentityKey: string | null | undefined
+): string | null {
   const upstream = repo.upstream
-  if (!upstream?.owner || !upstream.repo) {
+  if (!upstream?.owner || !upstream.repo || !originIdentityKey) {
     return null
   }
-  return githubRepoIdentityKey({ ...upstream, host: upstream.host ?? originHost })
+  return githubRepoIdentityKey({
+    ...upstream,
+    host: upstream.host ?? githubHostFromIdentityKey(originIdentityKey)
+  })
 }
 
 /** Module-scope cache keyed by runtime scope + repo.id. A Repo that has already
@@ -134,7 +138,7 @@ export function lookupReposBySlugFromCache(
     const originKey = slugByRepoId.get(cacheKey)
     if (originKey === target) {
       matched.push(repo)
-    } else if (repoUpstreamIdentityKey(repo, githubHostFromIdentityKey(originKey)) === target) {
+    } else if (repoUpstreamIdentityKey(repo, originKey) === target) {
       upstreamMatched.push(repo)
     }
   }
