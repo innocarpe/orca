@@ -842,7 +842,7 @@ async function fetchItemsPageWithRaw(args: {
   owner: string
   ownerType: GitHubProjectOwnerType
   projectNumber: number
-  query: string
+  query: string | null
   first: number
   after: string | null
   includeParent: boolean
@@ -863,11 +863,12 @@ async function fetchItemsPageWithRaw(args: {
   const root = ownerQueryRoot(args.ownerType)
   const afterArg = args.after ? `, after: $after` : ''
   const afterVar = args.after ? `$after:String!, ` : ''
+  const useSearchQuery = args.query !== null
   const query = `
-    query(${afterVar}$owner:String!, $num:Int!, $q:String!, $first:Int!) {
+    query(${afterVar}$owner:String!, $num:Int!${useSearchQuery ? ', $q:String!' : ''}, $first:Int!) {
       ${root}(login:$owner) {
         projectV2(number:$num) {
-          items(first:$first${afterArg}, query:$q, orderBy:{ field: POSITION, direction: ASC }) {
+          items(first:$first${afterArg}${useSearchQuery ? ', query:$q' : ''}, orderBy:{ field: POSITION, direction: ASC }) {
             totalCount
             pageInfo { hasNextPage endCursor }
             nodes {
@@ -886,7 +887,9 @@ async function fetchItemsPageWithRaw(args: {
   const argsArr: string[] = ['api', 'graphql', '-f', `query=${query}`]
   argsArr.push('-f', `owner=${args.owner}`)
   argsArr.push('-F', `num=${args.projectNumber}`)
-  argsArr.push('-f', `q=${args.query}`)
+  if (useSearchQuery) {
+    argsArr.push('-f', `q=${args.query}`)
+  }
   argsArr.push('-F', `first=${args.first}`)
   if (args.after) {
     argsArr.push('-f', `after=${args.after}`)
@@ -979,7 +982,8 @@ async function fetchAllItems(args: {
   owner: string
   ownerType: GitHubProjectOwnerType
   projectNumber: number
-  query: string
+  /** null omits the GraphQL `query` argument (plain items list, no search index). */
+  query: string | null
   host?: string
 }): Promise<
   | { ok: true; rows: GitHubProjectRow[]; totalCount: number; parentFieldDropped: boolean }
@@ -1306,13 +1310,30 @@ export async function getProjectViewTable(
   }
 
   // Fetch items.
-  const items = await fetchAllItems({
+  let items = await fetchAllItems({
     owner: args.owner,
     ownerType: args.ownerType,
     projectNumber: args.projectNumber,
     query: effectiveQuery,
     host: args.host
   })
+  // Why: unfiltered views still pass query:"" which routes through GitHub's
+  // Projects search index. Fresh boards can lag and return totalCount:0 while
+  // plain items(first:N) still has every card (#12648). Retry once without the
+  // query argument only for the empty unfiltered case so real empty boards stay empty.
+  if (
+    items.ok &&
+    items.totalCount === 0 &&
+    effectiveQuery === '' &&
+    typeof args.queryOverride !== 'string'
+  ) {
+    items = await fetchAllItemsWithoutSearchQuery({
+      owner: args.owner,
+      ownerType: args.ownerType,
+      projectNumber: args.projectNumber,
+      host: args.host
+    })
+  }
   if (!items.ok) {
     return {
       ok: false,
