@@ -258,13 +258,15 @@ export function matchingKnownSnapshot(
   observed: ObservedSkillPackage,
   snapshots: readonly SkillKnownSnapshot[]
 ): SkillKnownSnapshot | null {
+  // Why: agent CLIs often drop sidecar files (e.g. agents/openai.yaml) next to an
+  // official SKILL.md. Identity still requires every *manifest-listed* file to
+  // match exactly; extras alone must not mark the package unrecognized and block
+  // updates. A modified listed file still fails closed.
+  const observedByPath = new Map(observed.files.map((file) => [file.path, file]))
   for (const snapshot of snapshots.toReversed()) {
-    if (snapshot.files.length !== observed.files.length) {
-      continue
-    }
     if (
-      snapshot.files.every((expected, index) => {
-        const actual = observed.files[index]
+      snapshot.files.every((expected) => {
+        const actual = observedByPath.get(expected.path)
         return Boolean(actual && matchesFileIdentity(actual, expected))
       })
     ) {

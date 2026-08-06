@@ -141,11 +141,13 @@ describe('skill package identity', () => {
     const edited = await temporarySkill()
     await writeFile(join(edited, 'SKILL.md'), 'skill\nlocal tweak\n')
     await writeFile(join(edited, '.DS_Store'), Buffer.from([0, 1]))
-    // An unexpected file that is NOT OS metadata must keep failing closed; tolerating
-    // extras in general would let an injected payload ride along beside a clean SKILL.md.
+    // Extra sidecar next to an untouched SKILL.md must still match — agent CLIs
+    // write agents/openai.yaml (and similar) without editing official bytes.
+    // Content drift on a listed file remains fail-closed.
     const withPayload = await temporarySkill()
     await writeFile(join(withPayload, 'SKILL.md'), 'skill\n')
-    await writeFile(join(withPayload, 'payload.sh'), '#!/bin/sh\n')
+    await mkdir(join(withPayload, 'agents'), { recursive: true })
+    await writeFile(join(withPayload, 'agents', 'openai.yaml'), 'display_name: test\n')
 
     const snapshot = [
       {
@@ -156,7 +158,9 @@ describe('skill package identity', () => {
       }
     ]
     expect(matchingKnownSnapshot(await observeSkillPackage(edited), snapshot)).toBeNull()
-    expect(matchingKnownSnapshot(await observeSkillPackage(withPayload), snapshot)).toBeNull()
+    expect(
+      matchingKnownSnapshot(await observeSkillPackage(withPayload), snapshot)?.releaseRevision
+    ).toBe(1)
   })
 
   it.runIf(process.platform !== 'win32')('tracks executable mode in package identity', async () => {
