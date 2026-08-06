@@ -90,4 +90,11 @@ describe('appendTerminalErrorMessage', () => {
     expect(bounded.length).toBeLessThanOrEqual(MAX_TERMINAL_ERROR_CHARS)
     expect(bounded.endsWith('x')).toBe(true)
   })
+
+  it('drops a clipped leading line after character truncation', () => {
+    const latestLine = 'SSH connection failed: host unreachable'
+    const huge = `${'x'.repeat(MAX_TERMINAL_ERROR_CHARS + 500)}\n${latestLine}`
+
+    expect(boundTerminalErrorSurface(huge)).toBe(latestLine)
+  })
 })
