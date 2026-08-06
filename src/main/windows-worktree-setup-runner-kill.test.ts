@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type * as fsPromises from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
 import type { WindowsProcessRow } from './providers/windows-foreground-process-rows'
@@ -105,6 +105,15 @@ describe('resolveWorktreeGitDirPath', () => {
     await expect(
       resolveWorktreeGitDirPath('D:\\orca\\workspaces\\repo\\feature', { readFileImpl })
     ).resolves.toBe('D:/repo/.git/worktrees/feature')
+  })
+
+  it('resolves a relative gitdir path from the worktree directory', async () => {
+    const readFileImpl = vi.fn(
+      async () => 'gitdir: ../repo/.git/worktrees/feature\n'
+    ) as unknown as typeof fsPromises.readFile
+    await expect(resolveWorktreeGitDirPath('/repo/worktree', { readFileImpl })).resolves.toBe(
+      resolve('/repo/worktree', '../repo/.git/worktrees/feature')
+    )
   })
 
   it('returns null when .git is missing', async () => {

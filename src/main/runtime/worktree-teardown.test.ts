@@ -899,14 +899,25 @@ describe('killAllProcessesForWorktree', () => {
 
   it('sweeps Windows setup-runner.cmd trees after PTY stop (#10629)', async () => {
     const worktreeId = 'repo-1::D:\\orca\\workspaces\\repo\\feature'
-    const localProvider = createProviderStub(async () => [])
+    const localProvider = createProviderStub(async () => [
+      { id: `${worktreeId}@@pty-1`, cwd: 'D:\\orca\\workspaces\\repo\\feature', title: 'shell' }
+    ])
     listRegisteredPtysMock.mockReturnValue([])
 
     await killAllProcessesForWorktree(worktreeId, { localProvider, timeoutMs: 5_000 })
 
+    expect(localProvider.shutdown).toHaveBeenCalledWith(
+      `${worktreeId}@@pty-1`,
+      expect.objectContaining({ immediate: true })
+    )
     expect(terminateWindowsSetupRunnersForWorktreeIdMock).toHaveBeenCalledWith(
       worktreeId,
       expect.objectContaining({ deadlineMs: expect.any(Number) })
     )
+    const shutdownCall = (localProvider.shutdown as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]
+    const setupRunnerSweepCall =
+      terminateWindowsSetupRunnersForWorktreeIdMock.mock.invocationCallOrder[0]
+    expect(setupRunnerSweepCall).toBeGreaterThan(shutdownCall)
   })
 })
