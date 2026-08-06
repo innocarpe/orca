@@ -196,6 +196,10 @@ import { getRuntimeRepoBaseRefDefault } from '@/runtime/runtime-repo-client'
 import { stripBaseRef, useCreatePullRequestDialogFields } from './useCreatePullRequestDialogFields'
 import { resolveCreateReviewDraftTitle } from './create-review-draft-title'
 import { GitHistoryPanel, type GitHistoryPanelState } from './GitHistoryPanel'
+import {
+  getSessionSourceControlHistoryExpanded,
+  setSessionSourceControlHistoryExpanded
+} from './source-control-history-layout'
 import { useGitHistoryCommitActions } from './useGitHistoryCommitActions'
 import { normalizeHostedReviewHeadRef } from '../../../../shared/hosted-review-refs'
 import {
@@ -553,6 +557,17 @@ const SUBMODULE_ERROR_LABEL = 'Failed to load submodule changes'
 
 function createDefaultCollapsedSections(): Set<string> {
   return new Set(DEFAULT_COLLAPSED_SECTIONS)
+}
+
+function createCollapsedSectionsFromSession(): Set<string> {
+  const next = createDefaultCollapsedSections()
+  // Why: worktree switches used to re-collapse COMMITS; restore the session choice.
+  if (getSessionSourceControlHistoryExpanded()) {
+    next.delete('history')
+  } else {
+    next.add('history')
+  }
+  return next
 }
 
 function useCopyFeedbackState<T>(resetValue: T): [T, (value: T) => void] {
@@ -1061,7 +1076,7 @@ function SourceControlInner(): React.JSX.Element {
 
   const [filterExpanded, setFilterExpanded] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    createDefaultCollapsedSections
+    createCollapsedSectionsFromSession
   )
   const persistedSourceControlViewMode = normalizeSourceControlViewMode(
     settings?.sourceControlViewMode
@@ -2075,7 +2090,8 @@ function SourceControlInner(): React.JSX.Element {
   // Why: reset worktree-specific state manually instead of key-remounting on switch (which caused a Windows IPC storm).
   useEffect(() => {
     setFilterExpanded(false)
-    setCollapsedSections(createDefaultCollapsedSections())
+    // Why: COMMITS expand is a user layout preference, not worktree-local draft state.
+    setCollapsedSections(createCollapsedSectionsFromSession())
     setCollapsedTreeDirs(new Set())
     setBaseRefDialogOpen(false)
     setPendingDiscard(null)
@@ -5130,6 +5146,9 @@ function SourceControlInner(): React.JSX.Element {
         next.delete(section)
       } else {
         next.add(section)
+      }
+      if (section === 'history') {
+        setSessionSourceControlHistoryExpanded(!next.has('history'))
       }
       return next
     })
