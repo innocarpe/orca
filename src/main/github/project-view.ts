@@ -1196,6 +1196,26 @@ async function fetchItemsCountOnly(args: {
 
 // ─── Public: getProjectViewTable ──────────────────────────────────────
 
+/** Prefer a successful no-search retry; keep the initial empty ok result if the retry fails. */
+export function preferSuccessfulIndexLagFallback<T extends { ok: boolean }>(
+  initial: T,
+  fallback: T
+): T {
+  return fallback.ok ? fallback : initial
+}
+
+async function fetchAllItemsWithoutSearchQuery(args: {
+  owner: string
+  ownerType: GitHubProjectOwnerType
+  projectNumber: number
+  host?: string
+}): Promise<
+  | { ok: true; rows: GitHubProjectRow[]; totalCount: number; parentFieldDropped: boolean }
+  | { ok: false; error: GitHubProjectViewError; totalCount?: number }
+> {
+  return fetchAllItems({ ...args, query: null })
+}
+
 export async function getProjectViewTable(
   args: GetProjectViewTableArgs
 ): Promise<GetProjectViewTableResult> {
@@ -1327,12 +1347,15 @@ export async function getProjectViewTable(
     effectiveQuery === '' &&
     typeof args.queryOverride !== 'string'
   ) {
-    items = await fetchAllItemsWithoutSearchQuery({
+    // Why: keep a successful empty index response if the no-search retry fails
+    // (rate limit/network) so a genuinely empty board does not become an error (#12819 CR).
+    const fallbackItems = await fetchAllItemsWithoutSearchQuery({
       owner: args.owner,
       ownerType: args.ownerType,
       projectNumber: args.projectNumber,
       host: args.host
     })
+    items = preferSuccessfulIndexLagFallback(items, fallbackItems)
   }
   if (!items.ok) {
     return {
