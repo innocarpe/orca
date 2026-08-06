@@ -238,6 +238,7 @@ export default function AutomationsPage(): React.JSX.Element {
   } | null>(null)
   const [dontAskDeleteAgain, setDontAskDeleteAgain] = useState(false)
   const editRequestRef = useRef(0)
+  const refreshGenerationRef = useRef(0)
   const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null)
   // Why: both dialogs stay mounted, so a shared ref would let one dialog's
   // unmount clear the focus target the other still needs.
@@ -794,6 +795,7 @@ export default function AutomationsPage(): React.JSX.Element {
   }, [activeWorktreeId, repoMap, repos, worktreeMap, worktreesByRepo])
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGenerationRef.current
     setIsLoading(true)
     const pendingNavigation = useAppStore.getState().pendingAutomationRunNavigation
     // Why: keep an explicit page host selection so remote automations stay
@@ -809,6 +811,9 @@ export default function AutomationsPage(): React.JSX.Element {
         listAutomationRunsForTarget(automationHostTarget),
         window.api.automations.listExternalManagers()
       ])
+      if (generation !== refreshGenerationRef.current) {
+        return
+      }
       const currentSelectedId = useAppStore.getState().selectedAutomationId
       const hasCurrentSelection = nextAutomations.some(
         (automation) => automation.id === currentSelectedId
@@ -824,6 +829,9 @@ export default function AutomationsPage(): React.JSX.Element {
       const nextSelectedRuns = nextSelectedId
         ? await listAutomationRunsForTarget(automationHostTarget, nextSelectedId)
         : []
+      if (generation !== refreshGenerationRef.current) {
+        return
+      }
       setAutomations(nextAutomations)
       setRuns(nextRuns)
       // Why: pending navigation only temporarily targets a host for the deep-link
@@ -840,7 +848,9 @@ export default function AutomationsPage(): React.JSX.Element {
         selectAutomationId(nextAutomations[0]?.id ?? null)
       }
     } finally {
-      setIsLoading(false)
+      if (generation === refreshGenerationRef.current) {
+        setIsLoading(false)
+      }
     }
   }, [selectAutomationId, settings, validatedAutomationHostTargetKey])
 
@@ -849,6 +859,11 @@ export default function AutomationsPage(): React.JSX.Element {
       if (nextKey === automationHostTargetKey) {
         return
       }
+      refreshGenerationRef.current += 1
+      setAutomations([])
+      setRuns([])
+      setSelectedAutomationRuns({ automationId: null, runs: [] })
+      setIsLoading(true)
       setAutomationHostTargetKey(nextKey)
       selectAutomationId(null)
       setSelectedAutomationRunPageId(null)
