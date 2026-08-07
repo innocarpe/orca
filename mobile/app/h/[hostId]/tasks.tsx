@@ -84,6 +84,7 @@ import {
   findRepoForGitHubProjectRepository,
   type GitHubRepoSlugCacheEntry
 } from '../../../src/tasks/github-project-repo-match'
+import { warmGitHubProjectModeRepos } from '../../../src/tasks/github-project-mode-repo-warmup'
 import {
   parseGitHubProjectInput as parseProjectInput,
   type GitHubProjectOwnerType,
@@ -3258,7 +3259,7 @@ export default function MobileTasksScreen() {
           setGithubSourceFallbacks([])
         }
         if (provider === 'github' && githubMode === 'project') {
-          setItems([])
+          await warmGitHubProjectModeRepos(reposRef.current.length, loadRepos, isCurrent, setItems)
           return
         }
         if (provider === 'linear' && !linearConnected) {
