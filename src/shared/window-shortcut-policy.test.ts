@@ -344,6 +344,7 @@ describe('resolveWindowShortcutAction', () => {
     const overrides: KeybindingOverrides = {
       'worktree.quickOpen': ['Mod+Shift+O'],
       'workspace.openBoard': ['Mod+Alt+B'],
+      'workspace.toggleBoard': ['Mod+Alt+T'],
       'view.tasks': ['Mod+Alt+K']
     }
 
@@ -368,6 +369,13 @@ describe('resolveWindowShortcutAction', () => {
         overrides
       )
     ).toEqual({ type: 'openWorkspaceBoard' })
+    expect(
+      resolveWindowShortcutAction(
+        { code: 'KeyT', key: 't', meta: false, control: true, alt: true, shift: false },
+        'linux',
+        overrides
+      )
+    ).toEqual({ type: 'toggleWorkspaceBoard' })
     expect(
       resolveWindowShortcutAction(
         { code: 'KeyK', key: 'k', meta: false, control: true, alt: true, shift: false },

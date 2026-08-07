@@ -707,6 +707,9 @@ export function createMainWindow(
       case 'openWorkspaceBoard':
         mainWindow.webContents.send('ui:openWorkspaceBoard')
         return
+      case 'toggleWorkspaceBoard':
+        mainWindow.webContents.send('ui:toggleWorkspaceBoard')
+        return
       case 'openTasks':
         mainWindow.webContents.send('ui:openTasks')
         return

@@ -11,7 +11,10 @@ import { buildLinearIssueLinkedWorkItem } from '@/lib/linear-linked-work-item'
 import { runWorktreeDelete } from '@/components/sidebar/delete-worktree-flow'
 import { runSleepWorktree } from '@/components/sidebar/sleep-worktree-flow'
 import { createBackgroundSleepingAgentWakeDispatcher } from '@/lib/wake-sleeping-agents-in-background'
-import { OPEN_WORKSPACE_BOARD_EVENT } from '@/components/sidebar/useWorkspaceBoardPanel'
+import {
+  OPEN_WORKSPACE_BOARD_EVENT,
+  TOGGLE_WORKSPACE_BOARD_EVENT
+} from '@/components/sidebar/useWorkspaceBoardPanel'
 import { SPLIT_TERMINAL_PANE_EVENT, CLOSE_TERMINAL_PANE_EVENT } from '@/constants/terminal'
 import { requestBackgroundTerminalWorktreeMount } from '@/components/terminal/background-terminal-worktree-mount'
 import { planMobileTerminalTabMount } from '@/lib/mobile-terminal-tab-mount'
@@ -1332,6 +1335,18 @@ export function useIpcEvents(): void {
           }
           store.setSidebarOpen(true)
           window.dispatchEvent(new CustomEvent(OPEN_WORKSPACE_BOARD_EVENT))
+        })
+      )
+    }
+
+    if (window.api.ui.onToggleWorkspaceBoard) {
+      unsubs.push(
+        window.api.ui.onToggleWorkspaceBoard(() => {
+          const store = useAppStore.getState()
+          if (store.activeView === 'settings') {
+            return
+          }
+          window.dispatchEvent(new CustomEvent(TOGGLE_WORKSPACE_BOARD_EVENT))
         })
       )
     }

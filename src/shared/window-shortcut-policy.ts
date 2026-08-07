@@ -40,6 +40,7 @@ export type WindowShortcutAction =
   | { type: 'openNewWorkspace' }
   | { type: 'deleteCurrentWorkspace' }
   | { type: 'openWorkspaceBoard' }
+  | { type: 'toggleWorkspaceBoard' }
   | { type: 'openTasks' }
   | { type: 'switchRecentTab' }
   | { type: 'jumpToWorktreeIndex'; index: number }
@@ -243,6 +244,10 @@ export function resolveWindowShortcutAction(
     return { type: 'openWorkspaceBoard' }
   }
 
+  if (actionMatches('workspace.toggleBoard', input, platform, keybindings, options)) {
+    return { type: 'toggleWorkspaceBoard' }
+  }
+
   if (actionMatches('voice.dictation', input, platform, keybindings, options)) {
     return { type: 'dictationKeyDown' }
   }
@@ -322,6 +327,8 @@ export function getWindowShortcutActionId(action: WindowShortcutAction): Keybind
       return 'workspace.delete'
     case 'openWorkspaceBoard':
       return 'workspace.openBoard'
+    case 'toggleWorkspaceBoard':
+      return 'workspace.toggleBoard'
     case 'openTasks':
       return 'view.tasks'
     case 'switchRecentTab':

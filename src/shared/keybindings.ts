@@ -37,6 +37,7 @@ export type KeybindingActionId =
   | 'workspace.rename'
   | 'workspace.delete'
   | 'workspace.openBoard'
+  | 'workspace.toggleBoard'
   | 'workspace.selectByIndex'
   | 'voice.dictation'
   | 'view.tasks'
@@ -298,6 +299,16 @@ export const KEYBINDING_DEFINITIONS: readonly KeybindingDefinition[] = [
   {
     id: 'workspace.openBoard',
     title: 'Open Workspace Board',
+    group: 'Global',
+    scope: 'global',
+    searchKeywords: ['shortcut', 'global', 'workspace', 'board', 'kanban', 'worktree'],
+    // Why: configurable but unbound by default, to not take a global chord from terminal/browser/editor users.
+    defaultBindings: platformBindings([]),
+    allowInTerminal: true
+  },
+  {
+    id: 'workspace.toggleBoard',
+    title: 'Toggle Workspace Board',
     group: 'Global',
     scope: 'global',
     searchKeywords: ['shortcut', 'global', 'workspace', 'board', 'kanban', 'worktree'],

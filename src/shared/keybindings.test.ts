@@ -781,6 +781,31 @@ describe('keybindings', () => {
     )
   })
 
+  it('keeps the workspace board toggle unassigned until users customize it', () => {
+    const binding = {
+      key: 'b',
+      code: 'KeyB',
+      control: true,
+      meta: false,
+      alt: true,
+      shift: true
+    }
+
+    expect(getEffectiveKeybindingsForAction('workspace.toggleBoard', 'linux')).toEqual([])
+    expect(keybindingMatchesAction('workspace.toggleBoard', binding, 'linux')).toBe(false)
+    expect(
+      keybindingMatchesAction('workspace.toggleBoard', binding, 'linux', {
+        'workspace.toggleBoard': ['Mod+Alt+Shift+B']
+      })
+    ).toBe(true)
+
+    const definition = getKeybindingDefinition('workspace.toggleBoard')
+    expect(definition?.title).toBe('Toggle Workspace Board')
+    expect(definition?.searchKeywords).toEqual(
+      expect.arrayContaining(['workspace', 'board', 'kanban'])
+    )
+  })
+
   it('keeps the quick commands menu toggle unassigned until users customize it', () => {
     const platforms: readonly KeybindingPlatform[] = ['darwin', 'linux', 'win32']
 

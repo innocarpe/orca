@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   OPEN_WORKSPACE_BOARD_EVENT,
+  TOGGLE_WORKSPACE_BOARD_EVENT,
   useWorkspaceBoardPanel,
   type WorkspaceBoardPanelState
 } from './useWorkspaceBoardPanel'
@@ -108,6 +109,21 @@ describe('useWorkspaceBoardPanel', () => {
 
     expect(panelState().workspaceBoardOpen).toBe(true)
     expect(panelState().workspaceBoardRenderedOpen).toBe(true)
+    expect(mocks.recordFeatureInteraction).toHaveBeenCalledExactlyOnceWith('workspace-board')
+  })
+
+  it('toggles the board from the shortcut bridge event', async () => {
+    await renderHookProbe()
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TOGGLE_WORKSPACE_BOARD_EVENT))
+    })
+    expect(panelState().workspaceBoardOpen).toBe(true)
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TOGGLE_WORKSPACE_BOARD_EVENT))
+    })
+    expect(panelState().workspaceBoardOpen).toBe(false)
     expect(mocks.recordFeatureInteraction).toHaveBeenCalledExactlyOnceWith('workspace-board')
   })
 

@@ -27,6 +27,7 @@ const WORKSPACE_BOARD_ESCAPE_BLOCKING_OVERLAY_SELECTOR = [
 ].join(', ')
 
 export const OPEN_WORKSPACE_BOARD_EVENT = 'orca:open-workspace-board'
+export const TOGGLE_WORKSPACE_BOARD_EVENT = 'orca:toggle-workspace-board'
 
 export type WorkspaceBoardPanelState = {
   workspaceBoardOpen: boolean
@@ -161,6 +162,11 @@ export function useWorkspaceBoardPanel(): WorkspaceBoardPanelState {
     window.addEventListener(OPEN_WORKSPACE_BOARD_EVENT, openWorkspaceBoard)
     return () => window.removeEventListener(OPEN_WORKSPACE_BOARD_EVENT, openWorkspaceBoard)
   }, [openWorkspaceBoard])
+
+  useEffect(() => {
+    window.addEventListener(TOGGLE_WORKSPACE_BOARD_EVENT, toggleWorkspaceBoard)
+    return () => window.removeEventListener(TOGGLE_WORKSPACE_BOARD_EVENT, toggleWorkspaceBoard)
+  }, [toggleWorkspaceBoard])
 
   return {
     workspaceBoardOpen,
