@@ -67,6 +67,23 @@ Preparation records the exact fork head and freshly fetched `upstream/main`.
 Sync fetches again and fails closed if either moved, then uses an exact
 `--force-with-lease` and verifies both PR heads.
 
+## Upstream PR creation is label-safe
+
+After pushing the clean contribution branch, create the real upstream PR only
+through the harness wrapper:
+
+```bash
+make upstream-pr-create ARGS='--repo stablyai/orca --base main --head innocarpe:fix/<name> --title "fix: ..." --body-file /tmp/orca-pr-body.md'
+MIRROR=.grok/skills/oss-pr-mirror/scripts/mirror-upstream-pr.sh
+"$MIRROR" --label bug <upstream-pr-number>
+```
+
+The upstream wrapper rejects `--label` and never invokes an upstream label
+endpoint. Upstream contributor PRs remain unlabeled; the kind label is applied and
+verified only on the permission-owned fork mirror. Direct upstream
+`gh pr create`, `gh pr edit`, and REST label calls are prohibited by
+the contribution harness.
+
 ## Worktrees always get the harness
 
 Upstream-based worktrees do **not** contain fork `.grok` history. Use the Makefile

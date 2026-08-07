@@ -31,7 +31,8 @@ Three words → three gates. Fail any gate → **do not open/expand the PR**; sp
 
 ## Gate checklist (every change)
 
-Copy into the agent’s working notes before coding and again before `gh pr create` / push.
+Copy into the agent’s working notes before coding and again before the upstream
+PR creation wrapper / push.
 
 ### 1. Focused fix
 

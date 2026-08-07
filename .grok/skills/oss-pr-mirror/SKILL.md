@@ -6,7 +6,7 @@ description: >
   opening an upstream PR, rebasing and pushing review follow-ups, amending after PR open,
   or the user says "mirror PR", "fork PR", "portfolio PR", "내 레포에도",
   "전시용 PR", "양쪽 PR", "upstream이랑 내 레포", "추가 수정 push", "sync both PRs",
-  or runs /oss-pr-mirror. ALWAYS after gh pr create to stablyai/orca AND after
+  or runs /oss-pr-mirror. ALWAYS after create-upstream-pr.sh to stablyai/orca AND after
   every subsequent push to that contribution branch.
 ---
 
@@ -65,9 +65,10 @@ if [[ -d "$(git rev-parse --show-toplevel)/.grok/skills/oss-pr-mirror" ]]; then
   SKILL_ROOT="$(git rev-parse --show-toplevel)/.grok/skills/oss-pr-mirror"
 fi
 MIRROR="$SKILL_ROOT/scripts/mirror-upstream-pr.sh"
+CREATE="$SKILL_ROOT/scripts/create-upstream-pr.sh"
 SYNC="$SKILL_ROOT/scripts/sync-contribution-push.sh"
 PREPARE="$SKILL_ROOT/scripts/prepare-pr-followup.sh"
-chmod +x "$MIRROR" "$PREPARE" "$SYNC"
+chmod +x "$CREATE" "$MIRROR" "$PREPARE" "$SYNC"
 ```
 
 ---
@@ -78,12 +79,13 @@ chmod +x "$MIRROR" "$PREPARE" "$SYNC"
 # 1) From worktree: commit, then
 git push -u origin HEAD
 
-# 2) Upstream PR (real)
-gh pr create --repo stablyai/orca --base main --head innocarpe:<branch> ...
+# 2) Upstream PR (real). Contributor PRs are intentionally unlabeled.
+"$CREATE" --repo stablyai/orca --base main --head innocarpe:<branch> \
+  --title "fix: ..." --body-file /tmp/orca-pr-body.md
 
 # 3) Fork portfolio PR (exhibition) — mandatory
-"$MIRROR" <upstream-pr-number>
-# or: "$MIRROR" --from-branch
+"$MIRROR" --label bug <upstream-pr-number>
+# or: "$MIRROR" --label bug --from-branch
 ```
 
 Agent checklist:
@@ -174,8 +176,8 @@ If you change the **upstream PR description**, mirror key facts onto the fork PR
 # Status of all dual tracks
 "$MIRROR" --list
 
-# Ensure every open upstream PR has a fork mirror
-"$MIRROR" --all-open
+# Ensure every open upstream PR has a labeled fork mirror
+"$MIRROR" --label bug --all-open
 
 # Before every open-PR follow-up
 "$PREPARE"
@@ -189,4 +191,7 @@ If you change the **upstream PR description**, mirror key facts onto the fork PR
 - Thinking upstream and fork need two different push targets for code (they share one branch)
 - Skipping `$SYNC` / mirror after follow-up commits
 - Raw force-push; only the harness's sealed exact `--force-with-lease` is allowed
+- Direct upstream `gh pr create`, `gh pr edit`, or REST label mutation; use the
+  label-safe `create-upstream-pr.sh` entrypoint
+- Creating a fork mirror without a kind label; use `mirror-upstream-pr.sh --label <name> ...`
 - Merging portfolio PRs into fork main early

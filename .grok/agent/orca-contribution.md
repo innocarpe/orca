@@ -42,8 +42,9 @@ Override with `ORCA_PRIMARY` if the primary checkout moves.
 3. **Before parallel worktree delegation**, run `make worktree-audit`. Every registered worktree must consume the primary `.grok`, Claude/Codex skills, contribution rule, Makefile, and `codex.md` through audited local-only links.
 4. **Before every upstream-facing follow-up on an open PR**, run `make pr-followup` from the clean issue worktree. This fetches and rebases onto the latest `upstream/main`; rerun tests after it. Replies, resolves, PR-body edits, and comments are included—not only code pushes.
 5. **Dual-track PRs** for every contribution:
-   - Upstream review: `gh pr create --repo stablyai/orca --base main --head innocarpe:<branch>`
+   - Upstream review: `make upstream-pr-create ARGS='...'` / `create-upstream-pr.sh`. Upstream PRs are intentionally unlabeled; the wrapper rejects `--label` and never calls an upstream label endpoint.
    - Fork portfolio mirror: `.grok/skills/oss-pr-mirror` (`mirror-upstream-pr.sh`)
+   - Apply and verify the kind label only on the owned fork mirror: `mirror-upstream-pr.sh --label <name> ...`. Never invoke raw upstream `gh pr create`, `gh pr edit`, or REST label endpoints.
 6. **After more commits on an open PR:** use `sync-contribution-push.sh` (not bare `git push`). It fails closed if upstream or the fork branch moved after preparation and uses an exact lease for the required rebase rewrite.
 7. **Session cold-start:** read BOARD → **PORTFOLIO** → HISTORY. Update SSOT on every state change.
 8. **Disk:** after dual PR is open and tree is clean, remove local worktree; keep remote branch. Recreate for review follow-ups.
@@ -101,17 +102,21 @@ cd mobile && pnpm exec vitest run <paths>
 ORCA_PRIMARY="${ORCA_PRIMARY:-$HOME/Projects/OpenSources/orca}"
 SKILL="$ORCA_PRIMARY/.grok/skills/oss-pr-mirror"
 MIRROR="$SKILL/scripts/mirror-upstream-pr.sh"
+CREATE="$SKILL/scripts/create-upstream-pr.sh"
 SYNC="$SKILL/scripts/sync-contribution-push.sh"
 PREPARE="$SKILL/scripts/prepare-pr-followup.sh"
-chmod +x "$MIRROR" "$PREPARE" "$SYNC"
+chmod +x "$CREATE" "$MIRROR" "$PREPARE" "$SYNC"
 
 # From worktree after commit:
 git push -u origin HEAD
 
-gh pr create --repo stablyai/orca --base main --head innocarpe:<branch> \
-  --title "..." --body "..."
+BODY=/tmp/orca-pr-body.md
+# Write the English PR body. The upstream wrapper intentionally creates an
+# unlabeled PR; the fork mirror receives the kind label.
+"$CREATE" --repo stablyai/orca --base main --head innocarpe:<branch> \
+  --title "fix: ..." --body-file "$BODY"
 
-"$MIRROR" <upstream-pr-number>
+"$MIRROR" --label bug <upstream-pr-number>
 
 # Every later response, before editing/replying:
 "$PREPARE" # or: make pr-followup

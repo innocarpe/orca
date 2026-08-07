@@ -12,6 +12,7 @@
 #   sync-contribution-push.sh --comment "msg" # also post the same update on both PRs
 #   sync-contribution-push.sh --no-push       # verify only (no git push)
 #   sync-contribution-push.sh --ensure-mirror # create fork mirror if missing
+#   FORK_LABEL=bug sync-contribution-push.sh  # label a newly created fork mirror
 #
 # Env:
 #   UPSTREAM_REPO  default: stablyai/orca
@@ -167,7 +168,7 @@ fork_json="$(
   gh pr list --repo "$FORK_REPO" --head "$branch" --state open \
     --json number,url,headRefOid,title --jq '.[0] // empty'
 )"
-[[ -n "$fork_json" ]] || die "no open fork portfolio PR on ${FORK_REPO} for branch ${branch} (run mirror-upstream-pr.sh ${upstream_n})"
+[[ -n "$fork_json" ]] || die "no open fork portfolio PR on ${FORK_REPO} for branch ${branch} (run mirror-upstream-pr.sh --label <name> ${upstream_n})"
 
 fork_n="$(printf '%s' "$fork_json" | jq -r '.number')"
 fork_url="$(printf '%s' "$fork_json" | jq -r '.url')"

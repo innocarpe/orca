@@ -83,6 +83,16 @@ the harness's exact `--force-with-lease` protection. Worktree bootstrap must run
 its harness audit, and `make worktree-audit` must pass before parallel work is
 delegated across existing worktrees.
 
+### Upstream PR creation and labels
+
+Create every upstream PR through `make upstream-pr-create ARGS='...'` or
+`.grok/skills/oss-pr-mirror/scripts/create-upstream-pr.sh`. Upstream PRs on
+`stablyai/orca` are intentionally created without labels: the wrapper rejects
+`--label` and never invokes upstream label mutation. Apply and verify the
+kind label only on the permission-owned `innocarpe/orca` mirror through
+`mirror-upstream-pr.sh --label <name> ...`. Never invoke raw upstream
+`gh pr create`, `gh pr edit`, or REST label endpoints.
+
 - [`.grok/agent/orca-contribution.md`](./.grok/agent/orca-contribution.md)
 - **Merge-rate skill:** [`.grok/skills/orca-merge-playbook/SKILL.md`](./.grok/skills/orca-merge-playbook/SKILL.md)  
   (focused fix · preserves intent · regression coverage — not open-PR volume)

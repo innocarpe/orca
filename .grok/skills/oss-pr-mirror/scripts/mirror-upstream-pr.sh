@@ -3,9 +3,9 @@
 # Exhibition only — do not merge these into fork main until upstream is merged.
 #
 # Usage:
-#   mirror-upstream-pr.sh <upstream-pr-number>
-#   mirror-upstream-pr.sh --from-branch
-#   mirror-upstream-pr.sh --all-open
+#   mirror-upstream-pr.sh --label <fork-label> <upstream-pr-number>
+#   mirror-upstream-pr.sh --label <fork-label> --from-branch
+#   mirror-upstream-pr.sh --label <fork-label> --all-open
 #   mirror-upstream-pr.sh --list
 #
 # Env (optional):
@@ -19,7 +19,8 @@ set -euo pipefail
 UPSTREAM_REPO="${UPSTREAM_REPO:-stablyai/orca}"
 FORK_REPO="${FORK_REPO:-innocarpe/orca}"
 FORK_BASE="${FORK_BASE:-main}"
-AUTHOR="${AUTHOR:-$(gh api user -q .login)}"
+AUTHOR="${AUTHOR:-}"
+FORK_LABEL="${FORK_LABEL:-}"
 
 die() {
   echo "error: $*" >&2
@@ -32,6 +33,9 @@ need() {
 
 need gh
 need jq
+[[ "$FORK_REPO" != "$UPSTREAM_REPO" ]] || \
+  die "refusing fork label operations when FORK_REPO equals UPSTREAM_REPO"
+AUTHOR="${AUTHOR:-$(gh api user -q .login)}"
 
 ensure_branch_on_fork() {
   local branch="$1"
@@ -49,6 +53,44 @@ existing_fork_pr_json() {
   local branch="$1"
   gh pr list --repo "$FORK_REPO" --head "$branch" --state open \
     --json number,url --jq '.[0] // empty'
+}
+
+validate_fork_label() {
+  [[ -n "$FORK_LABEL" ]] || \
+    die "new fork mirror requires --label <name>; upstream PRs remain intentionally unlabeled"
+
+  local available_labels
+  available_labels="$(gh label list --repo "$FORK_REPO" --limit 100 --json name)" || \
+    die "cannot inspect labels for ${FORK_REPO}"
+  jq -e --arg label "$FORK_LABEL" 'map(.name) | index($label) != null' <<<"$available_labels" >/dev/null || \
+    die "label does not exist on ${FORK_REPO}: ${FORK_LABEL}"
+}
+
+verify_fork_labels() {
+  local fork_n="$1"
+  local fork_meta
+
+  fork_meta="$(gh pr view "$fork_n" --repo "$FORK_REPO" --json labels)" || \
+    die "cannot verify labels on ${FORK_REPO}#${fork_n}"
+  if [[ -n "$FORK_LABEL" ]]; then
+    validate_fork_label
+  fi
+  if [[ -n "$FORK_LABEL" ]] && ! jq -e --arg label "$FORK_LABEL" \
+    '.labels | map(.name) | index($label) != null' <<<"$fork_meta" >/dev/null; then
+    # Label repair is scoped to the permission-owned fork; upstream is never edited.
+    gh pr edit "$fork_n" --repo "$FORK_REPO" --add-label "$FORK_LABEL" >/dev/null || \
+      die "could not apply fork label ${FORK_LABEL} to ${FORK_REPO}#${fork_n}"
+    fork_meta="$(gh pr view "$fork_n" --repo "$FORK_REPO" --json labels)" || \
+      die "could not reverify labels on ${FORK_REPO}#${fork_n}"
+  fi
+
+  [[ "$(jq '.labels | length' <<<"$fork_meta")" -gt 0 ]] || \
+    die "fork PR ${FORK_REPO}#${fork_n} has zero labels; pass --label <name>"
+  if [[ -n "$FORK_LABEL" ]]; then
+    jq -e --arg label "$FORK_LABEL" \
+      '.labels | map(.name) | index($label) != null' <<<"$fork_meta" >/dev/null || \
+      die "fork PR ${FORK_REPO}#${fork_n} is missing label ${FORK_LABEL}"
+  fi
 }
 
 build_mirror_body() {
@@ -102,6 +144,7 @@ create_mirror() {
     local num url
     num="$(printf '%s' "$existing" | jq -r '.number')"
     url="$(printf '%s' "$existing" | jq -r '.url')"
+    verify_fork_labels "$num"
     echo "already mirrored: ${FORK_REPO}#${num} -> ${url} (upstream #${upstream_n})"
     printf '%s\n' "$url"
     return 0
@@ -116,14 +159,20 @@ create_mirror() {
   local body_file
   body_file="$(mktemp)"
   build_mirror_body "$upstream_url" "$issue_md" "$short" >"$body_file"
+  validate_fork_label
 
   local mirror_url
   mirror_url="$(
     gh pr create --repo "$FORK_REPO" --base "$FORK_BASE" --head "$head_ref" \
       --title "[upstream #${upstream_n}] ${title}" \
-      --body-file "$body_file"
+      --body-file "$body_file" \
+      --label "$FORK_LABEL"
   )"
   rm -f "$body_file"
+  local mirror_n
+  mirror_n="$(printf '%s' "$mirror_url" | sed -E 's#.*/pull/([0-9]+).*#\1#')"
+  [[ "$mirror_n" =~ ^[0-9]+$ ]] || die "could not parse created fork PR number: $mirror_url"
+  verify_fork_labels "$mirror_n"
 
   echo "created mirror: ${mirror_url}  (upstream #${upstream_n})"
   printf '%s\n' "$mirror_url"
@@ -148,11 +197,14 @@ mirror_all_open() {
     echo "no open upstream PRs by @${AUTHOR}"
     return 0
   fi
-  local n
+  local n failed=0
   for n in $nums; do
-    create_mirror "$n" || true
+    if ! create_mirror "$n"; then
+      failed=1
+    fi
     echo
   done
+  (( failed == 0 )) || die "one or more fork mirrors failed label verification"
 }
 
 mirror_from_branch() {
@@ -170,18 +222,45 @@ mirror_from_branch() {
 
 usage() {
   cat <<'USAGE'
-mirror-upstream-pr.sh <upstream-pr-number>
-mirror-upstream-pr.sh --from-branch
-mirror-upstream-pr.sh --all-open
+mirror-upstream-pr.sh --label <fork-label> <upstream-pr-number>
+mirror-upstream-pr.sh --label <fork-label> --from-branch
+mirror-upstream-pr.sh --label <fork-label> --all-open
 mirror-upstream-pr.sh --list
 
-Env: UPSTREAM_REPO FORK_REPO FORK_BASE AUTHOR
+Env: UPSTREAM_REPO FORK_REPO FORK_BASE AUTHOR FORK_LABEL
 USAGE
 }
 
 main() {
-  case "${1:-}" in
-    "" | -h | --help)
+  local action="" action_arg=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --label)
+        [[ -n "${2:-}" ]] || die "--label requires a fork label"
+        FORK_LABEL="$2"
+        shift 2
+        ;;
+      --list | --all-open | --from-branch)
+        [[ -z "$action" ]] || die "only one mirror action is allowed"
+        action="$1"
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        [[ "$1" =~ ^[0-9]+$ ]] || die "expected PR number or mirror action, got: $1"
+        [[ -z "$action" ]] || die "only one mirror action is allowed"
+        action="number"
+        action_arg="$1"
+        shift
+        ;;
+    esac
+  done
+
+  case "$action" in
+    "")
       usage
       exit 0
       ;;
@@ -194,9 +273,8 @@ main() {
     --from-branch)
       mirror_from_branch
       ;;
-    *)
-      [[ "$1" =~ ^[0-9]+$ ]] || die "expected PR number, got: $1"
-      create_mirror "$1"
+    number)
+      create_mirror "$action_arg"
       ;;
   esac
 }

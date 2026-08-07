@@ -24,6 +24,12 @@ assert_link() {
 audit_primary() {
   [[ -x "$PRIMARY/.grok/skills/oss-pr-mirror/scripts/prepare-pr-followup.sh" ]] || \
     die "missing follow-up preparation gate in primary"
+  [[ -x "$PRIMARY/.grok/skills/oss-pr-mirror/scripts/create-upstream-pr.sh" ]] || \
+    die "missing upstream PR creation label-safety gate in primary"
+  [[ -x "$PRIMARY/.grok/skills/oss-pr-mirror/tests/upstream-pr-label-gate.test.sh" ]] || \
+    die "missing upstream label-scope regression test in primary"
+  bash "$PRIMARY/.grok/skills/oss-pr-mirror/tests/upstream-pr-label-gate.test.sh" >/dev/null || \
+    die "upstream label-scope regression test failed"
   assert_link "$PRIMARY/.agents/skills/orca-contribution" "$PRIMARY/.grok/skills/orca-contribution"
   assert_link "$PRIMARY/.agents/skills/oss-pr-mirror" "$PRIMARY/.grok/skills/oss-pr-mirror"
   assert_link "$PRIMARY/.claude/skills/orca-contribution" "$PRIMARY/.grok/skills/orca-contribution"
@@ -58,6 +64,7 @@ audit_worktree() {
   overlay_status="$(git -C "$resolved" status --porcelain -- .grok Makefile codex.md .agents .claude)"
   [[ -z "$overlay_status" ]] || die "harness overlays leak into git status: $resolved"
   make -C "$resolved" -n pr-followup >/dev/null
+  make -C "$resolved" -n upstream-pr-create ARGS='--help' >/dev/null
 
   echo "OK contribution worktree harness: $resolved"
 }
