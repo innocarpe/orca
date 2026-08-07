@@ -56,9 +56,28 @@ describe('parseAiVaultListResult', () => {
     expect(parsed.issues).toEqual([validScanIssue()])
   })
 
+  it('reports malformed scan issues without counting unknown-agent issues as invalid', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [],
+      issues: [validScanIssue(), { agent: 'future-agent' }, validScanIssue('newer-agent')],
+      scannedAt: '2026-07-27T00:00:00.000Z'
+    })
+
+    expect(parsed.issues).toEqual([
+      validScanIssue(),
+      expect.objectContaining({
+        path: 'aiVault.listSessions',
+        message: expect.stringContaining('Skipped 1 invalid')
+      })
+    ])
+  })
+
   it('does not throw when malformed rows are mixed with well-formed unknown sessions', () => {
     const parsed = parseAiVaultListResult({
-      sessions: [{ id: 42 }, { ...validSession('session-new'), agent: 'future-agent' }],
+      sessions: [
+        { ...validSession('malformed-future'), agent: 'future-agent', messageCount: 'invalid' },
+        { ...validSession('valid-future'), agent: 'newer-agent' }
+      ],
       issues: [],
       scannedAt: '2026-07-27T00:00:00.000Z'
     })
