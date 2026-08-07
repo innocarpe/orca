@@ -85,6 +85,7 @@ import {
   type GitHubRepoSlugCacheEntry
 } from '../../../src/tasks/github-project-repo-match'
 import { warmGitHubProjectModeRepos } from '../../../src/tasks/github-project-mode-repo-warmup'
+import { commitGitHubProjectModeRepos } from '../../../src/tasks/github-project-mode-commit-repos'
 import {
   parseGitHubProjectInput as parseProjectInput,
   type GitHubProjectOwnerType,
@@ -3036,32 +3037,31 @@ export default function MobileTasksScreen() {
     setProvider(resolveVisibleTaskProvider(provider, visibleProviders))
   }, [provider, visibleProviders])
 
-  const loadRepos = useCallback(async (): Promise<RepoSummary[]> => {
-    if (!client || connState !== 'connected') {
-      return []
-    }
-    const response = await client.sendRequest('repo.list')
-    if (!isSuccess(response)) {
-      throw new Error(response.error.message)
-    }
-    const result = response.result as { repos: RepoSummary[] }
-    reposRef.current = result.repos
-    setRepos(result.repos)
-    if (!repoSelectionHydratedRef.current) {
-      repoSelectionHydratedRef.current = true
-      setSelectedRepoIds(reconcileRepoSelection(result.repos, defaultRepoSelectionRef.current))
-    } else {
-      setSelectedRepoIds((current) => {
-        if (current.size === 0) {
-          return current
-        }
-        const availableIds = new Set(result.repos.filter(isHostedTaskRepo).map((repo) => repo.id))
-        const next = new Set([...current].filter((id) => availableIds.has(id)))
-        return next.size === current.size ? current : next
+  const loadRepos = useCallback(
+    async (isCurrent?: () => boolean): Promise<RepoSummary[]> => {
+      if (!client || connState !== 'connected') {
+        return []
+      }
+      const response = await client.sendRequest('repo.list')
+      if (!isSuccess(response)) {
+        throw new Error(response.error.message)
+      }
+      const result = response.result as { repos: RepoSummary[] }
+      commitGitHubProjectModeRepos({
+        repos: result.repos,
+        isCurrent,
+        setRepos,
+        reposRef,
+        repoSelectionHydratedRef,
+        defaultRepoSelectionRef,
+        setSelectedRepoIds,
+        reconcileRepoSelection,
+        isHostedTaskRepo
       })
-    }
-    return result.repos
-  }, [client, connState])
+      return result.repos
+    },
+    [client, connState]
+  )
 
   const loadLinearContext = useCallback(async (): Promise<void> => {
     if (!client || connState !== 'connected' || !tasksSupported) {

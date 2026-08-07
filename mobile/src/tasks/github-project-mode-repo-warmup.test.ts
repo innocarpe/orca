@@ -10,6 +10,7 @@ describe('GitHub project mode repo warmup', () => {
     await warmGitHubProjectModeRepos(0, loadRepos, isCurrent, setItems)
 
     expect(loadRepos).toHaveBeenCalledTimes(1)
+    expect(loadRepos).toHaveBeenCalledWith(isCurrent)
     expect(setItems).toHaveBeenCalledWith([])
   })
 
@@ -36,5 +37,15 @@ describe('GitHub project mode repo warmup', () => {
     )
 
     expect(setItems).not.toHaveBeenCalled()
+  })
+
+  it('passes the current-load guard into loadRepos for stale-host protection', async () => {
+    const isCurrent = vi.fn(() => true)
+    const loadRepos = vi.fn(async (guard: () => boolean) => {
+      expect(guard).toBe(isCurrent)
+      return [{ id: 'repo-1' }]
+    })
+    await warmGitHubProjectModeRepos(0, loadRepos, isCurrent, vi.fn())
+    expect(loadRepos).toHaveBeenCalledWith(isCurrent)
   })
 })
