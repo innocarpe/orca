@@ -1,5 +1,7 @@
 // Why: stdin ownership is a cross-agent process contract; one executable
 // matrix catches an unread early exit without duplicating template assertions.
+// Exception (#11549): Windows batch hooks give up stdin ownership on the
+// missing-Orca-env path, so their writer may break there. See BROKEN_WRITER_CODES.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -87,6 +89,9 @@ import { createAgentHookMemorySftp } from './agent-hook-memory-sftp.test-fixture
 
 const REMOTE_HOME = '/home/dev'
 const LARGE_PAYLOAD = Buffer.alloc(1_000_000, 'x')
+// Why: a reader that exits mid-write surfaces as EPIPE, but Windows pipe teardown
+// can also report ECONNRESET; both mean the same thing here.
+const BROKEN_WRITER_CODES = new Set(['EPIPE', 'ECONNRESET'])
 const REMOTE_INSTALLERS = [
   {
     agent: 'antigravity',
@@ -274,7 +279,8 @@ describe('Windows managed hook stdin structure', () => {
         expect(script, `${fileName} pane guard not drain`).not.toContain(
           'if "%ORCA_PANE_KEY%"=="" goto :orca_agent_hook_drain_stdin'
         )
-        // Why: other failure paths (missing script etc.) still share the more.com drain.
+        // Why: the epilogue stays shared — claude-hook.cmd still jumps to it for the
+        // Devin-imports-.claude skip, where the caller is an Orca pane that closes stdin.
         expect(script, `${fileName} drain epilogue`).toContain(
           [
             ':orca_agent_hook_drain_stdin',
@@ -309,7 +315,7 @@ describe('Windows managed hook stdin structure', () => {
   })
 
   it.skipIf(process.platform !== 'win32')(
-    'executes every local script and missing-script launcher without a broken writer',
+    'exits every local script and missing-script launcher without stranding a reader',
     async () => {
       const home = mkdtempSync(join(tmpdir(), 'orca-hook-stdin-windows-live-'))
       homedirMock.mockReturnValue(home)
@@ -347,7 +353,20 @@ describe('Windows managed hook stdin structure', () => {
               : [scriptPath]
           const result = await runHookProcess(executable, args, hookEnvironment())
           expect(result.exitCode, `${fileName} exit code`).toBe(0)
-          expect(result.stdinErrors, `${fileName} stdin errors`).toHaveLength(0)
+          if (fileName.endsWith('.cmd')) {
+            // Why (#11549): cmd cannot buffer a payload this size, so the missing-env
+            // guard exits instead of draining. A broken writer is the accepted cost of
+            // never leaving more.com waiting on a caller that abandoned the pipe; the
+            // 10s reject in runHookProcess is what pins the no-hang half of that trade.
+            for (const error of result.stdinErrors) {
+              expect(
+                BROKEN_WRITER_CODES.has(error.code ?? ''),
+                `${fileName} unexpected stdin error ${error.code}`
+              ).toBe(true)
+            }
+          } else {
+            expect(result.stdinErrors, `${fileName} stdin errors`).toHaveLength(0)
+          }
         }
 
         const missingScript = 'C:\\missing\\orca-hook.cmd'
