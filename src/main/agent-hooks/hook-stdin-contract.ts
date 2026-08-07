@@ -34,11 +34,13 @@ export const WINDOWS_HOOK_STDIN_DRAIN_COMMAND = `${WINDOWS_HOOK_STDIN_READER} >n
 // the caller's write breaks, which beats leaking a visible window per hook event.
 //
 // The rule this sets for generated .cmd: an ORCA_* guard exits, it never routes to the drain.
-// Every other hook still reads first, because their callers do close stdin and because the read
-// is the payload capture, not a drain: buildPosixHookPayloadCapture, the Windows .ps1 (copilot)
-// and Git Bash (kimi) hooks, and claude/statusline-script.ts, where more.com IS the capture.
-// Batch is the exception because it streams to curl instead, so owning stdin buys nothing here
-// and costs a blocking more.com.
+// Batch is the only place that rule is needed, because it streams to curl instead of capturing,
+// so owning stdin buys nothing and costs a blocking more.com. Two kinds of exemption:
+//   - buildPosixHookPayloadCapture and the Windows .ps1 (copilot) / Git Bash (kimi) hooks read
+//     first because the read IS the payload capture, so exiting early would drop the payload.
+//   - claude/statusline-script.ts genuinely routes its guard to the drain. That is safe for a
+//     different reason: Claude Code's statusline caller closes stdin, which its in-pane capture
+//     already proves, since that capture cannot finish without EOF.
 export function buildWindowsHookEnvironmentGuardLines(): string[] {
   return [
     'if "%ORCA_AGENT_HOOK_PORT%"=="" exit /b 0',
