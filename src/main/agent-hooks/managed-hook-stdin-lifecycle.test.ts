@@ -270,13 +270,14 @@ describe('Windows managed hook stdin structure', () => {
           'if "%ORCA_AGENT_HOOK_TOKEN%"=="" exit /b 0'
         )
         expect(script, `${fileName} pane guard`).toContain('if "%ORCA_PANE_KEY%"=="" exit /b 0')
-        // Why: assert the rule, not the three guards that exist today — a fourth ORCA_* guard
-        // copied from the nearest in-repo pattern (statusline-script.ts still routes to the
-        // drain, correctly, because its caller closes stdin) would otherwise reintroduce
-        // #11549 with this suite green. Deliberately does not match the Devin skip, which is
-        // not an ORCA_* guard and whose caller is a live Orca pane.
+        // Why: assert the rule, not the guards that exist today — a fourth ORCA_* guard copied
+        // from the nearest in-repo pattern (statusline-script.ts still routes to the drain,
+        // correctly, because its caller closes stdin) would otherwise reintroduce #11549 with
+        // this suite green. Matches the whole line rather than one guard spelling, because both
+        // `if "%VAR%"==""` and `if not defined VAR` are house idiom here. The Devin skip is
+        // deliberately exempt: it names no ORCA_* var, and its caller is a live Orca pane.
         expect(
-          script.match(/if "%ORCA_[A-Z_]+%"=="" goto :orca_agent_hook_drain_stdin/g),
+          script.match(/^.*ORCA_[A-Z_]+.*goto :?orca_agent_hook_drain_stdin.*$/gm),
           `${fileName} no ORCA_* guard may route to the more.com drain`
         ).toBeNull()
         // Why: the epilogue stays shared — claude-hook.cmd still jumps to it from the
