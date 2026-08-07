@@ -187,17 +187,26 @@ function stripPythonComments(source) {
     const ch = source[i]
     const next = source[i + 1]
     // Triple-quoted strings (keep contents so string literals still scan).
+    // Why: honor escaped delimiters so `\"\"\"` inside a triple-string does not
+    // end the string early and reclassify later code as comments (#10586 CR).
     if ((ch === '"' || ch === "'") && next === ch && source[i + 2] === ch) {
       const quote = ch.repeat(3)
       out += quote
       i += 3
-      while (i < n && source.slice(i, i + 3) !== quote) {
+      while (i < n) {
+        if (source[i] === '\\' && i + 1 < n) {
+          out += source[i]
+          out += source[i + 1]
+          i += 2
+          continue
+        }
+        if (source.slice(i, i + 3) === quote) {
+          out += quote
+          i += 3
+          break
+        }
         out += source[i]
         i += 1
-      }
-      if (i < n) {
-        out += quote
-        i += 3
       }
       continue
     }
@@ -245,10 +254,9 @@ function verifyNativeArgumentGuardrails() {
   const failures = []
   // Why: GI bindings do not expose the C-only editable-text predicate; looking
   // it up as an attribute raises before attempt() can catch it (#10569).
-  if (linux.includes('node.is_editable_text') || linux.includes('is_editable_text,')) {
-    failures.push(
-      'Linux set_value must not look up node.is_editable_text (use get_editable_text_iface)'
-    )
+  // Match any attribute lookup form, not only `node.is_editable_text` (#10586 CR).
+  if (/(?:^|[^A-Za-z0-9_])is_editable_text(?:\s*[,(]|\s*$)/m.test(linux)) {
+    failures.push('Linux set_value must not look up is_editable_text (use get_editable_text_iface)')
   }
   if (!linux.includes('get_editable_text_iface')) {
     failures.push('Linux set_value must probe editability via get_editable_text_iface')
