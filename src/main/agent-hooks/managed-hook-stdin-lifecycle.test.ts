@@ -279,8 +279,10 @@ describe('Windows managed hook stdin structure', () => {
         expect(script, `${fileName} pane guard not drain`).not.toContain(
           'if "%ORCA_PANE_KEY%"=="" goto :orca_agent_hook_drain_stdin'
         )
-        // Why: the epilogue stays shared — claude-hook.cmd still jumps to it for the
-        // Devin-imports-.claude skip, where the caller is an Orca pane that closes stdin.
+        // Why: the epilogue stays shared — claude-hook.cmd still jumps to it from the
+        // Devin-imports-.claude skip (claude/hook-service.ts), which sits above these guards.
+        // That jump keeps the #11549 hang reachable for Devin outside an Orca pane; closing it
+        // means reordering the Devin guard, which is a separate change.
         expect(script, `${fileName} drain epilogue`).toContain(
           [
             ':orca_agent_hook_drain_stdin',
@@ -355,9 +357,9 @@ describe('Windows managed hook stdin structure', () => {
           expect(result.exitCode, `${fileName} exit code`).toBe(0)
           if (fileName.endsWith('.cmd')) {
             // Why (#11549): cmd cannot buffer a payload this size, so the missing-env
-            // guard exits instead of draining. A broken writer is the accepted cost of
-            // never leaving more.com waiting on a caller that abandoned the pipe; the
-            // 10s reject in runHookProcess is what pins the no-hang half of that trade.
+            // guard exits instead of draining, and the writer breaks. runHookProcess
+            // always closes stdin, so this case cannot show the hang itself — the
+            // abandoned-pipe half of #11549 is pinned by the guard strings above.
             for (const error of result.stdinErrors) {
               expect(
                 BROKEN_WRITER_CODES.has(error.code ?? ''),
