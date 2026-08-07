@@ -270,15 +270,15 @@ describe('Windows managed hook stdin structure', () => {
           'if "%ORCA_AGENT_HOOK_TOKEN%"=="" exit /b 0'
         )
         expect(script, `${fileName} pane guard`).toContain('if "%ORCA_PANE_KEY%"=="" exit /b 0')
-        expect(script, `${fileName} port guard not drain`).not.toContain(
-          'if "%ORCA_AGENT_HOOK_PORT%"=="" goto :orca_agent_hook_drain_stdin'
-        )
-        expect(script, `${fileName} token guard not drain`).not.toContain(
-          'if "%ORCA_AGENT_HOOK_TOKEN%"=="" goto :orca_agent_hook_drain_stdin'
-        )
-        expect(script, `${fileName} pane guard not drain`).not.toContain(
-          'if "%ORCA_PANE_KEY%"=="" goto :orca_agent_hook_drain_stdin'
-        )
+        // Why: assert the rule, not the three guards that exist today — a fourth ORCA_* guard
+        // copied from the nearest in-repo pattern (statusline-script.ts still routes to the
+        // drain, correctly, because its caller closes stdin) would otherwise reintroduce
+        // #11549 with this suite green. Deliberately does not match the Devin skip, which is
+        // not an ORCA_* guard and whose caller is a live Orca pane.
+        expect(
+          script.match(/if "%ORCA_[A-Z_]+%"=="" goto :orca_agent_hook_drain_stdin/g),
+          `${fileName} no ORCA_* guard may route to the more.com drain`
+        ).toBeNull()
         // Why: the epilogue stays shared — claude-hook.cmd still jumps to it from the
         // Devin-imports-.claude skip (claude/hook-service.ts), which sits above these guards.
         // That jump keeps the #11549 hang reachable for Devin outside an Orca pane; closing it
