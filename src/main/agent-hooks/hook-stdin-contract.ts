@@ -32,9 +32,13 @@ export const WINDOWS_HOOK_STDIN_DRAIN_COMMAND = `${WINDOWS_HOOK_STDIN_READER} >n
 // Codex/Claude hooks). more.com drains until EOF, so a caller that abandons the pipe instead
 // of closing it strands cmd.exe + more.com forever. Exit success and give up stdin ownership;
 // the caller's write breaks, which beats leaking a visible window per hook event.
-// Why this diverges from buildPosixHookPayloadCapture, which still reads before exiting:
-// batch has no bounded stdin reader, so owning stdin costs a blocking more.com. POSIX callers
-// have not shown the abandon (#8110 stayed fixed by draining); Windows callers have.
+//
+// The rule this sets for generated .cmd: an ORCA_* guard exits, it never routes to the drain.
+// Every other hook still reads first, because their callers do close stdin and because the read
+// is the payload capture, not a drain: buildPosixHookPayloadCapture, the Windows .ps1 (copilot)
+// and Git Bash (kimi) hooks, and claude/statusline-script.ts, where more.com IS the capture.
+// Batch is the exception because it streams to curl instead, so owning stdin buys nothing here
+// and costs a blocking more.com.
 export function buildWindowsHookEnvironmentGuardLines(): string[] {
   return [
     'if "%ORCA_AGENT_HOOK_PORT%"=="" exit /b 0',
