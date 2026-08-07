@@ -63,8 +63,20 @@ describe('WSL Claude plugin skill discovery', () => {
     const result = await discoverSkillsInWsl({ distro: 'Ubuntu', homeDir, cwd })
 
     expect(execFileMock).toHaveBeenCalledTimes(2)
+    const metadataArgs = execFileMock.mock.calls[0]?.[1] as string[]
+    expect(metadataArgs.slice(0, 5)).toEqual(['-d', 'Ubuntu', '--', 'bash', '-c'])
+    expect(metadataArgs[5]).toContain('set -o pipefail; printf %s')
     const scanArgs = execFileMock.mock.calls[1]?.[1] as string[]
-    const encoded = /printf %s '([^']+)'/.exec(scanArgs[5] ?? '')?.[1]
+    expect(scanArgs.slice(0, 7)).toEqual([
+      '-d',
+      'Ubuntu',
+      '--',
+      'bash',
+      '-c',
+      'eval "\\$1"',
+      'orca-skill-discovery'
+    ])
+    const encoded = /printf %s '([^']+)'/.exec(scanArgs[7] ?? '')?.[1]
     const scanScript = Buffer.from(encoded ?? '', 'base64').toString('utf8')
     expect(scanScript).toContain(`${installPath}/skills`)
     expect(result.skills).toEqual([

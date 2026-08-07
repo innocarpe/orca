@@ -6,6 +6,7 @@ import type {
   SkillDiscoveryResult,
   SkillDiscoverySource
 } from '../../shared/skills'
+import { escapeWslShCommandForWindows } from '../../shared/wsl-login-shell-command'
 import { buildEncodedWslBashCommand, quoteBashString } from '../wsl-bash-command'
 import {
   buildSkillDiscoverySources,
@@ -21,6 +22,8 @@ const MAX_MARKDOWN_BYTES = 256 * 1024
 const MAX_PACKAGE_FILES = 200
 const WSL_SCAN_TIMEOUT_MS = 10_000
 const WSL_SCAN_MAX_BUFFER_BYTES = 128 * 1024 * 1024
+const WSL_SKILL_DISCOVERY_ARG0 = 'orca-skill-discovery'
+const WSL_SKILL_DISCOVERY_EVAL = escapeWslShCommandForWindows('eval "$1"')
 
 export function buildWslSkillDiscoveryCommand(roots: readonly SkillScanRoot[]): string {
   const lines = [
@@ -58,11 +61,24 @@ export function buildWslSkillDiscoveryCommand(roots: readonly SkillScanRoot[]): 
   return buildEncodedWslBashCommand(lines.join('\n'))
 }
 
+export function buildWslSkillDiscoveryArgs(distro: string, command: string): string[] {
+  return [
+    '-d',
+    distro,
+    '--',
+    'bash',
+    '-c',
+    WSL_SKILL_DISCOVERY_EVAL,
+    WSL_SKILL_DISCOVERY_ARG0,
+    command
+  ]
+}
+
 function executeWslSkillDiscovery(distro: string, command: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       'wsl.exe',
-      ['-d', distro, '--', 'bash', '-c', command],
+      buildWslSkillDiscoveryArgs(distro, command),
       {
         encoding: 'utf8',
         maxBuffer: WSL_SCAN_MAX_BUFFER_BYTES,

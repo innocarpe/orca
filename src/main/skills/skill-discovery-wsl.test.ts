@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillScanRoot } from './skill-discovery-sources'
-import { buildWslSkillDiscoveryCommand, parseWslSkillDiscoveryOutput } from './skill-discovery-wsl'
+import {
+  buildWslSkillDiscoveryArgs,
+  buildWslSkillDiscoveryCommand,
+  parseWslSkillDiscoveryOutput
+} from './skill-discovery-wsl'
 
 const homeRoot: SkillScanRoot = {
   id: 'home-codex',
@@ -86,6 +90,27 @@ describe('WSL skill discovery', () => {
     expect(script).toContain('realpath -- "$skill_file"')
     expect(script).toContain('head -c 262144 -- "$skill_file"')
     expect(script).toContain(`'/work/alice'\\''s project/.agents/skills'`)
+  })
+
+  it('keeps the semicolon-delimited scan payload outside the bash -c argument', () => {
+    const command = buildWslSkillDiscoveryCommand([repoRoot])
+    const args = buildWslSkillDiscoveryArgs('Ubuntu', command)
+    const commandIndex = args.indexOf('-c') + 1
+
+    expect(args.slice(0, commandIndex + 1)).toEqual([
+      '-d',
+      'Ubuntu',
+      '--',
+      'bash',
+      '-c',
+      'eval "\\$1"'
+    ])
+    expect(args[commandIndex]).not.toContain(';')
+    expect(args[commandIndex]).not.toContain('base64 -d | bash')
+    expect(args[commandIndex + 1]).toBe('orca-skill-discovery')
+    expect(args[commandIndex + 2]).toBe(command)
+    expect(args[commandIndex + 2]).toContain('set -o pipefail; printf %s')
+    expect(args[commandIndex + 2]).toContain('base64 -d | bash')
   })
 
   it('rejects malformed host responses instead of reporting an empty scan', () => {
