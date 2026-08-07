@@ -84,6 +84,7 @@ describe('runRemoteOrcaCli', () => {
       getCurrentRunForPane: vi.fn(() => undefined),
       findActiveRemoteAttachmentForPane: vi.fn(() => undefined)
     }
+    const getOrchestrationDb = vi.fn(() => db)
     const runtime = {
       getRuntimeId: () => 'runtime-test',
       getStatus: () => ({
@@ -94,7 +95,7 @@ describe('runRemoteOrcaCli', () => {
         liveTabCount: 1,
         liveLeafCount: 1
       }),
-      getOrchestrationDb: () => db,
+      getOrchestrationDb,
       getTerminalPaneKey: () => null,
       deliverPendingMessagesForHandle: vi.fn(),
       notifyMessageArrived: vi.fn(),
@@ -136,7 +137,7 @@ describe('runRemoteOrcaCli', () => {
         meta: { query: 'auth bug', limit: 5, returned: 0, limitReached: false }
       }))
     } as unknown as OrcaRuntimeService
-    return { runtime, db }
+    return { runtime, db, getOrchestrationDb }
   }
 
   it.each([
@@ -176,7 +177,7 @@ describe('runRemoteOrcaCli', () => {
   )
 
   it('prints orchestration check help through the SSH legacy fallback without dispatching RPC', async () => {
-    const { runtime, db } = createRuntime()
+    const { runtime, db, getOrchestrationDb } = createRuntime()
 
     const result = await runRemoteOrcaCli(
       runtime,
@@ -212,13 +213,13 @@ describe('runRemoteOrcaCli', () => {
         --pairing-code
         --environment
         --terminal <handle>  Runtime-issued terminal handle
-        --run
-        --ack
+        --run <run_id>
+        --ack <delivery_id>
         --unread
         --peek
         --all
-        --types
-        --format <png|jpeg>    Screenshot image format
+        --types <type,...>
+        --format               Render returned rows as local text
         --wait
         --timeout-ms <ms>     Maximum wait time before timing out
         --retry-request
@@ -232,6 +233,7 @@ describe('runRemoteOrcaCli', () => {
     expect(db.getCurrentRunForPane).not.toHaveBeenCalled()
     expect(db.getUnreadMessages).not.toHaveBeenCalled()
     expect(db.markAsRead).not.toHaveBeenCalled()
+    expect(getOrchestrationDb).not.toHaveBeenCalled()
   })
 
   it('uses the remote ORCA_TERMINAL_HANDLE as orchestration sender identity', async () => {

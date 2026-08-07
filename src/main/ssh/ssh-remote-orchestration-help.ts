@@ -21,13 +21,13 @@ Options:
   --pairing-code
   --environment
   --terminal <handle>  Runtime-issued terminal handle
-  --run
-  --ack
+  --run <run_id>
+  --ack <delivery_id>
   --unread
   --peek
   --all
-  --types
-  --format <png|jpeg>    Screenshot image format
+  --types <type,...>
+  --format               Render returned rows as local text
   --wait
   --timeout-ms <ms>     Maximum wait time before timing out
   --retry-request
