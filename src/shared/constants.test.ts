@@ -143,6 +143,10 @@ describe('getDefaultSettings', () => {
     })
     expect(settings.agentYoloDefaultsMigrated).toBe(true)
   })
+
+  it('shows terminal quick commands by default', () => {
+    expect(getDefaultSettings('/tmp').showTerminalQuickCommandsButton).toBe(true)
+  })
 })
 
 describe('getDefaultPrimarySelectionMiddleClickPaste', () => {
