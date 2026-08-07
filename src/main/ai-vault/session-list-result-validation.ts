@@ -3,6 +3,7 @@ import {
   AI_VAULT_AGENTS,
   type AiVaultAgent,
   type AiVaultListResult,
+  type AiVaultScanIssue,
   type AiVaultSession
 } from '../../shared/ai-vault-types'
 import { normalizeExecutionHostId } from '../../shared/execution-host'
@@ -78,7 +79,7 @@ const aiVaultSessionSchema = z.object({
 
 const aiVaultScanIssueSchema = z.object({
   executionHostId: executionHostIdSchema.optional(),
-  agent: z.enum(AI_VAULT_AGENTS),
+  agent: z.string().min(1),
   kind: z.enum(['host', 'scope', 'notice']).optional(),
   path: z.string(),
   message: z.string()
@@ -97,25 +98,40 @@ export function parseAiVaultListResult(value: unknown): AiVaultListResult {
   }
   const sessions: AiVaultSession[] = []
   let malformedSessionCount = 0
+  let wellFormedSessionCount = 0
   for (const session of envelope.data.sessions) {
     const parsed = aiVaultSessionSchema.safeParse(session)
     if (!parsed.success) {
       malformedSessionCount += 1
       continue
     }
+    wellFormedSessionCount += 1
     if (!isAiVaultAgent(parsed.data.agent)) {
       continue
     }
     sessions.push({ ...parsed.data, agent: parsed.data.agent })
   }
-  if (envelope.data.sessions.length > 0 && malformedSessionCount > 0 && sessions.length === 0) {
+  if (
+    envelope.data.sessions.length > 0 &&
+    malformedSessionCount > 0 &&
+    wellFormedSessionCount === 0
+  ) {
     throw new Error('all supplied Agent Session History sessions were invalid')
   }
-  const issues = envelope.data.issues.flatMap((issue) => {
+  const issues: AiVaultScanIssue[] = []
+  let malformedIssueCount = 0
+  for (const issue of envelope.data.issues) {
     const parsed = aiVaultScanIssueSchema.safeParse(issue)
-    return parsed.success ? [parsed.data] : []
-  })
-  const invalidCount = malformedSessionCount + (envelope.data.issues.length - issues.length)
+    if (!parsed.success) {
+      malformedIssueCount += 1
+      continue
+    }
+    if (!isAiVaultAgent(parsed.data.agent)) {
+      continue
+    }
+    issues.push({ ...parsed.data, agent: parsed.data.agent })
+  }
+  const invalidCount = malformedSessionCount + malformedIssueCount
   if (invalidCount > 0) {
     issues.push({
       agent: 'codex',

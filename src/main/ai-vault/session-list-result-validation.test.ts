@@ -46,6 +46,32 @@ describe('parseAiVaultListResult', () => {
     expect(parsed.issues).toEqual([])
   })
 
+  it('keeps known scan issues while silently dropping unknown-agent issues', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [],
+      issues: [validScanIssue(), validScanIssue('future-agent')],
+      scannedAt: '2026-07-27T00:00:00.000Z'
+    })
+
+    expect(parsed.issues).toEqual([validScanIssue()])
+  })
+
+  it('does not throw when malformed rows are mixed with well-formed unknown sessions', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [{ id: 42 }, { ...validSession('session-new'), agent: 'future-agent' }],
+      issues: [],
+      scannedAt: '2026-07-27T00:00:00.000Z'
+    })
+
+    expect(parsed.sessions).toEqual([])
+    expect(parsed.issues).toContainEqual(
+      expect.objectContaining({
+        path: 'aiVault.listSessions',
+        message: expect.stringContaining('Skipped 1 invalid')
+      })
+    )
+  })
+
   it('preserves the optional session fields the panel renders', () => {
     const parsed = parseAiVaultListResult({
       sessions: [
@@ -105,5 +131,13 @@ function validSession(sessionId = 'session-1'): Record<string, unknown> {
     subagentTranscriptCount: 0,
     resumeCommand: `codex resume ${sessionId}`,
     subagent: null
+  }
+}
+
+function validScanIssue(agent = 'codex'): Record<string, unknown> {
+  return {
+    agent,
+    path: '/tmp/sessions',
+    message: 'permission denied'
   }
 }
