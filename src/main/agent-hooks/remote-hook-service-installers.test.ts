@@ -342,8 +342,7 @@ describe('remote hook service installers', () => {
       expect(command).toContain('/home/dev/.orca/agent-hooks/antigravity-hook.sh')
       expect(command).toContain(`ORCA_ANTIGRAVITY_EVENT='${eventName}'`)
     }
-    expect(antigravityConfig['orca-status'].PreToolUse).toBeUndefined()
-    for (const eventName of ['PostToolUse']) {
+    for (const eventName of ['PreToolUse', 'PostToolUse']) {
       const definition = antigravityConfig['orca-status'][eventName]?.[0]
       const command = definition?.hooks?.[0]?.command
       expect(definition?.matcher).toBe('*')
@@ -522,7 +521,7 @@ describe('remote hook service installers', () => {
     }
   })
 
-  it('removes stale remote Antigravity PreToolUse hooks while installing SSH hooks', async () => {
+  it('replaces stale remote Antigravity PreToolUse hooks while installing SSH hooks', async () => {
     const { sftp, fs } = createFakeSftp()
     fs.files.set(
       '/home/dev/.gemini/config/hooks.json',
@@ -563,7 +562,13 @@ describe('remote hook service installers', () => {
     const config = JSON.parse(fs.files.get('/home/dev/.gemini/config/hooks.json')!) as {
       'orca-status': Record<string, { hooks?: { command: string }[] }[]>
     }
-    expect(config['orca-status'].PreToolUse).toBeUndefined()
+    const preToolCommands = config['orca-status'].PreToolUse.flatMap((definition) =>
+      (definition.hooks ?? []).map((hook) => hook.command)
+    )
+    expect(preToolCommands).toEqual(
+      expect.arrayContaining([expect.stringContaining('antigravity-hook.sh')])
+    )
+    expect(preToolCommands).not.toContain('/tmp/old/agent-hooks/antigravity-hook.sh')
     const postToolCommands = config['orca-status'].PostToolUse.flatMap((definition) =>
       (definition.hooks ?? []).map((hook) => hook.command)
     )

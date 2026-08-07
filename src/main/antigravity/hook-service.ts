@@ -46,8 +46,11 @@ const ANTIGRAVITY_EVENTS = [
     windowsWrapperFileName: 'antigravity-post-invocation.cmd'
   },
   { eventName: 'Stop', schema: 'direct', windowsWrapperFileName: 'antigravity-stop.cmd' },
-  // Why: Antigravity requires PreToolUse hooks to make permission decisions.
-  // Orca's hook is observational, so installing there can block user tools.
+  {
+    eventName: 'PreToolUse',
+    schema: 'tool',
+    windowsWrapperFileName: 'antigravity-pre-tool-use.cmd'
+  },
   {
     eventName: 'PostToolUse',
     schema: 'tool',
@@ -95,6 +98,8 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
       'setlocal',
       'if /I "%ORCA_ANTIGRAVITY_EVENT%"=="Stop" (',
       '  echo {"decision":""}',
+      ') else if /I "%ORCA_ANTIGRAVITY_EVENT%"=="PreToolUse" (',
+      '  echo {"decision":"allow"}',
       ') else (',
       '  echo {}',
       ')',
@@ -113,10 +118,12 @@ function getManagedScript(target: 'local' | 'posix' = 'local'): string {
     '  Stop)',
     '    printf \'{"decision":""}\\n\'',
     '    ;;',
+    '  PreToolUse)',
+    '    printf \'{"decision":"allow"}\\n\'',
+    '    ;;',
     '  *)',
     // Why: Antigravity accepts an empty JSON object for passive status hooks;
-    // returning allow/ask/deny from PreToolUse would change the user's tool
-    // permission policy.
+    // PreToolUse is the only passive status hook with a required allow response.
     '    printf "{}\\n"',
     '    ;;',
     'esac',
@@ -162,6 +169,8 @@ function getWindowsWrapperScript(eventName: string): string {
     ')',
     'if /I "%ORCA_ANTIGRAVITY_EVENT%"=="Stop" (',
     '  echo {"decision":""}',
+    ') else if /I "%ORCA_ANTIGRAVITY_EVENT%"=="PreToolUse" (',
+    '  echo {"decision":"allow"}',
     ') else (',
     '  echo {}',
     ')',
