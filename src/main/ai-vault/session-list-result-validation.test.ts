@@ -19,6 +19,33 @@ describe('parseAiVaultListResult', () => {
     )
   })
 
+  it('keeps known-agent sessions while silently dropping unknown-agent rows', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [validSession(), { ...validSession('session-new'), agent: 'future-agent' }],
+      issues: [],
+      scannedAt: '2026-07-27T00:00:00.000Z'
+    })
+
+    expect(parsed.sessions).toHaveLength(1)
+    expect(parsed.sessions[0]?.agent).toBe('codex')
+    expect(parsed.sessions[0]?.sessionId).toBe('session-1')
+    expect(parsed.issues).toEqual([])
+  })
+
+  it('accepts an all-unknown-agent response as an empty supported session list', () => {
+    const parsed = parseAiVaultListResult({
+      sessions: [
+        { ...validSession('future-1'), agent: 'future-agent' },
+        { ...validSession('future-2'), agent: 'newer-agent' }
+      ],
+      issues: [],
+      scannedAt: '2026-07-27T00:00:00.000Z'
+    })
+
+    expect(parsed.sessions).toEqual([])
+    expect(parsed.issues).toEqual([])
+  })
+
   it('preserves the optional session fields the panel renders', () => {
     const parsed = parseAiVaultListResult({
       sessions: [
@@ -55,18 +82,18 @@ describe('parseAiVaultListResult', () => {
   })
 })
 
-function validSession(): Record<string, unknown> {
+function validSession(sessionId = 'session-1'): Record<string, unknown> {
   return {
-    id: 'local:codex:session-1:/tmp/session-1.jsonl',
+    id: `local:codex:${sessionId}:/tmp/${sessionId}.jsonl`,
     executionHostId: 'local',
     executionHostPlatform: 'linux',
     agent: 'codex',
-    sessionId: 'session-1',
+    sessionId,
     title: 'Session one',
     cwd: '/repo',
     branch: null,
     model: null,
-    filePath: '/tmp/session-1.jsonl',
+    filePath: `/tmp/${sessionId}.jsonl`,
     codexHome: null,
     createdAt: null,
     updatedAt: null,
@@ -76,7 +103,7 @@ function validSession(): Record<string, unknown> {
     previewMessages: [],
     queuedMessageCount: 0,
     subagentTranscriptCount: 0,
-    resumeCommand: 'codex resume session-1',
+    resumeCommand: `codex resume ${sessionId}`,
     subagent: null
   }
 }

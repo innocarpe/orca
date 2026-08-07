@@ -1,6 +1,17 @@
 import { z } from 'zod'
-import { AI_VAULT_AGENTS, type AiVaultListResult } from '../../shared/ai-vault-types'
+import {
+  AI_VAULT_AGENTS,
+  type AiVaultAgent,
+  type AiVaultListResult,
+  type AiVaultSession
+} from '../../shared/ai-vault-types'
 import { normalizeExecutionHostId } from '../../shared/execution-host'
+
+const aiVaultAgentSet = new Set<string>(AI_VAULT_AGENTS)
+
+function isAiVaultAgent(agent: string): agent is AiVaultAgent {
+  return aiVaultAgentSet.has(agent)
+}
 
 const nodePlatformSchema = z.enum([
   'aix',
@@ -35,7 +46,7 @@ const aiVaultSessionSchema = z.object({
   id: z.string(),
   executionHostId: executionHostIdSchema,
   executionHostPlatform: nodePlatformSchema.nullable().optional(),
-  agent: z.enum(AI_VAULT_AGENTS),
+  agent: z.string().min(1),
   sessionId: z.string(),
   title: z.string(),
   cwd: z.string().nullable(),
@@ -84,19 +95,27 @@ export function parseAiVaultListResult(value: unknown): AiVaultListResult {
   if (!envelope.success) {
     throw new Error(envelope.error.issues[0]?.message ?? 'unexpected result shape')
   }
-  const sessions = envelope.data.sessions.flatMap((session) => {
+  const sessions: AiVaultSession[] = []
+  let malformedSessionCount = 0
+  for (const session of envelope.data.sessions) {
     const parsed = aiVaultSessionSchema.safeParse(session)
-    return parsed.success ? [parsed.data] : []
-  })
-  if (envelope.data.sessions.length > 0 && sessions.length === 0) {
+    if (!parsed.success) {
+      malformedSessionCount += 1
+      continue
+    }
+    if (!isAiVaultAgent(parsed.data.agent)) {
+      continue
+    }
+    sessions.push({ ...parsed.data, agent: parsed.data.agent })
+  }
+  if (envelope.data.sessions.length > 0 && malformedSessionCount > 0 && sessions.length === 0) {
     throw new Error('all supplied Agent Session History sessions were invalid')
   }
   const issues = envelope.data.issues.flatMap((issue) => {
     const parsed = aiVaultScanIssueSchema.safeParse(issue)
     return parsed.success ? [parsed.data] : []
   })
-  const invalidCount =
-    envelope.data.sessions.length - sessions.length + (envelope.data.issues.length - issues.length)
+  const invalidCount = malformedSessionCount + (envelope.data.issues.length - issues.length)
   if (invalidCount > 0) {
     issues.push({
       agent: 'codex',
