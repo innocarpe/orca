@@ -28,8 +28,10 @@ export const WINDOWS_HOOK_STDIN_DRAIN_LABEL = 'orca_agent_hook_drain_stdin'
 export const WINDOWS_HOOK_STDIN_READER = '"%SystemRoot%\\System32\\more.com"'
 export const WINDOWS_HOOK_STDIN_DRAIN_COMMAND = `${WINDOWS_HOOK_STDIN_READER} >nul 2>nul`
 
-// Why: missing Orca context means the hook ran outside an Orca pane (user-wide Codex/Claude hooks).
-// more.com drain hangs when the caller never closes stdin — exit success immediately instead.
+// Why (#11549): missing Orca context means the hook ran outside an Orca pane (user-wide
+// Codex/Claude hooks). more.com drains until EOF, so a caller that abandons the pipe instead
+// of closing it strands cmd.exe + more.com forever. Exit success and give up stdin ownership;
+// the caller's write breaks, which beats leaking a visible window per hook event.
 export function buildWindowsHookEnvironmentGuardLines(): string[] {
   return [
     'if "%ORCA_AGENT_HOOK_PORT%"=="" exit /b 0',
