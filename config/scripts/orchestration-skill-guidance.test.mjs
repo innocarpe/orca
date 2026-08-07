@@ -111,7 +111,12 @@ describe('orchestration skill guidance', () => {
       'distinct from a reachable runtime returning a normal `ask` result with `timedOut: true`'
     )
     expect(runtimeOutages).toContain('must not treat a failed lifecycle send as delivered')
-    expect(runtimeOutages).toContain('retry the same lifecycle command from the same terminal')
+    expect(runtimeOutages).toContain(
+      'If `worker_done` or `heartbeat` returns `runtime_unavailable`'
+    )
+    expect(runtimeOutages).toContain('do not retry the same `ask` command blindly')
+    expect(runtimeOutages).toContain('exact non-consuming recovery check printed by the runtime')
+    expect(runtimeOutages).toContain('original message ID')
     expect(runtimeOutages).toContain(
       'Only end the worker turn after `worker_done` returns successfully'
     )
