@@ -3278,7 +3278,7 @@ export function useIpcEvents(): void {
           : undefined
       )
       applyResolvedAgentTerminalTitleToTab(store, paneKey, title, terminalTitle)
-      if (options?.replay !== true && statusWorktreeId) {
+      if (options?.replay !== true && data.isReplay !== true && statusWorktreeId) {
         // Why: local Codex/Claude hooks arrive via this main-process IPC path, not the PTY OSC fallback, so task-complete notifications must observe accepted hook state here too.
         const notificationPayload =
           typeof data.stateStartedAt === 'number'

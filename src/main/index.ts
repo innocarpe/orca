@@ -1446,6 +1446,7 @@ function openMainWindow(): BrowserWindow {
           connectionId,
           receivedAt,
           stateStartedAt,
+          ...(isReplay ? { isReplay: true } : {}),
           ...(providerSession ? { providerSession } : {}),
           providerSessionOnly: true
         })
@@ -1473,6 +1474,7 @@ function openMainWindow(): BrowserWindow {
         connectionId,
         receivedAt,
         stateStartedAt,
+        ...(isReplay ? { isReplay: true } : {}),
         ...(providerSession ? { providerSession } : {}),
         ...(promptInteractionKey ? { promptInteractionKey } : {}),
         ...(restoredUnconfirmed ? { restoredUnconfirmed: true } : {}),

@@ -8101,6 +8101,32 @@ describe('AgentHookServer ingestRemote', () => {
     )
   })
 
+  it('preserves remote replay provenance in renderer IPC payload snapshots', () => {
+    const server = new AgentHookServer()
+    const payload = parseAgentStatusPayload(
+      JSON.stringify({ state: 'done', prompt: 'cached task', agentType: 'claude' })
+    )
+    if (!payload) {
+      throw new Error('parseAgentStatusPayload returned null for a known-good fixture')
+    }
+    const listener = vi.fn()
+    server.setListener(listener)
+    server.ingestRemote(
+      { paneKey: PANE, tabId: 'tab-1', worktreeId: 'wt-1', payload, isReplay: true },
+      'conn-1'
+    )
+
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ isReplay: true }))
+    expect(server.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        paneKey: PANE,
+        state: 'done',
+        prompt: 'cached task',
+        isReplay: true
+      })
+    ])
+  })
+
   it('preserves active pane identity when a nested remote hook reports another agent', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000)
