@@ -317,7 +317,7 @@ describe('Windows managed hook stdin structure', () => {
   })
 
   it.skipIf(process.platform !== 'win32')(
-    'exits every local script and missing-script launcher without stranding a reader',
+    'exits 0 for every local script and missing-script launcher, and only .cmd drops stdin',
     async () => {
       const home = mkdtempSync(join(tmpdir(), 'orca-hook-stdin-windows-live-'))
       homedirMock.mockReturnValue(home)
@@ -356,10 +356,12 @@ describe('Windows managed hook stdin structure', () => {
           const result = await runHookProcess(executable, args, hookEnvironment())
           expect(result.exitCode, `${fileName} exit code`).toBe(0)
           if (fileName.endsWith('.cmd')) {
-            // Why (#11549): cmd cannot buffer a payload this size, so the missing-env
-            // guard exits instead of draining, and the writer breaks. runHookProcess
-            // always closes stdin, so this case cannot show the hang itself — the
-            // abandoned-pipe half of #11549 is pinned by the guard strings above.
+            // Why (#11549): every stdin reader cmd can reach runs to EOF, so owning stdin
+            // on the missing-env path means hanging whenever the caller abandons the pipe.
+            // These guards exit instead, and the writer breaks. hookEnvironment() strips
+            // every ORCA_* var, so this relaxation only ever covers the missing-env path —
+            // a happy-path case added to this loop must not reuse it. runHookProcess always
+            // closes stdin, so the hang itself is pinned by the guard strings above, not here.
             for (const error of result.stdinErrors) {
               expect(
                 BROKEN_WRITER_CODES.has(error.code ?? ''),
