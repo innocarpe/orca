@@ -65,7 +65,11 @@ export function useWorkspaceBoardPanel(): WorkspaceBoardPanelState {
     workspaceBoardDragPreviewOpenRef.current = false
     // Why: opening the board is the user action; recording here avoids a
     // post-render bookkeeping Effect in the drawer.
-    useAppStore.getState().recordFeatureInteraction('workspace-board')
+    const store = useAppStore.getState()
+    store.recordFeatureInteraction('workspace-board')
+    // Why: board lives in the left sidebar — reveal it when opening so a
+    // keyboard toggle is not a no-op while the sidebar is collapsed (#12992 CR).
+    store.setSidebarOpen(true)
     setWorkspaceBoardOpen(true)
     setWorkspaceBoardDragPreviewOpen(false)
   }, [])
@@ -113,12 +117,9 @@ export function useWorkspaceBoardPanel(): WorkspaceBoardPanelState {
       }
       return
     }
-    workspaceBoardOpenRef.current = true
-    workspaceBoardDragPreviewOpenRef.current = false
-    useAppStore.getState().recordFeatureInteraction('workspace-board')
-    setWorkspaceBoardOpen(true)
-    setWorkspaceBoardDragPreviewOpen(false)
-  }, [])
+    // Why: share openWorkspaceBoard so drag solidify also reveals the sidebar.
+    openWorkspaceBoard()
+  }, [openWorkspaceBoard])
 
   const cancelWorkspaceBoardDragPreview = useCallback(() => {
     if (!workspaceBoardDragPreviewOpenRef.current) {

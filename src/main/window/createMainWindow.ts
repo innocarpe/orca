@@ -788,7 +788,11 @@ export function createMainWindow(
       return true
     }
 
-    if (action.type === 'toggleQuickCommandsMenu' && isAutoRepeat) {
+    if (
+      (action.type === 'toggleQuickCommandsMenu' || action.type === 'toggleWorkspaceBoard') &&
+      isAutoRepeat
+    ) {
+      // Why: held keys fire keyDown auto-repeat; toggles must flip once (#12992 CR).
       event.preventDefault()
       return true
     }

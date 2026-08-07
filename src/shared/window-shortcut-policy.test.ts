@@ -341,6 +341,17 @@ describe('resolveWindowShortcutAction', () => {
   })
 
   it('applies custom keybinding overrides to main-process shortcuts', () => {
+    const linuxCtrlAltT = {
+      code: 'KeyT',
+      key: 't',
+      meta: false,
+      control: true,
+      alt: true,
+      shift: false
+    }
+    // Why: workspace.toggleBoard ships without a default binding (#12992 CR).
+    expect(resolveWindowShortcutAction(linuxCtrlAltT, 'linux')).toBeNull()
+
     const overrides: KeybindingOverrides = {
       'worktree.quickOpen': ['Mod+Shift+O'],
       'workspace.openBoard': ['Mod+Alt+B'],
@@ -369,13 +380,9 @@ describe('resolveWindowShortcutAction', () => {
         overrides
       )
     ).toEqual({ type: 'openWorkspaceBoard' })
-    expect(
-      resolveWindowShortcutAction(
-        { code: 'KeyT', key: 't', meta: false, control: true, alt: true, shift: false },
-        'linux',
-        overrides
-      )
-    ).toEqual({ type: 'toggleWorkspaceBoard' })
+    expect(resolveWindowShortcutAction(linuxCtrlAltT, 'linux', overrides)).toEqual({
+      type: 'toggleWorkspaceBoard'
+    })
     expect(
       resolveWindowShortcutAction(
         { code: 'KeyK', key: 'k', meta: false, control: true, alt: true, shift: false },

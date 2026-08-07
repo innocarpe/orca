@@ -11,13 +11,15 @@ import {
 } from './useWorkspaceBoardPanel'
 
 const mocks = vi.hoisted(() => ({
-  recordFeatureInteraction: vi.fn()
+  recordFeatureInteraction: vi.fn(),
+  setSidebarOpen: vi.fn()
 }))
 
 vi.mock('@/store', () => ({
   useAppStore: {
     getState: () => ({
-      recordFeatureInteraction: mocks.recordFeatureInteraction
+      recordFeatureInteraction: mocks.recordFeatureInteraction,
+      setSidebarOpen: mocks.setSidebarOpen
     })
   }
 }))
@@ -74,6 +76,7 @@ describe('useWorkspaceBoardPanel', () => {
   beforeEach(() => {
     latestState = null
     mocks.recordFeatureInteraction.mockReset()
+    mocks.setSidebarOpen.mockReset()
   })
 
   afterEach(() => {
@@ -92,12 +95,15 @@ describe('useWorkspaceBoardPanel', () => {
     expect(panelState().workspaceBoardRenderedOpen).toBe(true)
     expect(panelState().workspaceBoardDragPreviewOpen).toBe(false)
     expect(mocks.recordFeatureInteraction).toHaveBeenCalledExactlyOnceWith('workspace-board')
+    expect(mocks.setSidebarOpen).toHaveBeenCalledExactlyOnceWith(true)
 
     await updatePanel((state) => state.toggleWorkspaceBoard())
 
     expect(panelState().workspaceBoardOpen).toBe(false)
     expect(panelState().workspaceBoardRenderedOpen).toBe(false)
     expect(mocks.recordFeatureInteraction).toHaveBeenCalledOnce()
+    // Why: closing must not re-open/toggle the sidebar.
+    expect(mocks.setSidebarOpen).toHaveBeenCalledOnce()
   })
 
   it('opens the board from the shortcut bridge event', async () => {
