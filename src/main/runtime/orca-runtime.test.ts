@@ -15108,8 +15108,14 @@ describe('OrcaRuntimeService', () => {
         condition: 'tui-idle',
         timeoutMs: 10_000
       })
-      // Why: banner is no longer an immediate known-ready match — quiet after welcome.
-      await vi.advanceTimersByTimeAsync(5_000)
+      let resolved = false
+      void waitPromise.then(() => {
+        resolved = true
+      })
+      // Why: quiet window is 3s; stay just under it so immediate banner resolve fails the test.
+      await vi.advanceTimersByTimeAsync(2_500)
+      expect(resolved).toBe(false)
+      await vi.advanceTimersByTimeAsync(2_500)
 
       await expect(waitPromise).resolves.toMatchObject({
         handle,

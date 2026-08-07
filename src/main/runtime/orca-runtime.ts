@@ -10362,6 +10362,9 @@ export class OrcaRuntimeService {
       pty.lastAgentStatusObservedLive = false
       pty.managementTitle = null
       pty.managementTitleAt = null
+      // Why: welcome-banner readiness is per process generation; a reused ptyId
+      // must re-wait for the new Kimi mount (#10369 CodeRabbit).
+      pty.kimiWelcomeBannerSeen = false
     }
     for (const leaf of this.getLeavesForPty(ptyId)) {
       leaf.lastOscTitle = null
@@ -10814,10 +10817,7 @@ export class OrcaRuntimeService {
     // A spawn published (or admission pending) this generation already
     // attaches the provider stream; a replacement under a reused id must not
     // read as the discovered never-attached session it replaced.
-    if (
-      this.spawnPublishedPtys.has(ptyId) ||
-      this.pendingPtyRegistrationIncarnations.has(ptyId)
-    ) {
+    if (this.spawnPublishedPtys.has(ptyId) || this.pendingPtyRegistrationIncarnations.has(ptyId)) {
       return false
     }
     // SSH panes have their own lease/reattach machinery.
@@ -21444,6 +21444,14 @@ export class OrcaRuntimeService {
       const observeData = (data: string): void => {
         const { ready, armQuietTimer: shouldArm } = scanner.observe(data)
         if (ready) {
+          // Why: stamp once when draft-ready sees Kimi's banner so later tui-idle
+          // quiet fallback does not depend on a tail that may have scrolled away.
+          if (readySignal === 'kimi-welcome-banner') {
+            const pty = this.ptysById.get(ptyId)
+            if (pty) {
+              pty.kimiWelcomeBannerSeen = true
+            }
+          }
           finish(ptyId)
           return
         }
