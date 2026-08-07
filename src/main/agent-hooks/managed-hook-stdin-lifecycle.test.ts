@@ -281,9 +281,7 @@ describe('Windows managed hook stdin structure', () => {
           `${fileName} no ORCA_* guard may route to the more.com drain`
         ).toBeNull()
         // Why: the epilogue stays shared — claude-hook.cmd still jumps to it from the
-        // Devin-imports-.claude skip (claude/hook-service.ts), which sits above these guards.
-        // That jump keeps the #11549 hang reachable for Devin outside an Orca pane; closing it
-        // means reordering the Devin guard, which is a separate change.
+        // Devin-imports-.claude skip, which now sits below these guards.
         expect(script, `${fileName} drain epilogue`).toContain(
           [
             ':orca_agent_hook_drain_stdin',
@@ -292,6 +290,17 @@ describe('Windows managed hook stdin structure', () => {
           ].join('\r\n')
         )
       }
+
+      // Why (#11549): the Devin skip is the only remaining in-script jump to more.com, so it
+      // must sit below the env guards — otherwise a Devin session outside an Orca pane still
+      // parks there and strands the hook exactly like the pre-fix guards did.
+      const claude = readFileSync(join(hooksDir, 'claude-hook.cmd'), 'utf8')
+      expect(claude, 'claude devin guard present').toContain(
+        'if not "%DEVIN_PROJECT_DIR%"=="" goto :orca_agent_hook_drain_stdin'
+      )
+      expect(claude.indexOf('if "%ORCA_PANE_KEY%"=="" exit /b 0')).toBeLessThan(
+        claude.indexOf('if not "%DEVIN_PROJECT_DIR%"=="" goto :orca_agent_hook_drain_stdin')
+      )
 
       const copilot = readFileSync(join(hooksDir, 'copilot-hook.ps1'), 'utf8')
       expect(copilot.indexOf('[Console]::In.ReadToEnd()')).toBeLessThan(
