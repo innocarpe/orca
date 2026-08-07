@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../../shared/types'
 import { useAppStore } from '@/store'
@@ -34,7 +34,13 @@ beforeEach(() => {
   Object.assign(window, { api: { gh: { repoSlug } } })
 })
 
-afterEach(() => setRepos([]))
+afterEach(() => {
+  // Why: React schedules work outside the test tick, so a hook left mounted
+  // flushes after the DOM environment is torn down and throws "window is not
+  // defined" as an unhandled error.
+  cleanup()
+  setRepos([])
+})
 
 async function lookup(slug: string): Promise<Repo[]> {
   const { result } = renderHook(() => useRepoSlugIndex())
