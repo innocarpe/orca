@@ -34,6 +34,7 @@ type FileExplorerVirtualRowsProps = {
   onViewFile: (node: TreeNode) => void
   onContextMenuSelect: (node: TreeNode) => void
   onCopyPaths: (node: TreeNode, pathKind: 'absolute' | 'relative') => void
+  onPasteToDir?: (dir: string, operationOwner?: TreeNode['operationOwner']) => void
   onStartNew: (type: 'file' | 'folder', parentPath: string, depth: number) => void
   onStartRename: (node: TreeNode) => void
   onDuplicate: (node: TreeNode) => void
@@ -53,6 +54,8 @@ type FileExplorerVirtualRowsProps = {
   dragSourcePath: string | null
   nativeDropTargetDir: string | null
 }
+
+function noopPasteToDir(): void {}
 
 export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): React.JSX.Element {
   const {
@@ -80,6 +83,7 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
     onViewFile,
     onContextMenuSelect,
     onCopyPaths,
+    onPasteToDir = noopPasteToDir,
     onStartNew,
     onStartRename,
     onDuplicate,
@@ -188,6 +192,7 @@ export function FileExplorerVirtualRows(props: FileExplorerVirtualRowsProps): Re
               onViewFile={() => onViewFile(n)}
               onContextMenuSelect={() => onContextMenuSelect(n)}
               onCopyPaths={(pathKind) => onCopyPaths(n, pathKind)}
+              onPasteToDir={onPasteToDir}
               onStartNew={onStartNew}
               onStartRename={onStartRename}
               onDuplicate={onDuplicate}

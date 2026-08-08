@@ -4048,6 +4048,7 @@ const api = {
       ipcRenderer.invoke('clipboard:readText', options),
     readSelectionClipboardText: (options?: ReadClipboardTextOptions): Promise<string> =>
       ipcRenderer.invoke('clipboard:readSelectionText', options),
+    readClipboardFiles: (): Promise<string[]> => ipcRenderer.invoke('clipboard:readFiles'),
     saveClipboardImageAsTempFile: (args?: {
       connectionId?: string | null
       runtimeEnvironmentId?: string | null

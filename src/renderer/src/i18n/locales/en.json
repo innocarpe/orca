@@ -10594,7 +10594,8 @@
           },
           "FileExplorerBackgroundMenu": {
             "3b5e2dcb8d": "New Folder",
-            "21fe46ed36": "New File"
+            "21fe46ed36": "New File",
+            "f8ff1d82bf": "Paste"
           },
           "FileExplorerRow": {
             "addc01145f": "Delete",
@@ -10626,7 +10627,8 @@
             "f9d7ca753d": "Copy Paths",
             "3161c4e425": "folder",
             "e887fa4b2e": "Open in Terminal",
-            "1d8e182c32": "View File"
+            "1d8e182c32": "View File",
+            "0ac5ea4de9": "Paste"
           },
           "FileExplorerToolbar": {
             "d238264654": "Show Git Ignored Files",

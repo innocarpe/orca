@@ -262,6 +262,9 @@ describe('registerClipboardHandlers', () => {
     await expect(handlers.get('clipboard:readText')?.(untrustedEvent)).rejects.toThrow(
       'Unauthorized clipboard IPC sender'
     )
+    expect(() => handlers.get('clipboard:readFiles')?.(untrustedEvent)).toThrow(
+      'Unauthorized clipboard IPC sender'
+    )
     await expect(
       handlers.get('clipboard:writeText')?.(untrustedEvent, 'copied-secret-token-value')
     ).rejects.toThrow('Unauthorized clipboard IPC sender')
@@ -278,6 +281,7 @@ describe('registerClipboardHandlers', () => {
     ).toThrow('Unauthorized clipboard IPC sender')
 
     expect(clipboardReadTextMock).not.toHaveBeenCalled()
+    expect(clipboardReadBufferMock).not.toHaveBeenCalled()
     expect(clipboardWriteTextMock).not.toHaveBeenCalled()
     expect(clipboardReadImageMock).not.toHaveBeenCalled()
     expect(nativeImageCreateFromBufferMock).not.toHaveBeenCalled()
@@ -304,6 +308,21 @@ describe('registerClipboardHandlers', () => {
     } else {
       expect(spawnMock).toHaveBeenCalled()
     }
+  })
+
+  it('reads OS file clipboard paths through the trusted clipboard IPC handler', async () => {
+    clipboardReadBufferMock.mockImplementation((format: string) =>
+      format === 'public.file-url' ? Buffer.from('file:///tmp/copied-file.txt') : Buffer.alloc(0)
+    )
+    registerClipboardHandlers({} as never)
+
+    const handlers = getRegisteredHandlers()
+    expect(handlers.get('clipboard:readFiles')?.(makeClipboardEvent())).toEqual([
+      '/tmp/copied-file.txt'
+    ])
+
+    expect(clipboardReadBufferMock).toHaveBeenCalledWith('public.file-url')
+    expect(clipboardReadTextMock).not.toHaveBeenCalled()
   })
 
   it('materializes remote files before writing them to the OS clipboard', async () => {
@@ -515,6 +534,7 @@ describe('registerClipboardHandlers', () => {
 
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:readText')
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:readSelectionText')
+    expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:readFiles')
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:writeText')
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:writeSelectionText')
     expect(removeHandlerMock).toHaveBeenCalledWith('clipboard:writeImage')

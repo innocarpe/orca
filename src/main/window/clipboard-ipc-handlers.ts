@@ -33,6 +33,7 @@ import {
   cleanupExpiredRemoteClipboardFiles,
   writeRemoteFileToClipboard
 } from './clipboard-remote-file-copy'
+import { readClipboardFilePathsFromFormats } from './clipboard-file-read'
 import { saveClipboardImageBufferInRuntime } from './clipboard-runtime-image-upload'
 import { readWindowsClipboardImageFileAsPng } from './clipboard-windows-image-file'
 import { writeClipboardTextAndVerify } from './clipboard-text-write-verify'
@@ -77,6 +78,7 @@ function runCommand(command: string, args: string[], stdin?: string): Promise<vo
 export function registerClipboardHandlers(store: Store): void {
   ipcMain.removeHandler('clipboard:readText')
   ipcMain.removeHandler('clipboard:readSelectionText')
+  ipcMain.removeHandler('clipboard:readFiles')
   ipcMain.removeHandler('clipboard:writeText')
   ipcMain.removeHandler('clipboard:writeTerminalText')
   ipcMain.removeHandler('clipboard:writeSelectionText')
@@ -97,6 +99,13 @@ export function registerClipboardHandlers(store: Store): void {
       return assertClipboardTextWithinLimitWithYield(clipboard.readText('selection'), options)
     }
   )
+  ipcMain.handle('clipboard:readFiles', (event): string[] => {
+    assertTrustedClipboardSender(event)
+    return readClipboardFilePathsFromFormats(
+      (format) => clipboard.readBuffer(format),
+      process.platform
+    )
+  })
   // Why: terminals need to detect clipboard images to support tools like Claude
   // Code that accept image input via paste. Writes the clipboard image to a
   // temp file and returns the path, or null if the clipboard has no image.

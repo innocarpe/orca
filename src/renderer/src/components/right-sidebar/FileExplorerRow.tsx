@@ -5,6 +5,7 @@ import { basename } from '@/lib/path'
 import {
   ChevronRight,
   CircleSlash,
+  ClipboardPaste,
   Copy,
   Download,
   ExternalLink,
@@ -288,6 +289,7 @@ type FileExplorerRowProps = {
   onViewFile: () => void
   onContextMenuSelect: () => void
   onCopyPaths: (pathKind: 'absolute' | 'relative') => void
+  onPasteToDir: (dir: string, operationOwner?: TreeNode['operationOwner']) => void
   onStartNew: (type: 'file' | 'folder', dir: string, depth: number) => void
   onStartRename: (node: TreeNode) => void
   onDuplicate: (node: TreeNode) => void
@@ -472,6 +474,7 @@ export function FileExplorerRow({
   onViewFile,
   onContextMenuSelect,
   onCopyPaths,
+  onPasteToDir,
   onStartNew,
   onStartRename,
   onDuplicate,
@@ -712,6 +715,10 @@ export function FileExplorerRow({
           {translate('auto.components.right.sidebar.FileExplorerRow.f61af83316', 'New Folder')}
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => onPasteToDir(targetDir, node.operationOwner)}>
+          <ClipboardPaste />
+          {translate('auto.components.right.sidebar.FileExplorerRow.0ac5ea4de9', 'Paste')}
+        </ContextMenuItem>
         {showCopyFileAction && (
           <ContextMenuItem onSelect={handleCopyFile}>
             <Copy />

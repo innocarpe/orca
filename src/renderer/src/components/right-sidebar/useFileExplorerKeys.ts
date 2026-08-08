@@ -20,6 +20,10 @@ import {
 import { keybindingMatchesAction } from '../../../../shared/keybindings'
 import { translate } from '@/i18n/i18n'
 import { isEditableTarget } from '@/lib/editable-target'
+import {
+  getFileExplorerPasteDestination,
+  isFileExplorerPasteShortcut
+} from './useFileExplorerPaste'
 
 export function shouldIgnoreFileExplorerKeyTarget(target: EventTarget | null): boolean {
   return (
@@ -51,6 +55,8 @@ export function useFileExplorerKeys(opts: {
   requestDeleteAll: (nodes: TreeNode[]) => void
   scrollToIndex: (index: number) => void
   activeWorktreeId: string | null
+  worktreePath: string | null
+  onPasteToDir: (dir: string, operationOwner?: TreeNode['operationOwner']) => void
 }): void {
   const rightSidebarOpen = useAppStore((s) => s.rightSidebarOpen)
   const rightSidebarTab = useAppStore((s) => s.rightSidebarTab)
@@ -85,6 +91,10 @@ export function useFileExplorerKeys(opts: {
   scrollToIndexRef.current = opts.scrollToIndex
   const activeWorktreeIdRef = useRef(opts.activeWorktreeId)
   activeWorktreeIdRef.current = opts.activeWorktreeId
+  const worktreePathRef = useRef(opts.worktreePath)
+  worktreePathRef.current = opts.worktreePath
+  const onPasteToDirRef = useRef(opts.onPasteToDir)
+  onPasteToDirRef.current = opts.onPasteToDir
 
   useEffect(() => {
     // Find the row index whose button is currently focused. Each virtualized
@@ -244,6 +254,21 @@ export function useFileExplorerKeys(opts: {
       // ── Modifier shortcuts: only when focus is inside the explorer ──
       // Scoped to explorer focus to avoid intercepting editor/terminal shortcuts
       if (!focusInExplorer()) {
+        return
+      }
+      if (isFileExplorerPasteShortcut(e)) {
+        const focused = findFocusedIndex()
+        const focusedNode =
+          focused !== null ? rowProjectionRef.current.getRowAtIndex(focused) : null
+        const destination = getFileExplorerPasteDestination({
+          focusedNode,
+          selectedNode: selectedNodeRef.current,
+          worktreePath: worktreePathRef.current
+        })
+        if (destination) {
+          e.preventDefault()
+          onPasteToDirRef.current(destination.dir, destination.operationOwner)
+        }
         return
       }
       const wantsCopyRelativePath = keybindingMatchesAction(
