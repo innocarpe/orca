@@ -34,10 +34,12 @@ import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { isLocalWindowsConptyPaneForCtrlArrow } from './terminal-ctrl-arrow-conpty'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { WINDOWS_GIT_BASH_SHELL } from '../../../../shared/windows-terminal-shell'
 import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 import { resolveTerminalInputHostPlatform } from './terminal-input-host-platform'
 import { isImeOwnedKeyboardEvent } from '@/lib/ime-composition-keyboard-event'
 import { isLatinShortcutKey } from '@/lib/ime-latin-shortcut-key'
+import { resolveWindowsShellOverride } from '@/lib/pane-manager/windows-pty-compatibility'
 import {
   markTerminalFollowOutput,
   markTerminalPinnedViewport,
@@ -56,7 +58,8 @@ export function resolveTerminalKeyboardShortcutAction(
   layoutBaseCharacterForCode: Parameters<typeof resolveTerminalShortcutAction>[8],
   getWindowsShiftEnterEncoding: Parameters<typeof resolveTerminalShortcutAction>[9],
   isWindowsTerminalHost: NonNullable<Parameters<typeof resolveTerminalShortcutAction>[10]>,
-  terminalShortcutPolicy: Parameters<typeof resolveTerminalShortcutAction>[11] = 'orca-first'
+  terminalShortcutPolicy: Parameters<typeof resolveTerminalShortcutAction>[11] = 'orca-first',
+  isWindowsGitBashPane?: Parameters<typeof resolveTerminalShortcutAction>[13]
 ): ReturnType<typeof resolveTerminalShortcutAction> {
   if (isImeOwnedKeyboardEvent(event)) {
     return null
@@ -75,7 +78,9 @@ export function resolveTerminalKeyboardShortcutAction(
     layoutBaseCharacterForCode,
     getWindowsShiftEnterEncoding,
     isWindowsTerminalHost,
-    terminalShortcutPolicy
+    terminalShortcutPolicy,
+    undefined,
+    isWindowsGitBashPane
   )
 }
 
@@ -320,6 +325,30 @@ export function useTerminalKeyboardShortcuts({
       )
     }
 
+    const isActivePaneWindowsGitBash = (): boolean => {
+      if (!isActivePaneWindowsTerminalHost()) {
+        return false
+      }
+      const manager = managerRef.current
+      const activePane = manager?.getActivePane() ?? manager?.getPanes()[0]
+      if (!activePane) {
+        return false
+      }
+      const state = useAppStore.getState()
+      const tabShellOverride = state.tabsByWorktree[worktreeId]?.find(
+        (candidate) => candidate.id === tabId
+      )?.shellOverride
+      const sessionShellOverride = paneTransportsRef.current
+        .get(activePane.id)
+        ?.getLocalSessionMetadata?.()?.shellOverride
+      return (
+        resolveWindowsShellOverride(
+          sessionShellOverride ?? tabShellOverride,
+          state.settings?.terminalWindowsShell
+        ) === WINDOWS_GIT_BASH_SHELL
+      )
+    }
+
     // Why: the active pane's live PTY session decides whether Ctrl+Arrow should
     // pass through as native \e[1;5C/\e[1;5D or be translated to \eb/\ef.
     // Resolved lazily so session/runtime lookups stay off other keystrokes.
@@ -370,7 +399,8 @@ export function useTerminalKeyboardShortcuts({
         getLayoutBaseCharacterForCode,
         getActivePaneWindowsShiftEnterEncoding,
         isActivePaneWindowsTerminalHost,
-        terminalShortcutPolicy
+        terminalShortcutPolicy,
+        isActivePaneWindowsGitBash
       )
 
     const onKeyDown = (e: KeyboardEvent): void => {
