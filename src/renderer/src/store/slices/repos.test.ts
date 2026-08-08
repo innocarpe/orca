@@ -764,6 +764,32 @@ describe('repo slice runtime routing', () => {
     expect(ptyKill).not.toHaveBeenCalledWith('remote:term-1')
   })
 
+  it('stops remote terminals before removing the project from its runtime', async () => {
+    const callOrder: string[] = []
+    runtimeEnvironmentCall.mockImplementation(async (args) => {
+      callOrder.push(args.method)
+      return {
+        id: `rpc-${args.method}`,
+        ok: true,
+        result: args.method === 'repo.rm' ? { removed: true } : { ok: true },
+        _meta: { runtimeId: 'runtime-remote' }
+      }
+    })
+    const store = createTestStore()
+    const worktreeId = `${remoteRepo.id}::/remote/wt`
+    store.setState({
+      settings: { activeRuntimeEnvironmentId: 'env-1' } as never,
+      repos: [remoteRepo],
+      worktreesByRepo: {
+        [remoteRepo.id]: [makeWorktree({ id: worktreeId, repoId: remoteRepo.id })]
+      }
+    })
+
+    await store.getState().removeProject(remoteRepo.id)
+
+    expect(callOrder).toEqual(['terminal.stop', 'repo.rm'])
+  })
+
   it('cleans up hidden detected worktree state when removing a repo', async () => {
     const store = createTestStore()
     const hiddenWorktree = makeWorktree({
