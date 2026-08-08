@@ -1951,11 +1951,23 @@ describe('resolveWorktreeAddTimeoutMs', () => {
 
     // Why: the seconds/ms mixup is the whole reason the floor exists — it must not be silent.
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300' })
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('using 180000ms'))
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('"300" is outside [180000, 1800000]ms; using 180000ms')
+    )
 
-    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: 'nope' })
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })
-    expect(warn).toHaveBeenCalledTimes(3)
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+
+  // Why: `600_000` copied out of worktree.ts is NaN, not out of range — a range complaint would misdirect.
+  it('says an unparseable override is not a number rather than out of range', () => {
+    const warn = vi.mocked(console.warn)
+
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '600_000' })
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('"600_000" is not a number; using 180000ms')
+    )
   })
 
   // Why: `=300` means seconds to most operators; flooring it keeps every create working instead of failing in 300ms.

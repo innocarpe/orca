@@ -91,9 +91,10 @@ const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 
 const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
 
-// Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); covers a large checkout (#7225) but not a git-crypt one (#12696), hence the override below.
+// Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); ample for an ordinary large checkout, but not a git-crypt one (#12696) — hence the override below.
 export const WORKTREE_ADD_TIMEOUT_MS = 180_000
-// Why: git-crypt and ~10k-file checkouts legitimately run past the default (#12696); ORCA_WORKTREE_ADD_TIMEOUT_MS raises it, but the stall guard stays closed.
+// Why: ORCA_WORKTREE_ADD_TIMEOUT_MS raises the default for slow checkouts (#12696), but the stall guard stays closed.
+// 30 min is ~10x the slowest reported case (3.5 min), still short enough that a real stall cannot wedge a create for a working day.
 export const WORKTREE_ADD_TIMEOUT_MAX_MS = 30 * 60_000
 
 /** Why: `=300` reads as seconds to most operators, so clamp rather than obey — but warn, since a discarded value dies with the same `git timed out.` it was set to escape. */
@@ -104,8 +105,12 @@ export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env
     ? WORKTREE_ADD_TIMEOUT_MS
     : Math.min(Math.max(requested, WORKTREE_ADD_TIMEOUT_MS), WORKTREE_ADD_TIMEOUT_MAX_MS)
   if (raw && resolved !== requested) {
+    // Why: `600_000` copied out of this file parses as NaN, so a range complaint would send the operator hunting for the wrong problem.
+    const problem = Number.isNaN(requested)
+      ? 'is not a number'
+      : `is outside [${WORKTREE_ADD_TIMEOUT_MS}, ${WORKTREE_ADD_TIMEOUT_MAX_MS}]ms`
     console.warn(
-      `[worktree] ORCA_WORKTREE_ADD_TIMEOUT_MS=${raw} is outside [${WORKTREE_ADD_TIMEOUT_MS}, ${WORKTREE_ADD_TIMEOUT_MAX_MS}]ms; using ${resolved}ms`
+      `[git/worktree] ORCA_WORKTREE_ADD_TIMEOUT_MS="${raw}" ${problem}; using ${resolved}ms`
     )
   }
   return resolved
