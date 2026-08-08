@@ -1900,7 +1900,7 @@ describe('removeWorktree', () => {
 })
 
 describe('resolveWorktreeAddTimeoutMs', () => {
-  // Why: matches the file's other console.warn tests — a local spy restored by the test that made it.
+  // Why: describe-scoped rather than per-test — every case here asserts on the warning.
   let warnSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -1982,7 +1982,7 @@ describe('resolveWorktreeAddTimeoutMs', () => {
     )
   })
 
-  // Why: `=300` means seconds to most operators; flooring it keeps every create working instead of failing in 300ms.
+  // Why: `=300` means seconds to most operators; clamping it up keeps every create working instead of failing in 300ms.
   it('never lowers the timeout below the stall-guard default', () => {
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300' })).toBe(
       WORKTREE_ADD_TIMEOUT_MS

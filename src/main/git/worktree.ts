@@ -91,9 +91,10 @@ const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 
 const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
 
-// Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); ample for an ordinary large checkout, but not a git-crypt one (#12696).
+// Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); ample for an ordinary large checkout, but not one behind a slow content filter (#12696).
+// Doubles as the floor for ORCA_WORKTREE_ADD_TIMEOUT_MS, so lowering it to fail faster also re-admits the `=300`-means-seconds mistake the floor catches.
 export const WORKTREE_ADD_TIMEOUT_MS = 180_000
-// Why: ceiling for ORCA_WORKTREE_ADD_TIMEOUT_MS (#12696) — ~10x the slowest reported checkout (3.5 min), still short enough that a real stall cannot wedge a create for a working day.
+// Why: ceiling for ORCA_WORKTREE_ADD_TIMEOUT_MS (#12696) — ~8x the slowest reported checkout (3.5 min). The cost is that a genuine stall now blocks a create for up to 30 min instead of 3.
 export const WORKTREE_ADD_TIMEOUT_MAX_MS = 30 * 60_000
 export const WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS = 30_000
 export const WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS = 30_000
@@ -113,7 +114,7 @@ export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env
   const resolved = Number.isNaN(requested)
     ? WORKTREE_ADD_TIMEOUT_MS
     : Math.min(Math.max(requested, WORKTREE_ADD_TIMEOUT_MS), WORKTREE_ADD_TIMEOUT_MAX_MS)
-  // Why: any comparison against NaN is unequal, which is what makes an unparseable value warn — an `isNaN` guard here would delete that warning, leaving it to die with the same `git timed out.` it was set to escape.
+  // Why: an `isNaN` guard here would delete the unparseable-value warning — comparing against NaN is unequal, and that is what catches it.
   if (raw && resolved !== requested) {
     const problem = Number.isNaN(requested)
       ? // Why: `600_000` copied out of this file is NaN, not out of range — say which.
@@ -1009,7 +1010,7 @@ async function performAddWorktree(
   }
   await gitExecFileAsync(args, {
     ...gitExecOptions(repoPath, options),
-    // Why: bound the checkout so a OneDrive cloud-placeholder stall (STA-1292) fails fast; resolved per call so the override comes from the live env rather than being frozen at import.
+    // Why: resolve per call — hoisting this to a module const would freeze the override at import.
     timeout: resolveWorktreeAddTimeoutMs()
   })
 
