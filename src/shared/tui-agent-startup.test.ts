@@ -593,6 +593,42 @@ describe('tui agent startup plans', () => {
     expect(plan?.launchCommand).toBe("codex 'resume' 's1'")
   })
 
+  it('builds Claude resume plans with the provider session id', () => {
+    const plan = buildAgentResumeStartupPlan({
+      agent: 'claude',
+      providerSession: { key: 'session_id', id: 'claude-session-1' },
+      cmdOverrides: {},
+      platform: 'linux'
+    })
+
+    expect(plan?.launchCommand).toBe("claude '--resume' 'claude-session-1'")
+  })
+
+  it('drops dangling Claude resume args before appending the provider session id', () => {
+    const plan = buildAgentResumeStartupPlan({
+      agent: 'claude',
+      providerSession: { key: 'session_id', id: 'claude-session-1' },
+      cmdOverrides: {},
+      agentArgs: '--resume',
+      platform: 'linux'
+    })
+
+    expect(plan?.launchCommand).toBe("claude '--resume' 'claude-session-1'")
+    expect(plan?.launchConfig.agentArgs).toBe('')
+  })
+
+  it('rejects Claude cold-restore plans with a dangling resume command', () => {
+    expect(
+      buildAgentResumeStartupPlan({
+        agent: 'claude',
+        providerSession: { key: 'session_id', id: 'claude-session-1' },
+        cmdOverrides: {},
+        agentCommand: '--resume',
+        platform: 'linux'
+      })
+    ).toBeNull()
+  })
+
   it('quotes Windows resume argv for cmd.exe when shell is cmd', () => {
     const plan = buildAgentResumeStartupPlan({
       agent: 'grok',

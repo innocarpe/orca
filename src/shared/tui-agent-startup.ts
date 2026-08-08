@@ -10,6 +10,7 @@ import {
   commandSeparator,
   quoteStartupArg,
   resolveStartupShell,
+  tokenizeStartupCommand,
   type AgentStartupShell
 } from './tui-agent-startup-shell'
 import { TUI_AGENT_CONFIG } from './tui-agent-config'
@@ -38,6 +39,52 @@ export type AgentStartupPlan = {
 
 function appliedSessionOptionProps(values: Record<string, SessionOptionValue>) {
   return Object.keys(values).length > 0 ? { sessionOptions: { ...values } } : {}
+}
+
+function hasDanglingClaudeResumeFlag(value: string | null | undefined, shell: AgentStartupShell) {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return false
+  }
+  const tokenized = tokenizeStartupCommand(trimmed, shell)
+  if (!tokenized.ok) {
+    return false
+  }
+  return tokenized.tokens.some((token, index) => {
+    if (token !== '--resume') {
+      return false
+    }
+    const locator = tokenized.tokens[index + 1]
+    return !locator || locator.startsWith('-')
+  })
+}
+
+function dropDanglingClaudeResumeArg(
+  value: string | null | undefined,
+  shell: AgentStartupShell
+): string | null | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return value
+  }
+  const tokenized = tokenizeStartupCommand(trimmed, shell)
+  if (!tokenized.ok) {
+    return value
+  }
+  let changed = false
+  const tokens = tokenized.tokens.filter((token, index) => {
+    if (token !== '--resume') {
+      return true
+    }
+    const locator = tokenized.tokens[index + 1]
+    const dangling = !locator || locator.startsWith('-')
+    changed ||= dangling
+    return !dangling
+  })
+  if (!changed) {
+    return value
+  }
+  return tokens.length > 0 ? tokens.map((token) => quoteStartupArg(token, shell)).join(' ') : ''
 }
 
 export function buildAgentStartupPlan(args: {
@@ -204,6 +251,8 @@ export function buildAgentResumeStartupPlan(args: {
   }
   const shell = resolveStartupShell(args.platform, args.shell)
   const config = TUI_AGENT_CONFIG[args.agent]
+  const agentArgs =
+    args.agent === 'claude' ? dropDanglingClaudeResumeArg(args.agentArgs, shell) : args.agentArgs
   const resolvedAgentCommand = args.agentCommand?.trim()
   const baseCommand = resolvedAgentCommand
     ? ({ ok: true, command: resolvedAgentCommand } as const)
@@ -212,14 +261,18 @@ export function buildAgentResumeStartupPlan(args: {
         cmdOverrides: args.cmdOverrides,
         platform: args.platform,
         shell,
-        agentArgs: args.agentArgs,
+        agentArgs,
         isRemote: args.isRemote
       })
   if (!baseCommand.ok) {
     return null
   }
+  if (args.agent === 'claude' && hasDanglingClaudeResumeFlag(baseCommand.command, shell)) {
+    return null
+  }
   const launchConfig = buildSleepingAgentLaunchConfig({
     ...args,
+    agentArgs,
     agentCommand: baseCommand.command
   })
   const resumeArgs = argv
