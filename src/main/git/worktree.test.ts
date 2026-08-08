@@ -1945,6 +1945,11 @@ describe('resolveWorktreeAddTimeoutMs', () => {
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '-Infinity' })).toBe(
       WORKTREE_ADD_TIMEOUT_MS
     )
+    // Why: `Infinity` is a number that got clamped, so reporting "is not a number" while naming the
+    // number it used would misdirect exactly the operator this override exists for.
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"Infinity" is outside [180000, 1800000]ms; using 1800000ms')
+    )
   })
 
   it('stays quiet when the value is unset, blank, or used verbatim', () => {

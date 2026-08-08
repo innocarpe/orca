@@ -93,7 +93,7 @@ const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
 
 // Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); ample for an ordinary large checkout, but not a git-crypt one (#12696).
 export const WORKTREE_ADD_TIMEOUT_MS = 180_000
-// Why: ~10x the slowest reported checkout (3.5 min), still short enough that a real stall cannot wedge a create for a working day.
+// Why: ceiling for ORCA_WORKTREE_ADD_TIMEOUT_MS (#12696) — ~10x the slowest reported checkout (3.5 min), still short enough that a real stall cannot wedge a create for a working day.
 export const WORKTREE_ADD_TIMEOUT_MAX_MS = 30 * 60_000
 export const WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS = 30_000
 export const WORKTREE_REMOVAL_REGISTRATION_TIMEOUT_MS = 30_000
@@ -1008,7 +1008,7 @@ async function performAddWorktree(
   }
   await gitExecFileAsync(args, {
     ...gitExecOptions(repoPath, options),
-    // Why: re-read per call — hoisting to a module const would freeze the value at import and defeat env stubbing in tests.
+    // Why: bound the checkout so a OneDrive cloud-placeholder stall (STA-1292) fails fast; resolved per call so the override comes from the live env rather than being frozen at import.
     timeout: resolveWorktreeAddTimeoutMs()
   })
 
