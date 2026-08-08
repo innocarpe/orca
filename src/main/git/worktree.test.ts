@@ -50,7 +50,8 @@ import {
 beforeEach(() => {
   clearGitCapabilityStateForTests()
   // Why: addWorktree reads the override at call time, so a developer's ambient value must not leak in.
-  vi.stubEnv('ORCA_WORKTREE_ADD_TIMEOUT_MS', '')
+  // `undefined` deletes the key, matching production's unset case rather than an empty string.
+  vi.stubEnv('ORCA_WORKTREE_ADD_TIMEOUT_MS', undefined)
 })
 
 afterEach(() => {
@@ -1899,12 +1900,21 @@ describe('removeWorktree', () => {
 })
 
 describe('resolveWorktreeAddTimeoutMs', () => {
+  // Why: matches the file's other console.warn tests — a local spy restored by the test that made it.
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
   beforeEach(() => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    warnSpy.mockRestore()
+  })
+
+  // Why: pin the literals so a future edit to either bound has to be deliberate.
+  it('bounds the override to [180s, 30min]', () => {
+    expect(WORKTREE_ADD_TIMEOUT_MS).toBe(180_000)
+    expect(WORKTREE_ADD_TIMEOUT_MAX_MS).toBe(1_800_000)
   })
 
   it('falls back to the default when the override is unset, blank, or unparseable', () => {
@@ -1918,9 +1928,6 @@ describe('resolveWorktreeAddTimeoutMs', () => {
   })
 
   it('raises the timeout up to the closed maximum', () => {
-    // Why: pin the literals so a future edit to either bound has to be deliberate.
-    expect(WORKTREE_ADD_TIMEOUT_MS).toBe(180_000)
-    expect(WORKTREE_ADD_TIMEOUT_MAX_MS).toBe(1_800_000)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000' })).toBe(300_000)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000.9' })).toBe(300_000)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })).toBe(
@@ -1940,32 +1947,31 @@ describe('resolveWorktreeAddTimeoutMs', () => {
     )
   })
 
-  it('warns when it discards or clamps an operator-set value, and stays quiet otherwise', () => {
-    const warn = vi.mocked(console.warn)
-
+  it('stays quiet when the value is unset, blank, or used verbatim', () => {
     resolveWorktreeAddTimeoutMs({})
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '   ' })
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '600000' })
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000.9' })
-    expect(warn).not.toHaveBeenCalled()
 
-    // Why: the seconds/ms mixup is the whole reason the floor exists — it must not be silent.
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  // Why: the seconds/ms mixup is the whole reason the floor exists — it must not be silent.
+  it('warns with the range when it clamps an out-of-range value', () => {
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300' })
-    expect(warn).toHaveBeenCalledWith(
+
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('"300" is outside [180000, 1800000]ms; using 180000ms')
     )
-
-    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })
-    expect(warn).toHaveBeenCalledTimes(2)
   })
 
   // Why: `600_000` copied out of worktree.ts is NaN, not out of range — a range complaint would misdirect.
-  it('says an unparseable override is not a number rather than out of range', () => {
-    const warn = vi.mocked(console.warn)
-
+  it('warns that an unparseable value is not a number rather than out of range', () => {
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '600_000' })
 
-    expect(warn).toHaveBeenCalledWith(
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('"600_000" is not a number; using 180000ms')
     )
   })
