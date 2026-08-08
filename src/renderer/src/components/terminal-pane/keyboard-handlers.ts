@@ -40,14 +40,16 @@ import { isFindQueryTooLarge } from '@/lib/find-query-bounds'
 import { handleEmptyFloatingWorkspacePanelCloseShortcut } from '@/lib/floating-workspace-terminal-actions'
 import { recordCreatedTerminalPaneSplit } from './terminal-pane-split-completion'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
-import { useAppStore } from '@/store'
+import { useAppStore, type AppState } from '@/store'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { isLocalWindowsConptyPaneForCtrlArrow } from './terminal-ctrl-arrow-conpty'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
+import { WINDOWS_GIT_BASH_SHELL } from '../../../../shared/windows-terminal-shell'
 import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 import { hasCtrlEnterCsiUAuthorityForPane } from './terminal-ctrl-enter'
 import { resolveTerminalInputHostPlatform } from './terminal-input-host-platform'
+import { resolveWindowsShellOverride } from '@/lib/pane-manager/windows-pty-compatibility'
 import {
   markTerminalFollowOutput,
   markTerminalPinnedViewport,
@@ -67,7 +69,8 @@ export function resolveTerminalKeyboardShortcutAction(
   getWindowsShiftEnterEncoding: Parameters<typeof resolveTerminalShortcutAction>[9],
   isWindowsTerminalHost: NonNullable<Parameters<typeof resolveTerminalShortcutAction>[10]>,
   terminalShortcutPolicy: Parameters<typeof resolveTerminalShortcutAction>[11] = 'orca-first',
-  hasCtrlEnterCsiUAuthority?: Parameters<typeof resolveTerminalShortcutAction>[12]
+  hasCtrlEnterCsiUAuthority?: Parameters<typeof resolveTerminalShortcutAction>[12],
+  isWindowsGitBashPane?: Parameters<typeof resolveTerminalShortcutAction>[13]
 ): ReturnType<typeof resolveTerminalShortcutAction> {
   // Why: keep the host callback required at the production boundary so a
   // caller cannot silently fall back to client-OS byte routing.
@@ -84,7 +87,29 @@ export function resolveTerminalKeyboardShortcutAction(
     getWindowsShiftEnterEncoding,
     isWindowsTerminalHost,
     terminalShortcutPolicy,
-    hasCtrlEnterCsiUAuthority
+    hasCtrlEnterCsiUAuthority,
+    isWindowsGitBashPane
+  )
+}
+
+export function isWindowsGitBashPaneForShortcut(args: {
+  isWindowsTerminalHost: boolean
+  state: Pick<AppState, 'tabsByWorktree' | 'settings'>
+  worktreeId: string
+  tabId: string
+  sessionShellOverride?: string | null
+}): boolean {
+  if (!args.isWindowsTerminalHost) {
+    return false
+  }
+  const tabShellOverride = args.state.tabsByWorktree[args.worktreeId]?.find(
+    (candidate) => candidate.id === args.tabId
+  )?.shellOverride
+  return (
+    resolveWindowsShellOverride(
+      args.sessionShellOverride ?? tabShellOverride,
+      args.state.settings?.terminalWindowsShell
+    ) === WINDOWS_GIT_BASH_SHELL
   )
 }
 
@@ -401,6 +426,25 @@ export function useTerminalKeyboardShortcuts({
       )
     }
 
+    const isActivePaneWindowsGitBash = (): boolean => {
+      const manager = managerRef.current
+      const activePane = manager?.getActivePane() ?? manager?.getPanes()[0]
+      if (!activePane) {
+        return false
+      }
+      const state = useAppStore.getState()
+      const sessionShellOverride = paneTransportsRef.current
+        .get(activePane.id)
+        ?.getLocalSessionMetadata?.()?.shellOverride
+      return isWindowsGitBashPaneForShortcut({
+        isWindowsTerminalHost: isActivePaneWindowsTerminalHost(),
+        state,
+        worktreeId,
+        tabId,
+        sessionShellOverride
+      })
+    }
+
     // Why: the pane's TUI opted into kitty keyboard reporting via CSI > u;
     // the tracker mirrors that from PTY output so the policy can encode
     // Option chords the way the application negotiated.
@@ -445,7 +489,8 @@ export function useTerminalKeyboardShortcuts({
         getActivePaneWindowsShiftEnterEncoding,
         isActivePaneWindowsTerminalHost,
         terminalShortcutPolicy,
-        hasActivePaneCtrlEnterCsiUAuthority
+        hasActivePaneCtrlEnterCsiUAuthority,
+        isActivePaneWindowsGitBash
       )
 
     const createCapturedInputSender = (
