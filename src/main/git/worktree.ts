@@ -91,21 +91,24 @@ const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 
 const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
 
-// Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); generous enough for a legit large checkout (#7225).
+// Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); covers a large checkout (#7225) but not a git-crypt one (#12696), hence the override below.
 export const WORKTREE_ADD_TIMEOUT_MS = 180_000
 // Why: git-crypt and ~10k-file checkouts legitimately run past the default (#12696); ORCA_WORKTREE_ADD_TIMEOUT_MS raises it, but the stall guard stays closed.
 export const WORKTREE_ADD_TIMEOUT_MAX_MS = 30 * 60_000
 
-/** Why: clamping low keeps the likely `=300` (seconds, not ms) mixup a no-op instead of failing every create. */
+/** Why: `=300` reads as seconds to most operators, so clamp rather than obey — but warn, since a discarded value dies with the same `git timed out.` it was set to escape. */
 export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const parsed = Number(env.ORCA_WORKTREE_ADD_TIMEOUT_MS)
-  if (!Number.isFinite(parsed)) {
-    return WORKTREE_ADD_TIMEOUT_MS
+  const raw = env.ORCA_WORKTREE_ADD_TIMEOUT_MS?.trim()
+  const requested = Math.floor(Number(raw))
+  const resolved = Number.isNaN(requested)
+    ? WORKTREE_ADD_TIMEOUT_MS
+    : Math.min(Math.max(requested, WORKTREE_ADD_TIMEOUT_MS), WORKTREE_ADD_TIMEOUT_MAX_MS)
+  if (raw && resolved !== requested) {
+    console.warn(
+      `[worktree] ORCA_WORKTREE_ADD_TIMEOUT_MS=${raw} is outside [${WORKTREE_ADD_TIMEOUT_MS}, ${WORKTREE_ADD_TIMEOUT_MAX_MS}]ms; using ${resolved}ms`
+    )
   }
-  return Math.min(
-    Math.max(Math.floor(parsed), WORKTREE_ADD_TIMEOUT_MS),
-    WORKTREE_ADD_TIMEOUT_MAX_MS
-  )
+  return resolved
 }
 
 export const WORKTREE_REMOVAL_PREFLIGHT_TIMEOUT_MS = 30_000
@@ -996,7 +999,7 @@ async function performAddWorktree(
   }
   await gitExecFileAsync(args, {
     ...gitExecOptions(repoPath, options),
-    // Why: bound the checkout so a OneDrive cloud-placeholder stall (STA-1292) fails fast instead of hanging.
+    // Why: bound the checkout so a OneDrive cloud-placeholder stall (STA-1292) fails fast; read per call so ORCA_WORKTREE_ADD_TIMEOUT_MS can raise it within the closed range.
     timeout: resolveWorktreeAddTimeoutMs()
   })
 

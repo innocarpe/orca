@@ -1899,6 +1899,14 @@ describe('removeWorktree', () => {
 })
 
 describe('resolveWorktreeAddTimeoutMs', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('falls back to the default when the override is unset, blank, or unparseable', () => {
     expect(resolveWorktreeAddTimeoutMs({})).toBe(WORKTREE_ADD_TIMEOUT_MS)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '   ' })).toBe(
@@ -1910,11 +1918,44 @@ describe('resolveWorktreeAddTimeoutMs', () => {
   })
 
   it('raises the timeout up to the closed maximum', () => {
+    // Why: pin the literals so a future edit to either bound has to be deliberate.
+    expect(WORKTREE_ADD_TIMEOUT_MS).toBe(180_000)
+    expect(WORKTREE_ADD_TIMEOUT_MAX_MS).toBe(1_800_000)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000' })).toBe(300_000)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000.9' })).toBe(300_000)
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })).toBe(
-      WORKTREE_ADD_TIMEOUT_MAX_MS
+      1_800_000
     )
+  })
+
+  // Why: `=Infinity` is the natural way to say "stop killing my checkout"; collapsing it to the
+  // default would hand the operator back the exact failure they set the variable to escape.
+  it('treats an infinite override as the maximum, not the default', () => {
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: 'Infinity' })).toBe(
+      1_800_000
+    )
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '1e400' })).toBe(1_800_000)
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '-Infinity' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS
+    )
+  })
+
+  it('warns when it discards or clamps an operator-set value, and stays quiet otherwise', () => {
+    const warn = vi.mocked(console.warn)
+
+    resolveWorktreeAddTimeoutMs({})
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '   ' })
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '600000' })
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000.9' })
+    expect(warn).not.toHaveBeenCalled()
+
+    // Why: the seconds/ms mixup is the whole reason the floor exists — it must not be silent.
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300' })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('using 180000ms'))
+
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: 'nope' })
+    resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })
+    expect(warn).toHaveBeenCalledTimes(3)
   })
 
   // Why: `=300` means seconds to most operators; flooring it keeps every create working instead of failing in 300ms.
