@@ -28,19 +28,10 @@ export const WINDOWS_HOOK_STDIN_DRAIN_LABEL = 'orca_agent_hook_drain_stdin'
 export const WINDOWS_HOOK_STDIN_READER = '"%SystemRoot%\\System32\\more.com"'
 export const WINDOWS_HOOK_STDIN_DRAIN_COMMAND = `${WINDOWS_HOOK_STDIN_READER} >nul 2>nul`
 
-// Why (#11549): missing Orca context means the hook ran outside an Orca pane (user-wide
-// Codex/Claude hooks). more.com drains until EOF, so a caller that abandons the pipe instead
-// of closing it strands cmd.exe + more.com forever. Exit success and give up stdin ownership;
-// the caller's write breaks, which beats leaking a visible window per hook event.
-//
-// The rule this sets for generated .cmd: an ORCA_* guard exits, it never routes to the drain.
-// Batch is the only place that rule is needed, because it streams to curl instead of capturing,
-// so owning stdin buys nothing and costs a blocking more.com. Two kinds of exemption:
-//   - buildPosixHookPayloadCapture and the Windows .ps1 (copilot) / Git Bash (kimi) hooks read
-//     first because the read IS the payload capture, so exiting early would drop the payload.
-//   - claude/statusline-script.ts genuinely routes its guard to the drain. That is safe for a
-//     different reason: Claude Code's statusline caller closes stdin, which its in-pane capture
-//     already proves, since that capture cannot finish without EOF.
+// Why (#11549): missing Orca context means the hook ran outside an Orca pane, where the caller
+// may abandon stdin rather than close it — more.com then drains forever and strands a visible
+// cmd.exe per hook event. Batch can exit instead because it streams to curl rather than
+// capturing, so unlike the POSIX/PowerShell hooks it loses no payload by giving up stdin.
 export function buildWindowsHookEnvironmentGuardLines(): string[] {
   return [
     'if "%ORCA_AGENT_HOOK_PORT%"=="" exit /b 0',

@@ -1,7 +1,7 @@
 // Why: stdin ownership is a cross-agent process contract; one executable
 // matrix catches an unread early exit without duplicating template assertions.
 // Exception (#11549): Windows batch hooks give up stdin ownership on the
-// missing-Orca-env path, so their writer may break there. See BROKEN_WRITER_CODES.
+// missing-Orca-env path, so their writer may break there.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -89,9 +89,6 @@ import { createAgentHookMemorySftp } from './agent-hook-memory-sftp.test-fixture
 
 const REMOTE_HOME = '/home/dev'
 const LARGE_PAYLOAD = Buffer.alloc(1_000_000, 'x')
-// Why: a reader that exits mid-write surfaces as EPIPE, but Windows pipe teardown
-// can also report ECONNRESET; both mean the same thing here.
-const BROKEN_WRITER_CODES = new Set(['EPIPE', 'ECONNRESET'])
 const REMOTE_INSTALLERS = [
   {
     agent: 'antigravity',
@@ -270,16 +267,13 @@ describe('Windows managed hook stdin structure', () => {
           'if "%ORCA_AGENT_HOOK_TOKEN%"=="" exit /b 0'
         )
         expect(script, `${fileName} pane guard`).toContain('if "%ORCA_PANE_KEY%"=="" exit /b 0')
-        // Why: assert the rule, not the guards that exist today — a fourth ORCA_* guard copied
-        // from the nearest in-repo pattern (statusline-script.ts still routes to the drain,
-        // correctly, because its caller closes stdin) would otherwise reintroduce #11549 with
-        // this suite green. Matches the whole line rather than one guard spelling, because both
-        // `if "%VAR%"==""` and `if not defined VAR` are house idiom here. The Devin skip is
-        // deliberately exempt: it names no ORCA_* var, and its caller is a live Orca pane.
-        expect(
-          script.match(/^.*ORCA_[A-Z_]+.*goto :?orca_agent_hook_drain_stdin.*$/gm),
-          `${fileName} no ORCA_* guard may route to the more.com drain`
-        ).toBeNull()
+        // Why: pin the rule, not today's three guards — a fourth ORCA_* guard routed to the
+        // drain would reintroduce #11549 with this suite green. The pattern spans the guard so
+        // it catches both `if "%VAR%"==""` and `if not defined VAR`; the Devin skip names no
+        // ORCA_* var, so it stays exempt.
+        expect(script, `${fileName} no ORCA_* guard may route to the more.com drain`).not.toMatch(
+          /ORCA_[A-Z_]+.*goto :?orca_agent_hook_drain_stdin/
+        )
         // Why: the epilogue stays shared — claude-hook.cmd still jumps to it from the
         // Devin-imports-.claude skip, which now sits below these guards.
         expect(script, `${fileName} drain epilogue`).toContain(
@@ -366,17 +360,12 @@ describe('Windows managed hook stdin structure', () => {
           const result = await runHookProcess(executable, args, hookEnvironment())
           expect(result.exitCode, `${fileName} exit code`).toBe(0)
           if (fileName.endsWith('.cmd')) {
-            // Why (#11549): every stdin reader cmd can reach runs to EOF, so owning stdin
-            // on the missing-env path means hanging whenever the caller abandons the pipe.
-            // These guards exit instead, and the writer breaks. hookEnvironment() strips
-            // every ORCA_* var, so this relaxation only ever covers the missing-env path —
-            // a happy-path case added to this loop must not reuse it. runHookProcess always
-            // closes stdin, so the hang itself is pinned by the guard strings above, not here.
+            // Why (#11549): these guards exit rather than own stdin, so the writer breaks —
+            // EPIPE, or ECONNRESET when Windows tears the pipe down first. hookEnvironment()
+            // strips every ORCA_* var, so the relaxation only ever covers the missing-env
+            // path — a happy-path case added to this loop must not reuse it.
             for (const error of result.stdinErrors) {
-              expect(
-                BROKEN_WRITER_CODES.has(error.code ?? ''),
-                `${fileName} unexpected stdin error ${error.code}`
-              ).toBe(true)
+              expect(['EPIPE', 'ECONNRESET'], `${fileName} stdin error`).toContain(error.code)
             }
           } else {
             expect(result.stdinErrors, `${fileName} stdin errors`).toHaveLength(0)
