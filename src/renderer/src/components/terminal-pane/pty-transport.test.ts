@@ -557,6 +557,26 @@ describe('createIpcPtyTransport', () => {
     })
   })
 
+  it('uses the provider-resolved shell in local session metadata after spawn', async () => {
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    const spawn = window.api.pty.spawn as unknown as ReturnType<typeof vi.fn>
+    spawn.mockResolvedValueOnce({
+      id: 'pty-actual-powershell',
+      resolvedShellOverride: 'powershell.exe'
+    })
+    const transport = createIpcPtyTransport({
+      cwd: 'C:\\repo',
+      shellOverride: 'wsl.exe'
+    })
+
+    await transport.connect({ url: '', callbacks: {} })
+
+    expect(transport.getLocalSessionMetadata?.()).toEqual({
+      cwd: 'C:\\repo',
+      shellOverride: 'powershell.exe'
+    })
+  })
+
   it('sends the missing-cwd fallback flag only for local IPC spawns', async () => {
     const { createIpcPtyTransport } = await import('./pty-transport')
     const spawn = window.api.pty.spawn as unknown as ReturnType<typeof vi.fn>

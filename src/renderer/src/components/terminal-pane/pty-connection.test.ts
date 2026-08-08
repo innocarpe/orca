@@ -329,6 +329,7 @@ type MockTransport = {
   resize: ReturnType<typeof vi.fn>
   getPtyId: ReturnType<typeof vi.fn>
   getConnectionId: ReturnType<typeof vi.fn>
+  getLocalSessionMetadata: ReturnType<typeof vi.fn>
   serializeBuffer?: ReturnType<typeof vi.fn>
 }
 
@@ -445,7 +446,10 @@ vi.mock('./pty-dispatcher', async (importOriginal) => {
   }
 })
 
-function createMockTransport(initialPtyId: string | null = null): MockTransport {
+function createMockTransport(
+  initialPtyId: string | null = null,
+  localSessionMetadata: { cwd?: string; shellOverride?: string } | null = null
+): MockTransport {
   let ptyId = initialPtyId
   const transport = {
     attach: vi.fn(({ existingPtyId }: { existingPtyId: string }) => {
@@ -466,6 +470,7 @@ function createMockTransport(initialPtyId: string | null = null): MockTransport 
     resize: vi.fn(() => true),
     getPtyId: vi.fn(() => ptyId),
     getConnectionId: vi.fn(() => null),
+    getLocalSessionMetadata: vi.fn(() => localSessionMetadata),
     serializeBuffer: undefined
   } as MockTransport
   const sendInput = transport.sendInput as unknown as (data: string) => boolean
@@ -4303,6 +4308,8 @@ describe('connectPanePty', () => {
       pendingTimeouts.push(fn)
       return 999 as unknown as ReturnType<typeof setTimeout>
     }) as unknown as typeof setTimeout
+    vi.resetModules()
+    vi.doMock('@/lib/new-workspace', () => ({ CLIENT_PLATFORM: 'win32' }))
 
     try {
       const { connectPanePty } = await import('./pty-connection')
@@ -8404,6 +8411,8 @@ describe('connectPanePty', () => {
   async function runWindowsColdRestoreResume(args: {
     terminalWindowsShell: string
     tabShellOverride?: string
+    actualShellOverride?: string
+    providerSessionId?: string
   }): Promise<string | undefined> {
     const restoreNavigator = temporarilySetNavigatorUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
@@ -8418,8 +8427,14 @@ describe('connectPanePty', () => {
     try {
       const { connectPanePty } = await import('./pty-connection')
       const paneKey = makePaneKey('tab-1', LEAF_2)
+      const providerSessionId = args.providerSessionId ?? 'codex-session-1'
       let activePtyId: string | null = 'restored-session'
-      const transport = createMockTransport('restored-session')
+      const transport = createMockTransport(
+        'restored-session',
+        args.actualShellOverride
+          ? { cwd: 'C:\\Users\\neil\\repo', shellOverride: args.actualShellOverride }
+          : null
+      )
       transport.getPtyId.mockImplementation(() => activePtyId)
       transport.disconnect.mockImplementation(() => {
         activePtyId = null
@@ -8465,7 +8480,7 @@ describe('connectPanePty', () => {
             tabId: 'tab-1',
             worktreeId: 'wt-1',
             agent: 'codex',
-            providerSession: { key: 'session_id', id: 'codex-session-1' },
+            providerSession: { key: 'session_id', id: providerSessionId },
             prompt: 'finish the task',
             state: 'done',
             origin: 'worktree-sleep',
@@ -8492,6 +8507,7 @@ describe('connectPanePty', () => {
       return (transport.connect.mock.calls.at(-1)?.[0] as { command?: string } | undefined)?.command
     } finally {
       globalThis.setTimeout = originalSetTimeout
+      vi.doUnmock('@/lib/new-workspace')
       restoreNavigator()
     }
   }
@@ -8514,6 +8530,15 @@ describe('connectPanePty', () => {
   it('keeps PowerShell quoting for a cold-restore resume on a PowerShell Windows tab', async () => {
     await expect(
       runWindowsColdRestoreResume({ terminalWindowsShell: 'powershell.exe' })
+    ).resolves.toBe("codex '--dangerously-bypass-approvals-and-sandbox' 'resume' 'codex-session-1'")
+  })
+
+  it('uses the provider-resolved shell when a cold restore setting is stale', async () => {
+    await expect(
+      runWindowsColdRestoreResume({
+        terminalWindowsShell: 'wsl.exe',
+        actualShellOverride: 'powershell.exe'
+      })
     ).resolves.toBe("codex '--dangerously-bypass-approvals-and-sandbox' 'resume' 'codex-session-1'")
   })
 

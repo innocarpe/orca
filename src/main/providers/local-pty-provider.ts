@@ -400,6 +400,7 @@ function reattachLocalPty(id: string, cols: number, rows: number): PtySpawnResul
   return {
     id,
     pid: existing.pid,
+    ...(ptyShellName.get(id) ? { resolvedShellOverride: ptyShellName.get(id) } : {}),
     ...(ptyWslDistroById.has(id) ? { wslDistro: ptyWslDistroById.get(id) ?? null } : {}),
     isReattach: true
   }
@@ -1065,6 +1066,7 @@ export class LocalPtyProvider implements IPtyProvider {
       id,
       incarnationId,
       pid,
+      resolvedShellOverride: getSpawnedShellName(shellPath),
       ...(spawnedWslDistro !== undefined ? { wslDistro: spawnedWslDistro } : {})
     }
   }

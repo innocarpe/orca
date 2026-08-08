@@ -1104,6 +1104,9 @@ export class DaemonServer {
           incarnationId: result.incarnationId,
           ...(result.launchAgent ? { launchAgent: result.launchAgent } : {}),
           wslDistro: result.wslDistro,
+          ...(result.resolvedShellOverride
+            ? { resolvedShellOverride: result.resolvedShellOverride }
+            : {}),
           ...(result.historySeeded !== undefined ? { historySeeded: result.historySeeded } : {}),
           ...(result.agentSessionEnsure ? { agentSessionEnsure: result.agentSessionEnsure } : {})
         }

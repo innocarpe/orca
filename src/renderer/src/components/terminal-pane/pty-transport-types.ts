@@ -43,6 +43,7 @@ export type PtyBufferSnapshot = {
 
 export type LocalPtySessionMetadata = {
   cwd?: string
+  /** Actual shell selected by the local provider after launch fallback. */
   shellOverride?: string
 }
 
@@ -66,6 +67,8 @@ export type PtyConnectResult = {
   startupCwdFallback?: { kind: 'worktree'; cwd: string }
   /** Main declined an unverifiable provider-session resume and launched fresh. */
   agentResumeUnavailable?: true
+  /** Actual shell selected by the local provider after launch fallback. */
+  resolvedShellOverride?: string
   /** Trailing partial escape the daemon emulator held mid-parse; the reattach
    *  replay writes it LAST (after the reset) so a racing live continuation
    *  completes it instead of rendering literally (#7329). */
