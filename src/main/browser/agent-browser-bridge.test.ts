@@ -2335,7 +2335,6 @@ describe('AgentBrowserBridge', () => {
 
   it.each([
     ['fill', (b: AgentBrowserBridge, text: string) => b.fill('@textarea', text)],
-    ['type', (b: AgentBrowserBridge, text: string) => b.type(text)],
     ['keyboard insert', (b: AgentBrowserBridge, text: string) => b.keyboardInsertText(text)]
   ])('yields before spawning agent-browser for accepted large %s text', async (_name, run) => {
     vi.useFakeTimers()
@@ -2357,22 +2356,54 @@ describe('AgentBrowserBridge', () => {
     }
   })
 
-  it('chunks large agent-browser type text before keyboard transport', async () => {
+  it('targets the requested page directly when typing text', async () => {
+    const wc = mockWebContents(100)
+    webContentsFromIdMock.mockReturnValue(wc)
+
+    await bridge.type('HELLO-SOLO', undefined, 'tab-1')
+
+    expect(execFileMock).not.toHaveBeenCalled()
+    expect(wc.debugger.sendCommand).toHaveBeenCalledWith('Input.insertText', {
+      text: 'HELLO-SOLO'
+    })
+  })
+
+  it('chunks large browser type text before direct CDP insertion', async () => {
     const text = ['y'.repeat(AGENT_BROWSER_TEXT_ARGUMENT_MAX_BYTES), 'zz'].join('')
-    succeedWith({ typed: true })
+    const wc = mockWebContents(100)
+    webContentsFromIdMock.mockReturnValue(wc)
 
-    await bridge.type(text)
+    await bridge.type(text, undefined, 'tab-1')
 
-    const typeCalls = execFileMock.mock.calls.filter((call: unknown[]) => {
-      const args = call[1] as string[]
-      return args.includes('keyboard') && args.includes('type')
-    })
-    const chunks = typeCalls.map((call: unknown[]) => {
-      const args = call[1] as string[]
-      return args[args.indexOf('type') + 1]
-    })
+    const chunks = wc.debugger.sendCommand.mock.calls
+      .filter((call) => call[0] === 'Input.insertText')
+      .map((call) => (call[1] as { text: string }).text)
 
     expect(chunks).toEqual(['y'.repeat(AGENT_BROWSER_TEXT_ARGUMENT_MAX_BYTES), 'zz'])
+  })
+
+  it('dispatches keypresses to the requested page instead of the focused window', async () => {
+    const wc = mockWebContents(100)
+    webContentsFromIdMock.mockReturnValue(wc)
+
+    const result = await bridge.keypress('Control+a', undefined, 'tab-1')
+
+    expect(result).toEqual({ pressed: 'Control+a' })
+    expect(execFileMock).not.toHaveBeenCalled()
+    expect(wc.debugger.sendCommand).toHaveBeenNthCalledWith(1, 'Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'a',
+      code: 'KeyA',
+      modifiers: 2,
+      windowsVirtualKeyCode: 65
+    })
+    expect(wc.debugger.sendCommand).toHaveBeenNthCalledWith(2, 'Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'a',
+      code: 'KeyA',
+      modifiers: 2,
+      windowsVirtualKeyCode: 65
+    })
   })
 
   it('chunks large agent-browser keyboard insert text before transport', async () => {
