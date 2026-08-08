@@ -1952,7 +1952,8 @@ describe('resolveWorktreeAddTimeoutMs', () => {
     )
   })
 
-  it('stays quiet when the value is unset, blank, or used verbatim', () => {
+  // Why: trimming and fractional truncation alter the value but are not operator error — only rejects and clamps warn.
+  it('stays quiet when the value is unset, blank, or lands in range', () => {
     resolveWorktreeAddTimeoutMs({})
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '   ' })
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '600000' })

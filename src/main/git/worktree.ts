@@ -103,7 +103,8 @@ export const WORKTREE_LIST_TIMEOUT_MS = 30_000
 /**
  * `ORCA_WORKTREE_ADD_TIMEOUT_MS` clamped into [{@link WORKTREE_ADD_TIMEOUT_MS},
  * {@link WORKTREE_ADD_TIMEOUT_MAX_MS}]; unset or unparseable yields the default.
- * Warns whenever the value is not used verbatim. `env` is injectable for tests.
+ * Warns when a value is rejected or clamped; trimming and fractional truncation are silent.
+ * `env` is injectable for tests.
  */
 export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.ORCA_WORKTREE_ADD_TIMEOUT_MS?.trim()
@@ -112,7 +113,7 @@ export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env
   const resolved = Number.isNaN(requested)
     ? WORKTREE_ADD_TIMEOUT_MS
     : Math.min(Math.max(requested, WORKTREE_ADD_TIMEOUT_MS), WORKTREE_ADD_TIMEOUT_MAX_MS)
-  // Why: `NaN !== NaN` is what makes an unparseable value warn — without the warn it dies with the same `git timed out.` it was set to escape.
+  // Why: any comparison against NaN is unequal, which is what makes an unparseable value warn — an `isNaN` guard here would delete that warning, leaving it to die with the same `git timed out.` it was set to escape.
   if (raw && resolved !== requested) {
     const problem = Number.isNaN(requested)
       ? // Why: `600_000` copied out of this file is NaN, not out of range — say which.
