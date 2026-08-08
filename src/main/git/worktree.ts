@@ -92,7 +92,7 @@ const SPARSE_CHECKOUT_DETECTION_CONCURRENCY = 8
 const PRUNABLE_EXISTENCE_PROBE_CONCURRENCY = 8
 
 // Why: bound `git worktree add` so a OneDrive cloud-placeholder stall fails fast (STA-1292); ample for an ordinary large checkout, but not one behind a slow content filter (#12696).
-// Doubles as the floor for ORCA_WORKTREE_ADD_TIMEOUT_MS, so lowering it to fail faster also re-admits the `=300`-means-seconds mistake the floor catches.
+// Doubles as the floor for ORCA_WORKTREE_ADD_TIMEOUT_MS — lowering it to fail faster also lowers the minimum any override can request.
 export const WORKTREE_ADD_TIMEOUT_MS = 180_000
 // Why: ceiling for ORCA_WORKTREE_ADD_TIMEOUT_MS (#12696) — ~8x the slowest reported checkout (3.5 min). The cost is that a genuine stall now blocks a create for up to 30 min instead of 3.
 export const WORKTREE_ADD_TIMEOUT_MAX_MS = 30 * 60_000
@@ -103,8 +103,8 @@ export const WORKTREE_LIST_TIMEOUT_MS = 30_000
 
 /**
  * `ORCA_WORKTREE_ADD_TIMEOUT_MS` clamped into [{@link WORKTREE_ADD_TIMEOUT_MS},
- * {@link WORKTREE_ADD_TIMEOUT_MAX_MS}]; unset or unparseable yields the default.
- * Warns when a value is rejected or clamped; trimming and fractional truncation are silent.
+ * {@link WORKTREE_ADD_TIMEOUT_MAX_MS}]; unset, blank, or unparseable yields the default.
+ * Warns when a non-blank value is rejected or clamped; trimming and fractional truncation are silent.
  * `env` is injectable for tests.
  */
 export function resolveWorktreeAddTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {

@@ -1900,7 +1900,6 @@ describe('removeWorktree', () => {
 })
 
 describe('resolveWorktreeAddTimeoutMs', () => {
-  // Why: describe-scoped rather than per-test — every case here asserts on the warning.
   let warnSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -1952,7 +1951,7 @@ describe('resolveWorktreeAddTimeoutMs', () => {
     )
   })
 
-  // Why: trimming and fractional truncation alter the value but are not operator error — only rejects and clamps warn.
+  // Why: trimming and fractional truncation alter the value but are not operator error.
   it('stays quiet when the value is unset, blank, or lands in range', () => {
     resolveWorktreeAddTimeoutMs({})
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '   ' })
