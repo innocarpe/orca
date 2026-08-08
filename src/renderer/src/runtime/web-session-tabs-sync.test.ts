@@ -1620,6 +1620,11 @@ describe('applyWebSessionTabsSnapshot', () => {
       localBrowserTab.id,
       secondTerminalId
     ])
+    expect(patch.groupsByWorktree?.[WT]?.[0]?.tabOrder).toEqual([
+      firstTerminalId,
+      localBrowserTab.id,
+      secondTerminalId
+    ])
   })
 
   it('keeps retained local-only groups reachable when applying a host layout', () => {
