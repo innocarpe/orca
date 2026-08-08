@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { spawn } from 'node:child_process'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ChildProcess from 'node:child_process'
 import type { RelayDispatcher } from './dispatcher'
 import { GlabExecHandler } from './glab-exec-handler'
@@ -60,6 +60,10 @@ describe('GlabExecHandler', () => {
     spawnMock.mockReset()
   })
 
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it('spawns exactly glab with argv array (no shell)', async () => {
     const child = createFakeChild()
     spawnMock.mockReturnValue(child as never)
@@ -96,6 +100,8 @@ describe('GlabExecHandler', () => {
     const child = createFakeChild()
     spawnMock.mockReturnValue(child as never)
     const handlers = createHandler()
+    vi.stubEnv('PATH', '/relay-safe-bin')
+    vi.stubEnv('Path', 'C:\\relay-safe-bin')
 
     const pending = handlers.get(GLAB_EXEC_METHOD)!({
       args: ['api', 'user'],
@@ -116,6 +122,7 @@ describe('GlabExecHandler', () => {
     const pathValues = Object.entries(spawnOptions.env)
       .filter(([key]) => key.toLowerCase() === 'path')
       .map(([, value]) => value)
+    expect(pathValues).toEqual(expect.arrayContaining(['/relay-safe-bin', 'C:\\relay-safe-bin']))
     expect(pathValues).not.toContain('/tmp/attacker-bin')
     expect(pathValues).not.toContain('C:\\attacker-bin')
     expect(spawnOptions.env.PATHEXT).not.toBe('.ATTACK')
