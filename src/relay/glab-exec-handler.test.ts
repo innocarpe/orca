@@ -92,6 +92,39 @@ describe('GlabExecHandler', () => {
     )
   })
 
+  it('does not let caller env redirect glab executable resolution', async () => {
+    const child = createFakeChild()
+    spawnMock.mockReturnValue(child as never)
+    const handlers = createHandler()
+
+    const pending = handlers.get(GLAB_EXEC_METHOD)!({
+      args: ['api', 'user'],
+      env: {
+        PATH: '/tmp/attacker-bin',
+        Path: 'C:\\attacker-bin',
+        PATHEXT: '.ATTACK',
+        GITLAB_HOST: 'gitlab.example.com:8443',
+        gitlab_token: 'gitlab-token',
+        GLAB_TOKEN: 'glab-token',
+        OTHER: 'ignored'
+      }
+    })
+    child.emit('close', 0)
+    await pending
+
+    const spawnOptions = spawnMock.mock.calls[0][2] as { env: Record<string, string> }
+    const pathValues = Object.entries(spawnOptions.env)
+      .filter(([key]) => key.toLowerCase() === 'path')
+      .map(([, value]) => value)
+    expect(pathValues).not.toContain('/tmp/attacker-bin')
+    expect(pathValues).not.toContain('C:\\attacker-bin')
+    expect(spawnOptions.env.PATHEXT).not.toBe('.ATTACK')
+    expect(spawnOptions.env.GITLAB_HOST).toBe('gitlab.example.com:8443')
+    expect(spawnOptions.env.GITLAB_TOKEN).toBe('gitlab-token')
+    expect(spawnOptions.env.GLAB_TOKEN).toBe('glab-token')
+    expect(spawnOptions.env.OTHER).toBeUndefined()
+  })
+
   it('never accepts a caller-supplied binary', async () => {
     const child = createFakeChild()
     spawnMock.mockReturnValue(child as never)

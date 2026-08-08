@@ -12,6 +12,11 @@ const MAX_TIMEOUT_MS = 5 * 60 * 1000
 // Why: glab api payloads can be large, but unbounded capture OOMs the relay.
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 const GLAB_BINARY = 'glab'
+const GLAB_ENV_ALLOWLIST = new Map([
+  ['gitlab_host', 'GITLAB_HOST'],
+  ['gitlab_token', 'GITLAB_TOKEN'],
+  ['glab_token', 'GLAB_TOKEN']
+])
 
 type GlabExecParams = {
   args: unknown
@@ -31,6 +36,20 @@ type GlabExecResult = {
   outputLimitExceeded?: 'stdout' | 'stderr'
 }
 
+function pickAllowedGlabEnv(env: Record<string, unknown>): Record<string, string> {
+  const picked: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value !== 'string') {
+      continue
+    }
+    const allowedName = GLAB_ENV_ALLOWLIST.get(key.toLowerCase())
+    if (allowedName) {
+      picked[allowedName] = value
+    }
+  }
+  return picked
+}
+
 /**
  * Hard-allowlisted remote `glab` exec. Distinct from `agent.execNonInteractive`
  * so older relays return method-not-found and the desktop can fall back locally.
@@ -48,11 +67,11 @@ export class GlabExecHandler {
     const timeoutMs = Math.max(1_000, Math.min(MAX_TIMEOUT_MS, requestedTimeout))
     const extraEnv =
       params.env && typeof params.env === 'object' && !Array.isArray(params.env)
-        ? (params.env as Record<string, string>)
+        ? (params.env as Record<string, unknown>)
         : null
     const spawnEnv = {
       ...process.env,
-      ...extraEnv
+      ...(extraEnv ? pickAllowedGlabEnv(extraEnv) : {})
     } as Record<string, string>
 
     if (context?.signal?.aborted) {
