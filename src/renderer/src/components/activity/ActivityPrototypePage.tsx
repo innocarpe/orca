@@ -82,6 +82,7 @@ import {
   resolveActivityThreadStatusPreview
 } from '@/lib/activity-thread-display'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
+import { isLatinShortcutKey } from '@/lib/ime-latin-shortcut-key'
 
 type ThreadReadFilter = 'all' | 'unread'
 type ActivityGroupBy = 'status' | 'project' | 'worktree' | 'agent'
@@ -590,7 +591,8 @@ function appendActivityEventsForEntry(args: {
     })
   }
 
-  if (!isActivityEventState(args.entry.state)) {
+  // Why: SessionStart creates an idle row, not an "Agent finished" activity event (STA-3386).
+  if (!isActivityEventState(args.entry.state) || args.entry.sessionBoundary === true) {
     return
   }
   appendActivityEvent({
@@ -1102,7 +1104,7 @@ export function isActivityFilterFocusShortcut(
   event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'key' | 'metaKey' | 'shiftKey'>,
   isMac = navigator.userAgent.includes('Mac')
 ): boolean {
-  if (event.key.toLowerCase() !== 'f' || event.shiftKey || event.altKey) {
+  if (!isLatinShortcutKey(event, 'f') || event.shiftKey || event.altKey) {
     return false
   }
   return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
