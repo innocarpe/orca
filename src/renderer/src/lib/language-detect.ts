@@ -112,6 +112,10 @@ const FILENAME_TO_LANGUAGE: Record<string, string> = {
   '.env.production': 'ini'
 }
 
+function detectDotenvLanguage(filename: string): string | null {
+  return filename.toLowerCase().startsWith('.env.') ? 'ini' : null
+}
+
 export function detectLanguage(filePath: string): string {
   // Check exact filename first
   const parts = filePath.split(/[\\/]/)
@@ -122,5 +126,5 @@ export function detectLanguage(filePath: string): string {
 
   // Check extension
   const ext = extname(filename).toLowerCase()
-  return EXT_TO_LANGUAGE[ext] ?? 'plaintext'
+  return EXT_TO_LANGUAGE[ext] ?? detectDotenvLanguage(filename) ?? 'plaintext'
 }
