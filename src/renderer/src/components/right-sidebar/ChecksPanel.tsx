@@ -4527,6 +4527,7 @@ export default function ChecksPanel(): React.JSX.Element {
         commentsDisabledReason={commentsDisabledReason}
         selectionContextKey={stateRequestKey}
         selectionClearRequest={commentsSelectionClearRequest}
+        worktreeId={activeWorktreeId}
         resolveCommentsWithAIDisabled={Boolean(resolveCommentsWithAIDisabledReason)}
         resolveCommentsWithAIDisabledReason={resolveCommentsWithAIDisabledReason}
         onAddComment={pr ? handleAddPRComment : undefined}
