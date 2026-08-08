@@ -196,9 +196,7 @@ describe('GlabExecHandler', () => {
     expect(child.kill).toHaveBeenCalled()
   })
 
-  it('terminates glab when the request is already aborted', async () => {
-    const child = createFakeChild()
-    spawnMock.mockReturnValue(child as never)
+  it('does not spawn glab when the request is already aborted', async () => {
     const handlers = createHandler()
     const controller = new AbortController()
     controller.abort()
@@ -208,10 +206,10 @@ describe('GlabExecHandler', () => {
       { signal: controller.signal }
     )
 
-    // Why: abort before spawn still spawns then cancelCurrent kills immediately.
-    expect(child.kill).toHaveBeenCalled()
-    child.emit('close', null)
-    await expect(pending).resolves.toMatchObject({
+    expect(spawnMock).not.toHaveBeenCalled()
+    await expect(pending).resolves.toEqual({
+      stdout: '',
+      stderr: '',
       exitCode: null,
       timedOut: false
     })

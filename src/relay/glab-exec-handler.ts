@@ -55,6 +55,10 @@ export class GlabExecHandler {
       ...extraEnv
     } as Record<string, string>
 
+    if (context?.signal?.aborted) {
+      return { stdout: '', stderr: '', exitCode: null, timedOut: false }
+    }
+
     return new Promise<GlabExecResult>((resolve) => {
       let child: ChildProcess
       try {
@@ -175,13 +179,9 @@ export class GlabExecHandler {
       }
 
       if (context?.signal) {
-        if (context.signal.aborted) {
-          cancelCurrent()
-        } else {
-          context.signal.addEventListener('abort', cancelCurrent, { once: true })
-          detachRequestAbortListener = () => {
-            context.signal?.removeEventListener('abort', cancelCurrent)
-          }
+        context.signal.addEventListener('abort', cancelCurrent, { once: true })
+        detachRequestAbortListener = () => {
+          context.signal?.removeEventListener('abort', cancelCurrent)
         }
       }
     })
