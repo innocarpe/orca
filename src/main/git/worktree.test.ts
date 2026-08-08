@@ -1967,8 +1967,9 @@ describe('resolveWorktreeAddTimeoutMs', () => {
     resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300' })
 
     expect(warnSpy).toHaveBeenCalledTimes(1)
+    // Why: pin the prefix and variable name too — a warning nobody can grep for is not a diagnostic.
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"300" is outside [180000, 1800000]ms; using 180000ms')
+      '[git/worktree] ORCA_WORKTREE_ADD_TIMEOUT_MS="300" is outside [180000, 1800000]ms; using 180000ms'
     )
   })
 
