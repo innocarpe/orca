@@ -3308,6 +3308,20 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       }
       // Why: derive the target from the owner's settings (via options.hostId) so an SSH host removal never routes repo.rm to the focused runtime.
       const target = getActiveRuntimeTarget(settingsForRepoOwner(get(), projectId, options?.hostId))
+      const worktreeIds = getKnownRepoWorktreeIds(get(), projectId, ownerHostId)
+      if (target.kind === 'environment') {
+        // Why: repo.rm drops the runtime's catalog row; stop remote PTYs while the worktree selector still resolves.
+        await Promise.allSettled(
+          worktreeIds.map((worktreeId) =>
+            callRuntimeRpc(
+              target,
+              'terminal.stop',
+              { worktree: toRuntimeWorktreeSelector(worktreeId) },
+              { timeoutMs: 15_000 }
+            )
+          )
+        )
+      }
       // Why: repos:remove is id-only and would delete every host's row; scope local removal to the owning host so cross-host duplicates keep other rows.
       const idExistsOnOtherHost = get().repos.some(
         (repo) => repo.id === projectId && getRepoExecutionHostId(repo) !== ownerHostId
@@ -3334,20 +3348,7 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       clearRepoSlugCacheEntry(projectId)
 
       // Kill PTYs for all worktrees belonging to this repo
-      const worktreeIds = getKnownRepoWorktreeIds(get(), projectId, ownerHostId)
       const killedTabIds = new Set<string>()
-      if (target.kind === 'environment') {
-        await Promise.allSettled(
-          worktreeIds.map((worktreeId) =>
-            callRuntimeRpc(
-              target,
-              'terminal.stop',
-              { worktree: toRuntimeWorktreeSelector(worktreeId) },
-              { timeoutMs: 15_000 }
-            )
-          )
-        )
-      }
       for (const wId of worktreeIds) {
         const tabs = get().tabsByWorktree[wId] ?? []
         for (const tab of tabs) {
