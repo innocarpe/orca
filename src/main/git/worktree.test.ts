@@ -42,14 +42,19 @@ import {
   parseWorktreeList,
   removeWorktree,
   WORKTREE_ADD_TIMEOUT_MS,
-  WORKTREE_ADD_TIMEOUT_MS_DEFAULT,
-  WORKTREE_ADD_TIMEOUT_MS_MAX,
+  WORKTREE_ADD_TIMEOUT_MAX_MS,
   resolveWorktreeAddTimeoutMs,
   WORKTREE_LIST_TIMEOUT_MS
 } from './worktree'
 
 beforeEach(() => {
   clearGitCapabilityStateForTests()
+  // Why: addWorktree reads the override at call time, so a developer's ambient value must not leak in.
+  vi.stubEnv('ORCA_WORKTREE_ADD_TIMEOUT_MS', '')
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 describe('listWorktrees in-flight sharing', () => {
@@ -815,6 +820,20 @@ describe('addWorktree', () => {
     )
     expect(worktreeAddCall?.[1]).toMatchObject({ timeout: WORKTREE_ADD_TIMEOUT_MS })
     expect(WORKTREE_ADD_TIMEOUT_MS).toBeGreaterThan(0)
+  })
+
+  it('raises the worktree add timeout from ORCA_WORKTREE_ADD_TIMEOUT_MS (#12696)', async () => {
+    vi.stubEnv('ORCA_WORKTREE_ADD_TIMEOUT_MS', '600000')
+    gitExecFileAsyncMock.mockResolvedValueOnce({ stdout: '' }) // worktree add
+
+    await addWorktree('/repo', '/repo-feature', 'feature/test', 'feature/test', false, false, {
+      checkoutExistingBranch: true
+    })
+
+    const worktreeAddCall = gitExecFileAsyncMock.mock.calls.find(
+      ([argv]) => Array.isArray(argv) && argv[0] === 'worktree' && argv[1] === 'add'
+    )
+    expect(worktreeAddCall?.[1]).toMatchObject({ timeout: 600_000 })
   })
 
   it('does not write branch base config when no base branch is provided', async () => {
@@ -1880,17 +1899,34 @@ describe('removeWorktree', () => {
 })
 
 describe('resolveWorktreeAddTimeoutMs', () => {
-  it('defaults to 180s and clamps override into a closed range', () => {
-    expect(resolveWorktreeAddTimeoutMs({})).toBe(WORKTREE_ADD_TIMEOUT_MS_DEFAULT)
-    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000' })).toBe(300_000)
-    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })).toBe(
-      WORKTREE_ADD_TIMEOUT_MS_MAX
-    )
-    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '1000' })).toBe(
-      WORKTREE_ADD_TIMEOUT_MS_DEFAULT
+  it('falls back to the default when the override is unset, blank, or unparseable', () => {
+    expect(resolveWorktreeAddTimeoutMs({})).toBe(WORKTREE_ADD_TIMEOUT_MS)
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '   ' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS
     )
     expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: 'nope' })).toBe(
-      WORKTREE_ADD_TIMEOUT_MS_DEFAULT
+      WORKTREE_ADD_TIMEOUT_MS
+    )
+  })
+
+  it('raises the timeout up to the closed maximum', () => {
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000' })).toBe(300_000)
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300000.9' })).toBe(300_000)
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '999999999' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MAX_MS
+    )
+  })
+
+  // Why: `=300` means seconds to most operators; flooring it keeps every create working instead of failing in 300ms.
+  it('never lowers the timeout below the stall-guard default', () => {
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '300' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS
+    )
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '0' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS
+    )
+    expect(resolveWorktreeAddTimeoutMs({ ORCA_WORKTREE_ADD_TIMEOUT_MS: '-1' })).toBe(
+      WORKTREE_ADD_TIMEOUT_MS
     )
   })
 })
