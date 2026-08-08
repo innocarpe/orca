@@ -652,6 +652,10 @@ export class DaemonPtyAdapter implements IPtyProvider {
     }
     const launchIdentity = (): { launchAgent?: NonNullable<typeof result.launchAgent> } =>
       result.launchAgent ? { launchAgent: result.launchAgent } : {}
+    const resolvedShell = ():
+      | Pick<PtySpawnResult, 'resolvedShellOverride'>
+      | Record<string, never> =>
+      result.resolvedShellOverride ? { resolvedShellOverride: result.resolvedShellOverride } : {}
 
     if (effectiveCwd) {
       this.initialCwds.set(sessionId, effectiveCwd)
@@ -679,6 +683,7 @@ export class DaemonPtyAdapter implements IPtyProvider {
         pid,
         ...claimResult(),
         ...launchIdentity(),
+        ...resolvedShell(),
         coldRestore: cachedRestore,
         ...(providerWslDistro !== undefined ? { wslDistro: providerWslDistro } : {}),
         ...(!result.isNew ? { isReattach: true } : {})
@@ -771,6 +776,7 @@ export class DaemonPtyAdapter implements IPtyProvider {
           pid,
           ...claimResult(),
           ...launchIdentity(),
+          ...resolvedShell(),
           coldRestore,
           ...(providerWslDistro !== undefined ? { wslDistro: providerWslDistro } : {}),
           ...(providerSequence ? { providerSequence } : {}),
@@ -783,6 +789,7 @@ export class DaemonPtyAdapter implements IPtyProvider {
         pid,
         ...claimResult(),
         ...launchIdentity(),
+        ...resolvedShell(),
         ...(providerWslDistro !== undefined ? { wslDistro: providerWslDistro } : {}),
         ...(providerSequence ? { providerSequence } : {})
       }
@@ -824,6 +831,7 @@ export class DaemonPtyAdapter implements IPtyProvider {
         pid,
         ...claimResult(),
         ...launchIdentity(),
+        ...resolvedShell(),
         ...(providerWslDistro !== undefined ? { wslDistro: providerWslDistro } : {}),
         ...(providerSequence ? { providerSequence } : {}),
         ...(isReattach ? { isReattach: true } : {})
@@ -843,6 +851,7 @@ export class DaemonPtyAdapter implements IPtyProvider {
       pid,
       ...claimResult(),
       ...launchIdentity(),
+      ...resolvedShell(),
       ...(providerWslDistro !== undefined ? { wslDistro: providerWslDistro } : {}),
       snapshot: snapshotPayload,
       snapshotCols: result.snapshot.cols,

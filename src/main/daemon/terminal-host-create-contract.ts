@@ -50,6 +50,8 @@ export type CreateOrAttachResult = {
   historySeeded?: boolean
   launchAgent?: TuiAgent
   wslDistro: string | null
+  /** Actual shell executable selected by the daemon after launch fallback. */
+  resolvedShellOverride?: string
   attachToken: symbol
   incarnationId: PtyIncarnationId
   agentSessionEnsure?: AgentSessionClaimedSpawnResult

@@ -5002,7 +5002,7 @@ export function connectPanePty(
         executionHostId,
         worktreePath: worktree?.path,
         terminalWindowsShell: state.settings?.terminalWindowsShell,
-        tabShellOverride: shellOverride
+        tabShellOverride: transport.getLocalSessionMetadata?.()?.shellOverride ?? shellOverride
       })
       const startupPlan = buildAgentResumeStartupPlan({
         agent,

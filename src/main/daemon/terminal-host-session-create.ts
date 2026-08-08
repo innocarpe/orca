@@ -137,6 +137,7 @@ export async function createOrAttachTerminalSession(
     pid: subprocess.pid,
     shellState: session.shellState,
     incarnationId: session.incarnationId,
+    ...(subprocess.shellPath ? { resolvedShellOverride: subprocess.shellPath } : {}),
     ...getDaemonSessionResultMetadata(session),
     attachToken: token
   }

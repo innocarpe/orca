@@ -555,6 +555,7 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
   let connected = false
   let destroyed = false
   let ptyId: string | null = null
+  let actualShellOverride = shellOverride
   // Why: replayed eager-buffer data (often from a prior app session) must not fire fresh bells, unread marks, or notifications on reconnect.
   let suppressAttentionEvents = false
   const inputWriteQueue = createPtyInputWriteQueue({
@@ -813,6 +814,9 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
           ...(telemetry ? { telemetry } : {})
         })
         const spawnResult = result as PtyConnectResult & { isReattach?: boolean }
+        if (typeof spawnResult.resolvedShellOverride === 'string') {
+          actualShellOverride = spawnResult.resolvedShellOverride
+        }
         const resultLaunchAgent = isTuiAgent(spawnResult.launchAgent)
           ? spawnResult.launchAgent
           : undefined
@@ -1090,7 +1094,7 @@ export function createIpcPtyTransport(opts: IpcPtyTransportOptions = {}): PtyTra
       // Why: input routing/diagnostics must follow the launched PTY session, not later project setting changes.
       return {
         ...(cwd ? { cwd } : {}),
-        ...(shellOverride ? { shellOverride } : {})
+        ...(actualShellOverride ? { shellOverride: actualShellOverride } : {})
       }
     },
 
