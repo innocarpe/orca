@@ -3349,15 +3349,26 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
 
       // Kill PTYs for all worktrees belonging to this repo
       const killedTabIds = new Set<string>()
+      const ptyIdsToKill = new Set<string>()
       for (const wId of worktreeIds) {
         const tabs = get().tabsByWorktree[wId] ?? []
         for (const tab of tabs) {
           killedTabIds.add(tab.id)
           for (const ptyId of get().ptyIdsByTabId[tab.id] ?? []) {
-            if (!ptyId.startsWith('remote:')) {
-              window.api.pty.kill(ptyId)
-            }
+            ptyIdsToKill.add(ptyId)
           }
+          if (tab.ptyId) {
+            ptyIdsToKill.add(tab.ptyId)
+          }
+          const lastKnownRelayPtyId = get().lastKnownRelayPtyIdByTabId[tab.id]
+          if (lastKnownRelayPtyId) {
+            ptyIdsToKill.add(lastKnownRelayPtyId)
+          }
+        }
+      }
+      for (const ptyId of ptyIdsToKill) {
+        if (!ptyId.startsWith('remote:')) {
+          window.api.pty.kill(ptyId)
         }
       }
 

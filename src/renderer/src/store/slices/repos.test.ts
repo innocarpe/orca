@@ -745,11 +745,12 @@ describe('repo slice runtime routing', () => {
         [remoteRepo.id]: [makeWorktree({ id: worktreeId, repoId: remoteRepo.id })]
       },
       tabsByWorktree: {
-        [worktreeId]: [{ id: 'tab-1', worktreeId } as never]
+        [worktreeId]: [{ id: 'tab-1', worktreeId, ptyId: 'pty-current' } as never]
       },
       ptyIdsByTabId: {
-        'tab-1': ['remote:term-1', 'pty-local-stale']
-      }
+        'tab-1': ['remote:term-1', 'pty-local-stale', 'pty-current']
+      },
+      lastKnownRelayPtyIdByTabId: { 'tab-1': 'pty-last-known-relay' }
     })
 
     await store.getState().removeProject(remoteRepo.id)
@@ -761,13 +762,21 @@ describe('repo slice runtime routing', () => {
       timeoutMs: 15_000
     })
     expect(ptyKill).toHaveBeenCalledWith('pty-local-stale')
+    expect(ptyKill).toHaveBeenCalledWith('pty-current')
+    expect(ptyKill).toHaveBeenCalledWith('pty-last-known-relay')
+    expect(ptyKill).toHaveBeenCalledTimes(3)
     expect(ptyKill).not.toHaveBeenCalledWith('remote:term-1')
   })
 
   it('stops remote terminals before removing the project from its runtime', async () => {
     const callOrder: string[] = []
+    let settleStop: (() => void) | undefined
+    const stopSettled = new Promise<void>((resolve) => (settleStop = resolve))
     runtimeEnvironmentCall.mockImplementation(async (args) => {
       callOrder.push(args.method)
+      if (args.method === 'terminal.stop') {
+        await stopSettled
+      }
       return {
         id: `rpc-${args.method}`,
         ok: true,
@@ -785,7 +794,11 @@ describe('repo slice runtime routing', () => {
       }
     })
 
-    await store.getState().removeProject(remoteRepo.id)
+    const removeProjectPromise = store.getState().removeProject(remoteRepo.id)
+
+    await vi.waitFor(() => expect(callOrder).toEqual(['terminal.stop']))
+    settleStop?.()
+    await removeProjectPromise
 
     expect(callOrder).toEqual(['terminal.stop', 'repo.rm'])
   })
