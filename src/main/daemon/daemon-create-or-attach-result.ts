@@ -12,7 +12,7 @@ export type DaemonCreateOrAttachResult = {
   launchAgent?: TuiAgent
   /** Undefined only when talking to a daemon predating WSL session context. */
   wslDistro?: string | null
-  /** Undefined when talking to a daemon predating actual-shell reporting. */
+  /** Undefined for older daemons or providers that do not report a resolved shell. */
   resolvedShellOverride?: string
   agentSessionEnsure?: AgentSessionClaimedSpawnResult
   incarnationId?: PtyIncarnationId
