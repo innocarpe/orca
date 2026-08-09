@@ -73,6 +73,7 @@ describe('detectLanguage', () => {
   it('maps open-ended dotenv filenames to ini after exact and extension lookups miss', () => {
     expect(detectLanguage('.env.functions.local')).toBe('ini')
     expect(detectLanguage('config/.env.staging')).toBe('ini')
+    expect(detectLanguage('.ENV.STAGING')).toBe('ini')
     expect(detectLanguage('C:\\repo\\.env.test.example')).toBe('ini')
   })
 

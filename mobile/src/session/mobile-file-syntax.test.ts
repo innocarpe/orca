@@ -23,6 +23,7 @@ describe('mobile file syntax highlighting', () => {
   it('detects open-ended dotenv filenames without overriding envrc or shell scripts', () => {
     expect(detectMobileFileLanguage('.env.functions.local')).toBe('ini')
     expect(detectMobileFileLanguage('config/.env.staging')).toBe('ini')
+    expect(detectMobileFileLanguage('.ENV.STAGING')).toBe('ini')
     expect(detectMobileFileLanguage('C:\\repo\\.env.test.example')).toBe('ini')
     expect(detectMobileFileLanguage('.envrc')).toBe('plaintext')
     expect(detectMobileFileLanguage('.env.sh')).toBe('shell')
