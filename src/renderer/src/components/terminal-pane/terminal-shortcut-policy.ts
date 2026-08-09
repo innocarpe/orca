@@ -5,6 +5,7 @@ import {
   type KeybindingOverrides,
   type TerminalShortcutPolicy
 } from '../../../../shared/keybindings'
+import { isLatinShortcutKey } from '@/lib/ime-latin-shortcut-key'
 import type { WindowsShiftEnterEncoding } from './terminal-windows-shift-enter'
 
 export type TerminalShortcutEvent = {
@@ -92,7 +93,7 @@ function isPlainCtrlW(event: TerminalShortcutEvent): boolean {
     !event.metaKey &&
     !event.altKey &&
     !event.shiftKey &&
-    (event.code === 'KeyW' || event.key.toLowerCase() === 'w')
+    isLatinShortcutKey(event, 'w')
   )
 }
 
