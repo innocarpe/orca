@@ -15881,6 +15881,56 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
+  it('returns a blocked wait when the Claude trust gate appears during launchAgent startup', async () => {
+    vi.useFakeTimers()
+    try {
+      const runtime = new OrcaRuntimeService(store)
+      runtime.setPtyController({
+        spawn: vi.fn().mockResolvedValue({ id: 'pty-bg' }),
+        write: () => true,
+        kill: () => true,
+        getForegroundProcess: async () => 'claude'
+      })
+      const { handle } = await runtime.createTerminal(`path:${TEST_WORKTREE_PATH}`, {
+        command: 'claude',
+        launchAgent: 'claude',
+        title: 'Claude'
+      })
+      runtime.onPtyData('pty-bg', 'starting…\n', Date.now())
+
+      const waitPromise = runtime.waitForTerminal(handle, {
+        condition: 'tui-idle',
+        timeoutMs: 8_000
+      })
+
+      // Why (#9976): the trust screen can arrive after the cold-start silence;
+      // launchAgent readiness must not be satisfied by the earlier quiescence.
+      await vi.advanceTimersByTimeAsync(4_000)
+      runtime.onPtyData(
+        'pty-bg',
+        [
+          'Accessing workspace:',
+          'C:\\scratchpad\\trusttest-fresh',
+          'Quick safety check: Is this a project you created or one you trust? ...',
+          "Claude Code'll be able to read, edit, and execute files here.",
+          '❯ 1. Yes, I trust this folder'
+        ].join('\n'),
+        Date.now()
+      )
+      await vi.advanceTimersByTimeAsync(2_000)
+
+      await expect(waitPromise).resolves.toMatchObject({
+        handle,
+        condition: 'tui-idle',
+        satisfied: false,
+        status: 'running',
+        blockedReason: 'codex-trust-workspace'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('still resolves tui-idle for launchAgent-backed terminals once agent status is idle', async () => {
     const runtime = new OrcaRuntimeService(store)
     runtime.setPtyController({
