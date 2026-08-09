@@ -15952,6 +15952,7 @@ describe('OrcaRuntimeService', () => {
     ).resolves.toMatchObject({
       handle,
       condition: 'tui-idle',
+      satisfied: true,
       status: 'running'
     })
   })
