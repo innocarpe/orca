@@ -1326,6 +1326,9 @@ function mergeMirroredHostTabOrder(
   const seen = new Set<string>()
   let hostIndex = 0
   for (const tabId of currentTabOrder) {
+    if (!validUnifiedTabIds.has(tabId)) {
+      continue
+    }
     const nextTabId = mirroredUnifiedIds.has(tabId) ? hostTabOrder[hostIndex++] : tabId
     if (nextTabId && validUnifiedTabIds.has(nextTabId) && !seen.has(nextTabId)) {
       merged.push(nextTabId)
@@ -1341,6 +1344,8 @@ function mergeMirroredHostTabOrder(
   }
   return merged
 }
+
+export const _mergeMirroredHostTabOrderForTest = mergeMirroredHostTabOrder
 
 function buildMirroredHostGroups({
   currentGroups,
