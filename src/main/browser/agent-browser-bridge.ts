@@ -66,6 +66,7 @@ type DirectKeyDefinition = {
   modifiers?: number
   windowsVirtualKeyCode?: number
   text?: string
+  unmodifiedText?: string
 }
 
 const DIRECT_KEY_DEFINITIONS: Record<string, DirectKeyDefinition> = {
@@ -87,7 +88,11 @@ const DIRECT_KEY_DEFINITIONS: Record<string, DirectKeyDefinition> = {
 
 function resolveDirectKeyDefinition(input: string): DirectKeyDefinition {
   const parts = input.split('+')
-  const key = parts.pop() ?? input
+  let key = parts.pop() ?? input
+  if (key === '' && parts.at(-1) === '') {
+    parts.pop()
+    key = '+'
+  }
   let modifiers = 0
   for (const modifier of parts) {
     if (modifier === 'Alt') {
@@ -108,18 +113,34 @@ function resolveDirectKeyDefinition(input: string): DirectKeyDefinition {
   if (key.length === 1) {
     const charCode = key.charCodeAt(0)
     if (charCode >= 48 && charCode <= 57) {
-      return { key, code: `Digit${key}`, windowsVirtualKeyCode: charCode, text: key, modifiers }
+      return {
+        key,
+        code: `Digit${key}`,
+        windowsVirtualKeyCode: charCode,
+        text: key,
+        modifiers,
+        ...(modifiers > 0 ? { unmodifiedText: key } : {})
+      }
     }
     if ((charCode >= 65 && charCode <= 90) || (charCode >= 97 && charCode <= 122)) {
+      const text = modifiers === 0 || (modifiers & 8) !== 0 ? key : undefined
       return {
         key,
         code: `Key${key.toUpperCase()}`,
         windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
-        text: modifiers === 0 || (modifiers & 8) !== 0 ? key : undefined,
+        ...(text !== undefined ? { text } : {}),
+        ...(modifiers > 0 ? { unmodifiedText: key } : {}),
         modifiers
       }
     }
-    return { key, code: '', windowsVirtualKeyCode: charCode, text: key, modifiers }
+    return {
+      key,
+      code: '',
+      windowsVirtualKeyCode: charCode,
+      text: key,
+      modifiers,
+      ...(modifiers > 0 ? { unmodifiedText: key } : {})
+    }
   }
   return { key, code: key, modifiers }
 }
@@ -1039,8 +1060,9 @@ export class AgentBrowserBridge {
       browserPageId,
       async (_sessionName, target) => {
         const wc = this.requireTargetWebContents(target)
-        const releaseDebugger = acquireElectronDebugger(wc).release
+        let releaseDebugger = (): void => {}
         try {
+          releaseDebugger = acquireElectronDebugger(wc).release
           await insertTextThroughCdp(
             (method, params) => wc.debugger.sendCommand(method, params),
             input,
@@ -1850,9 +1872,10 @@ export class AgentBrowserBridge {
       browserPageId,
       async (_sessionName, target) => {
         const wc = this.requireTargetWebContents(target)
-        const releaseDebugger = acquireElectronDebugger(wc).release
         const keyDefinition = resolveDirectKeyDefinition(key)
+        let releaseDebugger = (): void => {}
         try {
+          releaseDebugger = acquireElectronDebugger(wc).release
           await wc.debugger.sendCommand('Input.dispatchKeyEvent', {
             type: 'keyDown',
             ...keyDefinition
