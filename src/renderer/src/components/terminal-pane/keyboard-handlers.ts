@@ -40,16 +40,15 @@ import { isFindQueryTooLarge } from '@/lib/find-query-bounds'
 import { handleEmptyFloatingWorkspacePanelCloseShortcut } from '@/lib/floating-workspace-terminal-actions'
 import { recordCreatedTerminalPaneSplit } from './terminal-pane-split-completion'
 import { splitTerminalPaneWithInheritedCwd } from './terminal-pane-split-with-inherited-cwd'
-import { useAppStore, type AppState } from '@/store'
+import { useAppStore } from '@/store'
 import { recordTerminalUserInputForLeaf } from './terminal-input-activity'
 import { copyTerminalSelection } from './terminal-selection-copy'
 import { isLocalWindowsConptyPaneForCtrlArrow } from './terminal-ctrl-arrow-conpty'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
-import { WINDOWS_GIT_BASH_SHELL } from '../../../../shared/windows-terminal-shell'
 import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 import { hasCtrlEnterCsiUAuthorityForPane } from './terminal-ctrl-enter'
 import { resolveTerminalInputHostPlatform } from './terminal-input-host-platform'
-import { resolveWindowsShellOverride } from '@/lib/pane-manager/windows-pty-compatibility'
+import { isWindowsGitBashPaneForShortcut } from './windows-git-bash-shortcut'
 import {
   markTerminalFollowOutput,
   markTerminalPinnedViewport,
@@ -89,27 +88,6 @@ export function resolveTerminalKeyboardShortcutAction(
     terminalShortcutPolicy,
     hasCtrlEnterCsiUAuthority,
     isWindowsGitBashPane
-  )
-}
-
-export function isWindowsGitBashPaneForShortcut(args: {
-  isWindowsTerminalHost: boolean
-  state: Pick<AppState, 'tabsByWorktree' | 'settings'>
-  worktreeId: string
-  tabId: string
-  sessionShellOverride?: string | null
-}): boolean {
-  if (!args.isWindowsTerminalHost) {
-    return false
-  }
-  const tabShellOverride = args.state.tabsByWorktree[args.worktreeId]?.find(
-    (candidate) => candidate.id === args.tabId
-  )?.shellOverride
-  return (
-    resolveWindowsShellOverride(
-      args.sessionShellOverride ?? tabShellOverride,
-      args.state.settings?.terminalWindowsShell
-    ) === WINDOWS_GIT_BASH_SHELL
   )
 }
 
@@ -433,15 +411,18 @@ export function useTerminalKeyboardShortcuts({
         return false
       }
       const state = useAppStore.getState()
-      const sessionShellOverride = paneTransportsRef.current
+      const localSessionMetadata = paneTransportsRef.current
         .get(activePane.id)
-        ?.getLocalSessionMetadata?.()?.shellOverride
+        ?.getLocalSessionMetadata?.()
+      const tabShellOverride = state.tabsByWorktree[worktreeId]?.find(
+        (candidate) => candidate.id === tabId
+      )?.shellOverride
       return isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: isActivePaneWindowsTerminalHost(),
-        state,
-        worktreeId,
-        tabId,
-        sessionShellOverride
+        hasLocalSessionMetadata: localSessionMetadata != null,
+        sessionShellOverride: localSessionMetadata?.shellOverride,
+        tabShellOverride,
+        globalWindowsShell: state.settings?.terminalWindowsShell
       })
     }
 
