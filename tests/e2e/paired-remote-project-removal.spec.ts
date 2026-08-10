@@ -80,6 +80,106 @@ async function spawnDetachedDaemonSession(
   return { client, sessionId }
 }
 
+test('removing a local project stops a sleeping PTY known only by its durable wake hint @headful', async ({
+  electronApp,
+  orcaPage,
+  testRepoPath
+}) => {
+  const scratch = mkdtempSync(path.join(os.tmpdir(), 'orca-local-project-removal-'))
+  const markerPath = path.join(scratch, 'agent.pid')
+  const fixturePath = path.join(scratch, 'agent-fixture.cjs')
+  writeFileSync(
+    fixturePath,
+    [
+      "require('node:fs').writeFileSync(process.argv[2], String(process.pid))",
+      "process.stdout.write('READY\\r\\n')",
+      'setInterval(() => {}, 1_000)'
+    ].join('\n')
+  )
+
+  let daemonSession: Awaited<ReturnType<typeof spawnDetachedDaemonSession>> | undefined
+  let pid = 0
+  try {
+    const owner = await orcaPage.evaluate((repoPath) => {
+      const repo = window.__store?.getState().repos.find((candidate) => candidate.path === repoPath)
+      if (!repo) {
+        throw new Error('local fixture project is unavailable')
+      }
+      return { repoId: repo.id }
+    }, testRepoPath)
+    const sleepingWorktreeId = `${owner.repoId}::${path.join(testRepoPath, 'sleeping-agent')}`
+    const userDataDir = await electronApp.evaluate(({ app }) => app.getPath('userData'))
+    daemonSession = await spawnDetachedDaemonSession(
+      userDataDir,
+      sleepingWorktreeId,
+      testRepoPath,
+      fixtureCommand(fixturePath, markerPath)
+    )
+    await expect.poll(() => readPid(markerPath), { timeout: 20_000 }).toBeGreaterThan(0)
+    pid = readPid(markerPath)
+
+    const hintState = await orcaPage.evaluate(
+      ({ repoId, worktreeId, ptyId }) => {
+        const store = window.__store
+        if (!store) {
+          throw new Error('local renderer store is unavailable')
+        }
+        const tabId = 'sleeping-project-removal-tab'
+        store.setState((state) => ({
+          tabsByWorktree: {
+            ...state.tabsByWorktree,
+            [worktreeId]: [{ id: tabId, worktreeId, title: 'Sleeping Agent' } as never]
+          },
+          ptyIdsByTabId: { ...state.ptyIdsByTabId, [tabId]: [] },
+          lastKnownRelayPtyIdByTabId: {
+            ...state.lastKnownRelayPtyIdByTabId,
+            [tabId]: ptyId
+          }
+        }))
+        const tab = store.getState().tabsByWorktree[worktreeId]?.[0]
+        return {
+          repoPresent: store.getState().repos.some((repo) => repo.id === repoId),
+          tabPtyId: tab?.ptyId ?? null,
+          livePtyIds: store.getState().ptyIdsByTabId[tabId] ?? [],
+          wakeHint: store.getState().lastKnownRelayPtyIdByTabId[tabId]
+        }
+      },
+      { repoId: owner.repoId, worktreeId: sleepingWorktreeId, ptyId: daemonSession.sessionId }
+    )
+    expect(hintState).toEqual({
+      repoPresent: true,
+      tabPtyId: null,
+      livePtyIds: [],
+      wakeHint: daemonSession.sessionId
+    })
+    expect(isProcessAlive(pid)).toBe(true)
+
+    await orcaPage.evaluate(async (repoId) => {
+      await window.__store?.getState().removeProject(repoId)
+    }, owner.repoId)
+
+    await expect(orcaPage.getByText('No workspaces found', { exact: true })).toBeVisible({
+      timeout: 20_000
+    })
+    await expect.poll(() => isProcessAlive(pid), { timeout: 20_000 }).toBe(false)
+  } finally {
+    if (daemonSession) {
+      await daemonSession.client
+        .request('kill', { sessionId: daemonSession.sessionId, immediate: true })
+        .catch(() => undefined)
+      daemonSession.client.disconnect()
+    }
+    if (isProcessAlive(pid)) {
+      try {
+        process.kill(pid, 'SIGKILL')
+      } catch {
+        // Already exited.
+      }
+    }
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
 test('removing a project stops its headed remote-runtime PTYs @headful', async ({
   electronApp,
   orcaPage,
@@ -159,15 +259,9 @@ test('removing a project stops its headed remote-runtime PTYs @headful', async (
       await store.getState().removeProject(repoId)
     }, owner.repoId)
 
-    await expect
-      .poll(
-        () =>
-          client?.page.evaluate(
-            (repoId) => !window.__store?.getState().repos.some((repo) => repo.id === repoId)
-          ),
-        { timeout: 20_000 }
-      )
-      .toBe(true)
+    await expect(client.page.getByText('No workspaces found', { exact: true })).toBeVisible({
+      timeout: 20_000
+    })
     await expect.poll(() => isProcessAlive(pid), { timeout: 20_000 }).toBe(false)
   } finally {
     await client?.dispose().catch(() => undefined)
@@ -244,15 +338,9 @@ test('removing a project stops its headless remote-runtime PTYs @headful', async
       await window.__store?.getState().removeProject(repoId)
     }, added.result.repo.id)
 
-    await expect
-      .poll(
-        () =>
-          client?.page.evaluate(
-            (repoId) => !window.__store?.getState().repos.some((repo) => repo.id === repoId)
-          ),
-        { timeout: 20_000 }
-      )
-      .toBe(true)
+    await expect(client.page.getByText('No workspaces found', { exact: true })).toBeVisible({
+      timeout: 20_000
+    })
     await expect.poll(() => isProcessAlive(pid), { timeout: 20_000 }).toBe(false)
   } finally {
     await client?.dispose().catch(() => undefined)

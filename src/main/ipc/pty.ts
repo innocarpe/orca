@@ -4860,7 +4860,10 @@ export function registerPtyHandlers(
       let preparedProvisionalExecutionContext = false
       let releaseWorktreeSpawn: (() => void) | undefined
       try {
-        releaseWorktreeSpawn = await runtime?.acquireWorktreeTerminalSpawn?.(args.worktreeId)
+        releaseWorktreeSpawn = await runtime?.acquireWorktreeTerminalSpawn?.(
+          args.worktreeId,
+          args.connectionId
+        )
         try {
           if (args.preAllocatedHandle) {
             trustedTerminalHandleEnv.add(args.preAllocatedHandle)
@@ -6371,7 +6374,10 @@ export function registerPtyHandlers(
         if (preSpawnHiddenMarkId !== null) {
           transitionSpawnHiddenRendererPtyDeliveryState(preSpawnHiddenMarkId, true)
         }
-        releaseWorktreeSpawn = await runtime?.acquireWorktreeTerminalSpawn?.(args.worktreeId)
+        releaseWorktreeSpawn = await runtime?.acquireWorktreeTerminalSpawn?.(
+          args.worktreeId,
+          args.connectionId
+        )
         try {
           if (preAllocatedHandle) {
             trustedTerminalHandleEnv.add(preAllocatedHandle)

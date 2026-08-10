@@ -1946,26 +1946,32 @@
     },
     {
       "id": "terminal-session.remote-project-removal",
-      "title": "Remote project removal retires every host-owned terminal before catalog deletion",
+      "title": "Project removal retires every host-owned terminal before catalog deletion",
       "maturity": "experimental",
       "protection": "partial",
       "owner": "terminal-runtime",
       "layer": "renderer-runtime-rpc-daemon-contract",
-      "surfaces": ["project removal", "paired runtime", "PTY shutdown", "daemon sessions"],
+      "surfaces": [
+        "project removal",
+        "local runtime",
+        "paired runtime",
+        "PTY shutdown",
+        "daemon sessions"
+      ],
       "platforms": ["macos", "linux", "windows"],
       "providers": ["daemon", "ssh", "wsl", "remote-runtime"],
       "coveredPlatforms": ["macos"],
       "coveredProviders": ["daemon", "remote-runtime"],
-      "coverageNotes": "A headed Orca host and a headless serve host are each paired to a separate desktop client; both use a real daemon session absent from the runtime graph. Deterministic runtime tests cover host fencing, unrelated sessions, provider inventory failure, and one-scan behavior. SSH, WSL, Linux, and Windows remain explicit gaps.",
+      "coverageNotes": "A local desktop, a headed paired host, and a headless serve host each remove a project owning a real daemon session absent from the runtime graph. The local journey represents the session only through a durable renderer wake hint. Deterministic runtime tests cover host-scoped fencing, unrelated sessions, provider inventory failure, and one-scan behavior. SSH, WSL, Linux, and Windows remain explicit gaps.",
       "motivatingLinks": [
         "https://github.com/stablyai/orca/issues/13072",
         "https://github.com/stablyai/orca/pull/13229"
       ],
-      "invariant": "The runtime that owns repo.rm inventories and stops every PTY attributable to the resolved project row before deleting that row; unrelated hosts, projects, and stale client wake hints survive, and an unavailable authoritative inventory leaves removal retryable.",
-      "oracle": "Create a provider-only daemon session whose worktree identity belongs to the target project but has no runtime leaf, remove the project through a separately paired client, then independently assert the client catalog row disappeared and the exact host PID exited; runtime tests assert shutdown precedes store removal, unrelated sessions survive, the provider is listed once, and inventory failure preserves the row.",
+      "invariant": "Local and paired clients route project removal to the owning runtime, which inventories and stops every PTY attributable to the resolved host-scoped project row before deleting that row; unrelated hosts and projects survive, and an unavailable authoritative inventory leaves removal retryable.",
+      "oracle": "Create a provider-only daemon session whose worktree identity belongs to the target project but has no runtime leaf, remove the project locally and through separately paired headed and headless clients, then independently assert the client catalog row disappeared and the exact host PID exited; runtime tests assert shutdown precedes store removal, sibling-host spawns remain admitted, the provider is listed once, and inventory failure preserves the row.",
       "commands": [
         "pnpm exec vitest run --config config/vitest.config.ts src/main/runtime/runtime-remove-project-host-scope.test.ts src/main/runtime/worktree-teardown.test.ts src/renderer/src/store/slices/repos-project-removal.test.ts",
-        "SKIP_BUILD=1 pnpm exec playwright test tests/e2e/paired-remote-project-removal.spec.ts --config tests/playwright.config.ts --project electron-headful --workers=1"
+        "SKIP_BUILD=1 pnpm exec playwright test tests/e2e/paired-remote-project-removal.spec.ts --config tests/playwright.config.ts --project electron-headful --workers=1 --repeat-each=3"
       ],
       "testFiles": [
         "src/main/runtime/runtime-remove-project-host-scope.test.ts",
@@ -1981,12 +1987,14 @@
             "unrelated provider sessions and duplicate repo rows on other hosts survive",
             "one provider inventory failure preserves the project for retry",
             "removal waits for an admitted spawn and rejects later spawns until inventory and deletion settle",
-            "a catalog deletion failure releases the removal fence for retry"
+            "a catalog deletion failure releases the removal fence for retry",
+            "a sibling-host spawn sharing the repo id remains admitted during removal"
           ]
         },
         {
           "file": "tests/e2e/paired-remote-project-removal.spec.ts",
           "assertions": [
+            "local removal kills a sleeping provider PID represented only by a durable wake hint",
             "headed host provider-only PID exits after paired-client project removal",
             "headless serve provider-only PID exits after paired-client project removal",
             "the paired client visibly loses the project catalog row"
@@ -1998,23 +2006,23 @@
           "date": "2026-08-10",
           "runner": "local",
           "platform": "macos",
-          "command": "SKIP_BUILD=1 pnpm exec playwright test tests/e2e/paired-remote-project-removal.spec.ts --config tests/playwright.config.ts --project electron-headful --workers=1",
+          "command": "SKIP_BUILD=1 pnpm exec playwright test tests/e2e/paired-remote-project-removal.spec.ts --config tests/playwright.config.ts --project electron-headful --workers=1 --repeat-each=3",
           "result": "passed",
-          "durationSeconds": 11,
-          "summary": "The headed and headless paired-runtime provider-only process oracles passed."
+          "durationSeconds": 53,
+          "summary": "The local durable-wake-hint and headed/headless paired-runtime provider-only process oracles each passed three consecutive runs with visible catalog removal."
         }
       ],
       "runtimeBudget": {
-        "p95Seconds": 30,
-        "scope": "two isolated paired-runtime Electron journeys"
+        "p95Seconds": 45,
+        "scope": "one local and two isolated paired-runtime Electron journeys"
       },
       "flakeHistory": {
         "status": "unknown",
-        "evidence": "The two-topology E2E slice passed locally once; CI and soak history are pending."
+        "evidence": "All three journeys passed three consecutive local runs; CI and longer soak history are pending."
       },
       "redGreenEvidence": {
         "status": "complete",
-        "evidence": "The byte-identical headed and headless provider-only PID oracle failed on current main and on the authoritative runtime cleanup disabled, then passed on the corrected candidate; both red runs removed the visible catalog row while the exact host PID stayed alive beyond 20 seconds."
+        "evidence": "The byte-identical local plus headed/headless provider-only PID oracle failed on current main, the published patch, and the authoritative runtime cleanup disabled, then passed on the corrected candidate; red runs removed the visible catalog row while the exact host PID stayed alive beyond 20 seconds."
       },
       "performanceBudget": {
         "required": true,

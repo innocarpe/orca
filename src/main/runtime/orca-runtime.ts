@@ -246,6 +246,7 @@ import { assertWorktreeUnlockedForRemoval } from '../../shared/worktree-removal'
 import {
   LOCAL_EXECUTION_HOST_ID,
   getRepoExecutionHostId,
+  normalizeExecutionHostId,
   parseExecutionHostId,
   toSshExecutionHostId,
   type ExecutionHostId
@@ -3187,7 +3188,7 @@ export class OrcaRuntimeService {
   private canonicalFetchKeyCache = new Map<string, string>()
   private optimisticReconcileTokens = new Map<string, string>()
   private removeManagedWorktreeInFlight = new Map<string, RuntimeWorktreeRemovalInFlight>()
-  private removingProjectIds = new Set<string>()
+  private removingProjectKeys = new Set<string>()
   private preservedBranchCleanupByWorktreeId = new Map<string, PreservedBranchCleanupTarget>()
   private readonly getLocalProviderFn: (() => IPtyProvider) | null
   private readonly getSshProviderFn: ((connectionId: string) => IPtyProvider | undefined) | null
@@ -19073,20 +19074,27 @@ export class OrcaRuntimeService {
     return updated
   }
 
-  async removeProject(repoSelector: string): Promise<{ removed: true }> {
+  async removeProject(repoSelector: string, hostId?: string): Promise<{ removed: true }> {
     if (!this.store?.removeProject) {
       throw new Error('runtime_unavailable')
     }
-    const repo = await this.resolveRepoSelector(repoSelector)
-    if (this.removingProjectIds.has(repo.id)) {
+    const normalizedHostId = hostId === undefined ? undefined : normalizeExecutionHostId(hostId)
+    if (hostId !== undefined && !normalizedHostId) {
+      throw new Error('invalid_host_id')
+    }
+    const repo = normalizedHostId
+      ? await this.resolveRepoSelectorForHost(repoSelector, normalizedHostId)
+      : await this.resolveRepoSelector(repoSelector)
+    const removalKey = runtimeProjectIdentityKey(repo.id, getRepoExecutionHostId(repo))
+    if (this.removingProjectKeys.has(removalKey)) {
       throw new Error(`Project removal already in progress: ${repo.id}`)
     }
-    this.removingProjectIds.add(repo.id)
+    this.removingProjectKeys.add(removalKey)
     try {
       await this.stopProjectTerminalsBeforeRemoval(repo)
       return this.removeResolvedProject(repo)
     } finally {
-      this.removingProjectIds.delete(repo.id)
+      this.removingProjectKeys.delete(removalKey)
     }
   }
 
@@ -19128,7 +19136,11 @@ export class OrcaRuntimeService {
     try {
       const knownWorktreeIds = this.getProjectRemovalWorktreeIds(repo, [])
       for (const worktreeId of [...knownWorktreeIds].sort()) {
-        releases.push(await this.acquireWorktreeTerminalMutation(worktreeId))
+        releases.push(
+          await this.acquireWorktreeTerminalMutation(worktreeId, {
+            hostId: getRepoExecutionHostId(repo)
+          })
+        )
       }
       const deadline = Date.now() + WORKTREE_PROCESS_SWEEP_TIMEOUT_MS
       const providerProcesses = await provider.listProcesses({
@@ -27551,14 +27563,28 @@ export class OrcaRuntimeService {
     }
   }
 
-  async acquireWorktreeTerminalSpawn(worktreeId?: string): Promise<() => void> {
+  async acquireWorktreeTerminalSpawn(
+    worktreeId?: string,
+    connectionId?: string | null
+  ): Promise<() => void> {
     if (!worktreeId) {
       return () => {}
     }
-    if (this.removingProjectIds.has(getRepoIdFromWorktreeId(worktreeId))) {
+    const repoId = getRepoIdFromWorktreeId(worktreeId)
+    const hostId = this.resolveTerminalMutationHostId(repoId, connectionId)
+    const projectKey = runtimeProjectIdentityKey(repoId, hostId)
+    const repoExistedBeforeLease = this.hasRepoIdentity(repoId, hostId)
+    if (this.removingProjectKeys.has(projectKey)) {
       throw new Error(`Project removal in progress: ${getRepoIdFromWorktreeId(worktreeId)}`)
     }
-    const release = await this.acquireWorktreeTerminalMutation(worktreeId)
+    const release = await this.acquireWorktreeTerminalMutation(worktreeId, { hostId })
+    if (
+      this.removingProjectKeys.has(projectKey) ||
+      (repoExistedBeforeLease && !this.hasRepoIdentity(repoId, hostId))
+    ) {
+      release()
+      throw new Error(`Project removal in progress: ${repoId}`)
+    }
     const key = runtimeWorktreeIdentityKey(worktreeId)
     const sleepState = this.terminalSleepStateByWorktreeId.get(key)
     if (sleepState?.phase === 'sleeping' || sleepState?.phase === 'partial') {
@@ -27577,9 +27603,12 @@ export class OrcaRuntimeService {
 
   private async acquireWorktreeTerminalMutation(
     worktreeId: string,
-    deadline?: number
+    options: { deadline?: number; hostId?: ExecutionHostId } = {}
   ): Promise<() => void> {
-    const key = runtimeWorktreeIdentityKey(worktreeId)
+    const key = runtimeWorktreeMutationIdentityKey(
+      worktreeId,
+      options.hostId ?? this.resolveTerminalMutationHostId(getRepoIdFromWorktreeId(worktreeId))
+    )
     const previous = this.terminalMutationTailByWorktreeId.get(key) ?? Promise.resolve()
     let releaseCurrent = (): void => {}
     const current = new Promise<void>((resolve) => {
@@ -27590,7 +27619,7 @@ export class OrcaRuntimeService {
     try {
       await waitForWorktreeTerminalMutation(
         previous.catch(() => {}),
-        deadline
+        options.deadline
       )
     } catch (error) {
       // Why: resolve this abandoned queue node now so it can never acquire later and stop a terminal after the caller timed out.
@@ -27617,11 +27646,40 @@ export class OrcaRuntimeService {
     }
   }
 
+  private resolveTerminalMutationHostId(
+    repoId: string,
+    connectionId?: string | null
+  ): ExecutionHostId {
+    if (connectionId) {
+      return toSshExecutionHostId(connectionId)
+    }
+    const repo = this.store
+      ?.getRepos()
+      .find(
+        (candidate) =>
+          candidate.id === repoId && getRepoExecutionHostId(candidate) === LOCAL_EXECUTION_HOST_ID
+      )
+    return repo ? getRepoExecutionHostId(repo) : LOCAL_EXECUTION_HOST_ID
+  }
+
+  private hasRepoIdentity(repoId: string, hostId: ExecutionHostId): boolean {
+    return (
+      this.store
+        ?.getRepos()
+        .some(
+          (candidate) => candidate.id === repoId && getRepoExecutionHostId(candidate) === hostId
+        ) ?? false
+    )
+  }
+
   private async sleepResolvedWorktreeTerminals(
     worktree: ResolvedWorktree
   ): Promise<RuntimeWorktreeTerminalSleepResult> {
     const sleepDeadline = Date.now() + WORKTREE_TERMINAL_SLEEP_TIMEOUT_MS
-    const releaseMutation = await this.acquireWorktreeTerminalMutation(worktree.id, sleepDeadline)
+    const releaseMutation = await this.acquireWorktreeTerminalMutation(worktree.id, {
+      deadline: sleepDeadline,
+      hostId: worktree.hostId
+    })
     const key = runtimeWorktreeIdentityKey(worktree.id)
     const existingSleepState = this.terminalSleepStateByWorktreeId.get(key)
     if (existingSleepState?.phase === 'sleeping') {
@@ -28800,6 +28858,22 @@ export class OrcaRuntimeService {
     }
     const candidates = this.selectReposBySelector(selector)
 
+    if (candidates.length === 1) {
+      return candidates[0]
+    }
+    if (candidates.length > 1) {
+      throw new Error('selector_ambiguous')
+    }
+    throw new Error('repo_not_found')
+  }
+
+  private async resolveRepoSelectorForHost(
+    selector: string,
+    hostId: ExecutionHostId
+  ): Promise<Repo> {
+    const candidates = this.selectReposBySelector(selector).filter(
+      (repo) => getRepoExecutionHostId(repo) === hostId
+    )
     if (candidates.length === 1) {
       return candidates[0]
     }
@@ -36984,6 +37058,14 @@ function runtimeWorktreeIdentityKey(worktreeId: string): string {
   return parsed
     ? `${parsed.repoId}\0${normalizeRuntimePathForComparison(parsed.worktreePath)}`
     : worktreeId
+}
+
+function runtimeProjectIdentityKey(repoId: string, hostId: ExecutionHostId): string {
+  return `${hostId}\0${repoId}`
+}
+
+function runtimeWorktreeMutationIdentityKey(worktreeId: string, hostId: ExecutionHostId): string {
+  return `${hostId}\0${runtimeWorktreeIdentityKey(worktreeId)}`
 }
 
 function resolveTerminalSessionWorktreeId(

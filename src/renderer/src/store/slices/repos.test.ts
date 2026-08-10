@@ -19,6 +19,7 @@ import {
   reposRemove,
   reposReorder,
   reposUpdate,
+  runtimeCall,
   runtimeEnvironmentCall,
   sshRepo
 } from './repos-runtime-routing-fixture'
@@ -630,7 +631,7 @@ describe('repo slice runtime routing', () => {
     expect(reposRemove).not.toHaveBeenCalled()
   })
 
-  it('removes SSH-owned repos through local IPC even when a runtime is focused', async () => {
+  it('removes SSH-owned repos through the local runtime even when a remote is focused', async () => {
     const store = createTestStore()
     const worktreeId = `${sshRepo.id}::/home/orca/wt`
     store.setState({
@@ -646,7 +647,11 @@ describe('repo slice runtime routing', () => {
 
     expect(store.getState().repos).toEqual([])
     expect(store.getState().activeRepoId).toBeNull()
-    expect(reposRemove).toHaveBeenCalledWith({ repoId: sshRepo.id })
+    expect(runtimeCall).toHaveBeenCalledWith({
+      method: 'repo.rm',
+      params: { repo: sshRepo.id, hostId: 'ssh:ssh-1' }
+    })
+    expect(reposRemove).not.toHaveBeenCalled()
     expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
   })
 
@@ -667,7 +672,10 @@ describe('repo slice runtime routing', () => {
 
     expect(store.getState().repos).toEqual([localRepo])
     expect(store.getState().lastVisitedAtByWorktreeId).toEqual({ [localWorktreeId]: 200 })
-    expect(reposRemove).toHaveBeenCalledWith({ repoId: sshRepo.id })
+    expect(runtimeCall).toHaveBeenCalledWith({
+      method: 'repo.rm',
+      params: { repo: sshRepo.id, hostId: 'ssh:ssh-1' }
+    })
   })
 
   it('drops persisted visit timestamps for removed unhydrated runtime repos', async () => {

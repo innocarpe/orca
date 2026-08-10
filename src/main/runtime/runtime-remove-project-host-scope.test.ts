@@ -101,6 +101,16 @@ describe('repo.rm with the same repo id on two execution hosts', () => {
     expect(repos).toHaveLength(2)
   })
 
+  it('uses an explicit host to disambiguate the duplicated id', async () => {
+    const { runtime, repos, removeProject, removeProjectForHost } = createRuntime()
+
+    await runtime.removeProject('dup', 'ssh:ssh-1')
+
+    expect(removeProjectForHost).toHaveBeenCalledWith('dup', 'ssh:ssh-1')
+    expect(removeProject).not.toHaveBeenCalled()
+    expect(repos).toEqual([expect.objectContaining({ path: '/laptop/dup' })])
+  })
+
   it('stops provider-only sessions before removing the owning host row', async () => {
     const owned = {
       id: 'ssh:ssh-1@@owned',
@@ -159,13 +169,15 @@ describe('repo.rm with the same repo id on two execution hosts', () => {
 
   it('waits for an admitted spawn and rejects later spawns during removal', async () => {
     const { runtime, provider } = createRuntime()
-    const releaseSpawn = await runtime.acquireWorktreeTerminalSpawn('dup::/remote/dup')
+    const releaseSpawn = await runtime.acquireWorktreeTerminalSpawn('dup::/remote/dup', 'ssh-1')
     const removal = runtime.removeProject('path:/remote/dup')
 
     await Promise.resolve()
-    await expect(runtime.acquireWorktreeTerminalSpawn('dup::/remote/dup')).rejects.toThrow(
+    await expect(runtime.acquireWorktreeTerminalSpawn('dup::/remote/dup', 'ssh-1')).rejects.toThrow(
       'Project removal in progress'
     )
+    const releaseSiblingHostSpawn = await runtime.acquireWorktreeTerminalSpawn('dup::/remote/dup')
+    releaseSiblingHostSpawn()
     expect(provider.listProcesses).not.toHaveBeenCalled()
 
     releaseSpawn()

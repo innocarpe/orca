@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { createTestStore, makeWorktree } from './store-test-helpers'
 import {
   installReposRuntimeRoutingHarness,
+  localRepo,
   ptyKill,
   remoteRepo,
+  reposRemove,
+  runtimeCall,
   runtimeEnvironmentCall
 } from './repos-runtime-routing-fixture'
 
@@ -13,7 +16,20 @@ vi.mock('sonner', () => ({
 
 installReposRuntimeRoutingHarness()
 
-describe('remote project terminal removal', () => {
+describe('project terminal removal', () => {
+  it('routes local removal through the authoritative runtime', async () => {
+    const store = createTestStore()
+    store.setState({ repos: [localRepo] })
+
+    await store.getState().removeProject(localRepo.id)
+
+    expect(runtimeCall).toHaveBeenCalledWith({
+      method: 'repo.rm',
+      params: { repo: localRepo.id, hostId: 'local' }
+    })
+    expect(reposRemove).not.toHaveBeenCalled()
+  })
+
   it('stops remote terminals without following stale or remote ids through local IPC', async () => {
     runtimeEnvironmentCall.mockResolvedValue({
       id: 'rpc-remote',

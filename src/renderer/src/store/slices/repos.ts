@@ -3330,16 +3330,13 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
           throw stopFailure.reason
         }
       }
-      // Why: repos:remove is id-only and would delete every host's row; scope local removal to the owning host so cross-host duplicates keep other rows.
-      const idExistsOnOtherHost = get().repos.some(
-        (repo) => repo.id === projectId && getRepoExecutionHostId(repo) !== ownerHostId
-      )
       try {
-        await (target.kind === 'local'
-          ? idExistsOnOtherHost
-            ? window.api.repos.removeForHost({ repoId: projectId, hostId: ownerHostId })
-            : window.api.repos.remove({ repoId: projectId })
-          : callRuntimeRpc(target, 'repo.rm', { repo: projectId }, { timeoutMs: 15_000 }))
+        await callRuntimeRpc(
+          target,
+          'repo.rm',
+          { repo: projectId, ...(target.kind === 'local' ? { hostId: ownerHostId } : {}) },
+          { timeoutMs: 15_000 }
+        )
       } catch (err) {
         // Why: the owner already dropped this project, so purge the local ghost row instead of aborting (#11994).
         if (!hasRuntimeRpcErrorCode(err, 'repo_not_found')) {
