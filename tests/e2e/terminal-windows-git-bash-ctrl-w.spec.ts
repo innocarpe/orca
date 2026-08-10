@@ -113,6 +113,7 @@ test.describe('Windows Git Bash Ctrl+W ownership', () => {
     })
     await installTerminalPtyWriteSpy(electronApp)
     await sendToTerminal(orcaPage, ptyId, 'echo CTRLW_BUFFER_alpha doomed')
+    await waitForTerminalOutput(orcaPage, 'echo CTRLW_BUFFER_alpha doomed', 10_000)
     await clearTerminalPtyWriteLog(electronApp)
 
     await focusActiveTerminalInput(orcaPage)
