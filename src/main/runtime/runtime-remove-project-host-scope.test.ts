@@ -5,6 +5,8 @@
  * A `path:`/`name:` selector resolves unambiguously even when the id is duplicated, so this
  * is reachable — and since #11994 every paired device now learns about it immediately.
  */
+import { spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/types'
 import type { PtyProcessInfo } from '../providers/types'
@@ -51,7 +53,7 @@ function createRuntime(providerProcesses: PtyProcessInfo[] = []) {
     }
   })
   const provider = {
-    listProcesses: vi.fn().mockResolvedValue(providerProcesses),
+    listProcesses: vi.fn(async () => [...providerProcesses]),
     shutdown: vi.fn().mockResolvedValue(undefined)
   }
   const runtime = new OrcaRuntimeService(
@@ -73,6 +75,24 @@ function createRuntime(providerProcesses: PtyProcessInfo[] = []) {
     }
   )
   return { runtime, repos, removeProject, removeProjectForHost, provider }
+}
+
+async function spawnPidFixture(): Promise<ChildProcess> {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1_000)'], {
+    stdio: 'ignore',
+    windowsHide: true
+  })
+  await once(child, 'spawn')
+  return child
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
+  }
 }
 
 describe('repo.rm with the same repo id on two execution hosts', () => {
@@ -183,6 +203,93 @@ describe('repo.rm with the same repo id on two execution hosts', () => {
     releaseSpawn()
     await expect(removal).resolves.toEqual({ removed: true })
     expect(provider.listProcesses).toHaveBeenCalledTimes(1)
+  })
+
+  it('drains an admitted uncatalogued-worktree spawn before project inventory', async () => {
+    const providerProcesses: PtyProcessInfo[] = []
+    const { runtime, repos, provider } = createRuntime(providerProcesses)
+    const worktreeId = 'dup::/remote/uncatalogued'
+    const releaseSpawn = await runtime.acquireWorktreeTerminalSpawn(worktreeId, 'ssh-1')
+    let child: ChildProcess | undefined
+    let spawnReleased = false
+    try {
+      let inventoryObserved!: () => void
+      const inventoryStarted = new Promise<void>((resolve) => {
+        inventoryObserved = resolve
+      })
+      provider.listProcesses.mockImplementation(async () => {
+        inventoryObserved()
+        return [...providerProcesses]
+      })
+
+      const removal = runtime.removeProject('path:/remote/dup')
+      const phase = await Promise.race([
+        inventoryStarted.then(() => 'inventory' as const),
+        new Promise<'spawn-drain'>((resolve) => setImmediate(() => resolve('spawn-drain')))
+      ])
+      if (phase === 'inventory') {
+        await removal
+      }
+
+      child = await spawnPidFixture()
+      const pid = child.pid
+      if (!pid) {
+        throw new Error('PID fixture did not expose its process id')
+      }
+      const ptyId = `${worktreeId}@@${pid}`
+      providerProcesses.push({ id: ptyId, cwd: '/remote/uncatalogued', title: 'codex', worktreeId })
+      provider.shutdown.mockImplementation(async (id: string) => {
+        if (id !== ptyId || !child || !isProcessAlive(pid)) {
+          return
+        }
+        child.kill('SIGKILL')
+        await once(child, 'exit')
+      })
+
+      releaseSpawn()
+      spawnReleased = true
+      await removal
+
+      expect(isProcessAlive(pid), `orphaned exact PID ${pid}`).toBe(false)
+      expect(phase).toBe('spawn-drain')
+      expect(repos.map((repo) => repo.path)).toEqual(['/laptop/dup'])
+    } finally {
+      if (!spawnReleased) {
+        releaseSpawn()
+      }
+      if (child?.pid && isProcessAlive(child.pid)) {
+        child.kill('SIGKILL')
+        await once(child, 'exit').catch(() => undefined)
+      }
+    }
+  })
+
+  it('bounds an admitted spawn drain and leaves project removal retryable', async () => {
+    vi.useFakeTimers()
+    let releaseSpawn: (() => void) | undefined
+    try {
+      const { runtime, repos, provider } = createRuntime()
+      const acquiredReleaseSpawn = await runtime.acquireWorktreeTerminalSpawn(
+        'dup::/remote/uncatalogued',
+        'ssh-1'
+      )
+      releaseSpawn = acquiredReleaseSpawn
+      const removal = runtime.removeProject('path:/remote/dup')
+      const rejection = expect(removal).rejects.toThrow('Project terminal spawn drain timed out')
+
+      await vi.advanceTimersByTimeAsync(10_001)
+      await rejection
+      expect(provider.listProcesses).not.toHaveBeenCalled()
+      expect(repos).toHaveLength(2)
+
+      acquiredReleaseSpawn()
+      releaseSpawn = undefined
+      await expect(runtime.removeProject('path:/remote/dup')).resolves.toEqual({ removed: true })
+      expect(provider.listProcesses).toHaveBeenCalledTimes(1)
+    } finally {
+      releaseSpawn?.()
+      vi.useRealTimers()
+    }
   })
 
   it('releases the removal fence when catalog deletion fails', async () => {

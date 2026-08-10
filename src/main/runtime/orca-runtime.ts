@@ -2710,6 +2710,8 @@ export class OrcaRuntimeService {
   // Why: concurrent clients sleeping one host workspace must share one physical teardown.
   private terminalSleepByWorktreeId = new Map<string, Promise<RuntimeWorktreeTerminalSleepResult>>()
   private terminalMutationTailByWorktreeId = new Map<string, Promise<void>>()
+  private activeTerminalSpawnCountByProjectKey = new Map<string, number>()
+  private terminalSpawnDrainWaitersByProjectKey = new Map<string, Set<() => void>>()
   private terminalSleepStateByWorktreeId = new Map<
     string,
     {
@@ -19091,6 +19093,11 @@ export class OrcaRuntimeService {
     }
     this.removingProjectKeys.add(removalKey)
     try {
+      await this.waitForActiveProjectTerminalSpawns(
+        removalKey,
+        Date.now() + WORKTREE_PROCESS_SWEEP_TIMEOUT_MS,
+        repo.id
+      )
       await this.stopProjectTerminalsBeforeRemoval(repo)
       return this.removeResolvedProject(repo)
     } finally {
@@ -27577,28 +27584,105 @@ export class OrcaRuntimeService {
     if (this.removingProjectKeys.has(projectKey)) {
       throw new Error(`Project removal in progress: ${getRepoIdFromWorktreeId(worktreeId)}`)
     }
-    const release = await this.acquireWorktreeTerminalMutation(worktreeId, { hostId })
-    if (
-      this.removingProjectKeys.has(projectKey) ||
-      (repoExistedBeforeLease && !this.hasRepoIdentity(repoId, hostId))
-    ) {
+    const releaseProjectSpawn = this.beginProjectTerminalSpawn(projectKey)
+    let releaseWorktreeSpawn = (): void => {}
+    let released = false
+    const release = (): void => {
+      if (released) {
+        return
+      }
+      released = true
+      releaseWorktreeSpawn()
+      releaseProjectSpawn()
+    }
+    try {
+      releaseWorktreeSpawn = await this.acquireWorktreeTerminalMutation(worktreeId, { hostId })
+      if (
+        this.removingProjectKeys.has(projectKey) ||
+        (repoExistedBeforeLease && !this.hasRepoIdentity(repoId, hostId))
+      ) {
+        throw new Error(`Project removal in progress: ${repoId}`)
+      }
+      const key = runtimeWorktreeIdentityKey(worktreeId)
+      const sleepState = this.terminalSleepStateByWorktreeId.get(key)
+      if (sleepState?.phase === 'sleeping' || sleepState?.phase === 'partial') {
+        this.terminalSleepStateByWorktreeId.delete(key)
+        this.emitClientEvent({
+          type: 'worktreeTerminalSleepState',
+          worktreeId: sleepState.worktreeId,
+          generation: sleepState.generation,
+          phase: 'woken',
+          ptyIds: sleepState.ptyIds,
+          terminalHandles: sleepState.terminalHandles
+        })
+      }
+      return release
+    } catch (error) {
       release()
-      throw new Error(`Project removal in progress: ${repoId}`)
+      throw error
     }
-    const key = runtimeWorktreeIdentityKey(worktreeId)
-    const sleepState = this.terminalSleepStateByWorktreeId.get(key)
-    if (sleepState?.phase === 'sleeping' || sleepState?.phase === 'partial') {
-      this.terminalSleepStateByWorktreeId.delete(key)
-      this.emitClientEvent({
-        type: 'worktreeTerminalSleepState',
-        worktreeId: sleepState.worktreeId,
-        generation: sleepState.generation,
-        phase: 'woken',
-        ptyIds: sleepState.ptyIds,
-        terminalHandles: sleepState.terminalHandles
-      })
+  }
+
+  private beginProjectTerminalSpawn(projectKey: string): () => void {
+    this.activeTerminalSpawnCountByProjectKey.set(
+      projectKey,
+      (this.activeTerminalSpawnCountByProjectKey.get(projectKey) ?? 0) + 1
+    )
+    let released = false
+    return () => {
+      if (released) {
+        return
+      }
+      released = true
+      const remaining = (this.activeTerminalSpawnCountByProjectKey.get(projectKey) ?? 1) - 1
+      if (remaining > 0) {
+        this.activeTerminalSpawnCountByProjectKey.set(projectKey, remaining)
+        return
+      }
+      this.activeTerminalSpawnCountByProjectKey.delete(projectKey)
+      const waiters = this.terminalSpawnDrainWaitersByProjectKey.get(projectKey)
+      this.terminalSpawnDrainWaitersByProjectKey.delete(projectKey)
+      for (const resolve of waiters ?? []) {
+        resolve()
+      }
     }
-    return release
+  }
+
+  private async waitForActiveProjectTerminalSpawns(
+    projectKey: string,
+    deadline: number,
+    repoId: string
+  ): Promise<void> {
+    if (!this.activeTerminalSpawnCountByProjectKey.has(projectKey)) {
+      return
+    }
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) {
+      throw new Error(`Project terminal spawn drain timed out: ${repoId}`)
+    }
+    await new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const finish = (): void => {
+        if (timer) {
+          clearTimeout(timer)
+        }
+        this.terminalSpawnDrainWaitersByProjectKey.get(projectKey)?.delete(finish)
+        resolve()
+      }
+      const waiters = this.terminalSpawnDrainWaitersByProjectKey.get(projectKey) ?? new Set()
+      waiters.add(finish)
+      this.terminalSpawnDrainWaitersByProjectKey.set(projectKey, waiters)
+      timer = setTimeout(() => {
+        waiters.delete(finish)
+        if (waiters.size === 0) {
+          this.terminalSpawnDrainWaitersByProjectKey.delete(projectKey)
+        }
+        reject(new Error(`Project terminal spawn drain timed out: ${repoId}`))
+      }, remainingMs)
+      if (!this.activeTerminalSpawnCountByProjectKey.has(projectKey)) {
+        finish()
+      }
+    })
   }
 
   private async acquireWorktreeTerminalMutation(
