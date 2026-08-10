@@ -3311,7 +3311,7 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
       const worktreeIds = getKnownRepoWorktreeIds(get(), projectId, ownerHostId)
       if (target.kind === 'environment') {
         // Why: repo.rm drops the runtime's catalog row; stop remote PTYs while the worktree selector still resolves.
-        await Promise.allSettled(
+        const stopResults = await Promise.allSettled(
           worktreeIds.map((worktreeId) =>
             callRuntimeRpc(
               target,
@@ -3321,6 +3321,14 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
             )
           )
         )
+        const stopFailure = stopResults.find(
+          (result) =>
+            result.status === 'rejected' &&
+            !hasRuntimeRpcErrorCode(result.reason, 'selector_not_found')
+        )
+        if (stopFailure?.status === 'rejected') {
+          throw stopFailure.reason
+        }
       }
       // Why: repos:remove is id-only and would delete every host's row; scope local removal to the owning host so cross-host duplicates keep other rows.
       const idExistsOnOtherHost = get().repos.some(
@@ -3349,26 +3357,15 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
 
       // Kill PTYs for all worktrees belonging to this repo
       const killedTabIds = new Set<string>()
-      const ptyIdsToKill = new Set<string>()
       for (const wId of worktreeIds) {
         const tabs = get().tabsByWorktree[wId] ?? []
         for (const tab of tabs) {
           killedTabIds.add(tab.id)
           for (const ptyId of get().ptyIdsByTabId[tab.id] ?? []) {
-            ptyIdsToKill.add(ptyId)
+            if (!ptyId.startsWith('remote:')) {
+              window.api.pty.kill(ptyId)
+            }
           }
-          if (tab.ptyId) {
-            ptyIdsToKill.add(tab.ptyId)
-          }
-          const lastKnownRelayPtyId = get().lastKnownRelayPtyIdByTabId[tab.id]
-          if (lastKnownRelayPtyId) {
-            ptyIdsToKill.add(lastKnownRelayPtyId)
-          }
-        }
-      }
-      for (const ptyId of ptyIdsToKill) {
-        if (!ptyId.startsWith('remote:')) {
-          window.api.pty.kill(ptyId)
         }
       }
 

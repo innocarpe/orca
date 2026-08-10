@@ -972,7 +972,12 @@ import {
   getTerminalViewColorQueryReplyColors,
   registerTerminalViewAttributesApplier
 } from './terminal-view-attribute-store'
-import { killAllProcessesForWorktree, teardownRpcDeadline } from './worktree-teardown'
+import {
+  killAllProcessesForWorktree,
+  teardownRpcDeadline,
+  WORKTREE_PROCESS_SWEEP_TIMEOUT_MS
+} from './worktree-teardown'
+import { listRegisteredPtys } from '../memory/pty-registry'
 import { stopMissingWorktreeTerminals } from './missing-worktree-terminal-reconciliation'
 import {
   MobileNotificationReplayBuffer,
@@ -3182,6 +3187,7 @@ export class OrcaRuntimeService {
   private canonicalFetchKeyCache = new Map<string, string>()
   private optimisticReconcileTokens = new Map<string, string>()
   private removeManagedWorktreeInFlight = new Map<string, RuntimeWorktreeRemovalInFlight>()
+  private removingProjectIds = new Set<string>()
   private preservedBranchCleanupByWorktreeId = new Map<string, PreservedBranchCleanupTarget>()
   private readonly getLocalProviderFn: (() => IPtyProvider) | null
   private readonly getSshProviderFn: ((connectionId: string) => IPtyProvider | undefined) | null
@@ -19072,19 +19078,36 @@ export class OrcaRuntimeService {
       throw new Error('runtime_unavailable')
     }
     const repo = await this.resolveRepoSelector(repoSelector)
+    if (this.removingProjectIds.has(repo.id)) {
+      throw new Error(`Project removal already in progress: ${repo.id}`)
+    }
+    this.removingProjectIds.add(repo.id)
+    try {
+      await this.stopProjectTerminalsBeforeRemoval(repo)
+      return this.removeResolvedProject(repo)
+    } finally {
+      this.removingProjectIds.delete(repo.id)
+    }
+  }
+
+  private removeResolvedProject(repo: Repo): { removed: true } {
+    const store = this.store
+    if (!store?.removeProject) {
+      throw new Error('runtime_unavailable')
+    }
     // Why: removeProject is id-only, but the same id may be registered on a sibling
     // execution host; a path:/name: selector resolves one row and must remove only it.
     const hostId = getRepoExecutionHostId(repo)
-    const idExistsOnOtherHost = this.store
+    const idExistsOnOtherHost = store
       .getRepos()
       .some((entry) => entry.id === repo.id && getRepoExecutionHostId(entry) !== hostId)
     if (idExistsOnOtherHost) {
-      if (!this.store.removeProjectForHost) {
+      if (!store.removeProjectForHost) {
         throw new Error('runtime_unavailable')
       }
-      this.store.removeProjectForHost(repo.id, hostId)
+      store.removeProjectForHost(repo.id, hostId)
     } else {
-      this.store.removeProject(repo.id)
+      store.removeProject(repo.id)
     }
     this.terminalTopologyRevisionByRepoId.delete(repo.id)
     this.invalidateResolvedWorktreeCache()
@@ -19092,6 +19115,105 @@ export class OrcaRuntimeService {
     invalidateAuthorizedRootsCache()
     this.notifyReposChanged()
     return { removed: true }
+  }
+
+  private async stopProjectTerminalsBeforeRemoval(repo: Repo): Promise<void> {
+    const provider = repo.connectionId
+      ? this.getSshProviderFn?.(repo.connectionId)
+      : this.getLocalProvider()
+    if (!provider) {
+      throw new Error(`PTY provider unavailable for project removal: ${repo.id}`)
+    }
+    const releases: (() => void)[] = []
+    try {
+      const knownWorktreeIds = this.getProjectRemovalWorktreeIds(repo, [])
+      for (const worktreeId of [...knownWorktreeIds].sort()) {
+        releases.push(await this.acquireWorktreeTerminalMutation(worktreeId))
+      }
+      const deadline = Date.now() + WORKTREE_PROCESS_SWEEP_TIMEOUT_MS
+      const providerProcesses = await provider.listProcesses({
+        deadlineMs: teardownRpcDeadline(deadline)
+      })
+      const worktreeIds = this.getProjectRemovalWorktreeIds(repo, providerProcesses)
+      const stopAttempts = new Map<string, Promise<boolean>>()
+      const results = await Promise.all(
+        [...worktreeIds].map((worktreeId) =>
+          killAllProcessesForWorktree(worktreeId, {
+            runtime: this,
+            resolvedWorktreeId: worktreeId,
+            ...(repo.connectionId ? { resolvedConnectionId: repo.connectionId } : {}),
+            localProvider: provider,
+            onPtyStopped: this.onPtyStopped ?? undefined,
+            requirePhysicalStop: true,
+            includeLocalRegistry: !repo.connectionId,
+            providerProcesses,
+            stopAttempts
+          })
+        )
+      )
+      const stopped = results.reduce(
+        (count, result) =>
+          count + result.runtimeStopped + result.providerStopped + result.registryStopped,
+        0
+      )
+      if (stopped > 0) {
+        console.info(`[project-removal] ${repo.id} stopped ${stopped} PTY registrations`)
+      }
+    } finally {
+      for (const release of releases.toReversed()) {
+        release()
+      }
+    }
+  }
+
+  private getProjectRemovalWorktreeIds(
+    repo: Repo,
+    providerProcesses: readonly PtyProcessInfo[]
+  ): Set<string> {
+    const worktreeIds = new Set<string>([`${repo.id}${WORKTREE_ID_SEPARATOR}${repo.path}`])
+    const hostId = getRepoExecutionHostId(repo)
+    const hasSameIdOnOtherHost =
+      this.store
+        ?.getRepos()
+        .some(
+          (candidate) => candidate.id === repo.id && getRepoExecutionHostId(candidate) !== hostId
+        ) ?? false
+    const add = (worktreeId: string | null | undefined): void => {
+      if (worktreeId && getRepoIdFromWorktreeId(worktreeId) === repo.id) {
+        worktreeIds.add(worktreeId)
+      }
+    }
+
+    for (const [worktreeId, meta] of Object.entries(this.store?.getAllWorktreeMeta() ?? {})) {
+      if (meta.hostId === hostId || (!meta.hostId && !hasSameIdOnOtherHost)) {
+        add(worktreeId)
+      }
+    }
+    for (const worktreeId of Object.keys(
+      this.store?.getWorkspaceSession?.(hostId)?.tabsByWorktree ?? {}
+    )) {
+      add(worktreeId)
+    }
+    for (const leaf of this.leaves.values()) {
+      const connectionId = leaf.ptyId ? (this.ptysById.get(leaf.ptyId)?.connectionId ?? null) : null
+      if (connectionId === (repo.connectionId ?? null)) {
+        add(leaf.worktreeId)
+      }
+    }
+    for (const pty of this.ptysById.values()) {
+      if ((pty.connectionId ?? null) === (repo.connectionId ?? null)) {
+        add(pty.worktreeId)
+      }
+    }
+    if (!repo.connectionId) {
+      for (const registration of listRegisteredPtys()) {
+        add(registration.worktreeId)
+      }
+    }
+    for (const process of providerProcesses) {
+      add(process.worktreeId ?? inferWorktreeIdFromPtyId(process.id))
+    }
+    return worktreeIds
   }
 
   async inspectTerminalProcess(
@@ -27432,6 +27554,9 @@ export class OrcaRuntimeService {
   async acquireWorktreeTerminalSpawn(worktreeId?: string): Promise<() => void> {
     if (!worktreeId) {
       return () => {}
+    }
+    if (this.removingProjectIds.has(getRepoIdFromWorktreeId(worktreeId))) {
+      throw new Error(`Project removal in progress: ${getRepoIdFromWorktreeId(worktreeId)}`)
     }
     const release = await this.acquireWorktreeTerminalMutation(worktreeId)
     const key = runtimeWorktreeIdentityKey(worktreeId)

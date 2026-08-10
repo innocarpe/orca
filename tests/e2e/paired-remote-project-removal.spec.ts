@@ -1,11 +1,15 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
+import { DaemonClient } from '../../src/main/daemon/client'
+import { getDaemonSocketPath, getDaemonTokenPath } from '../../src/main/daemon/daemon-spawner'
 import { expect, test } from './helpers/orca-app'
 import {
   createRuntimeDesktopPairingOffer,
   launchPairedElectronClient
 } from './helpers/paired-electron-client'
+import { launchHeadlessPairedRuntimeHost } from './helpers/headless-paired-runtime-host'
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`
@@ -34,7 +38,32 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+async function spawnDetachedDaemonSession(
+  userDataDir: string,
+  worktreeId: string,
+  cwd: string,
+  command: string
+): Promise<{ client: DaemonClient; sessionId: string }> {
+  const runtimeDir = path.join(userDataDir, 'daemon')
+  const client = new DaemonClient({
+    socketPath: getDaemonSocketPath(runtimeDir),
+    tokenPath: getDaemonTokenPath(runtimeDir)
+  })
+  await client.ensureConnected()
+  const sessionId = `${worktreeId}@@${randomUUID()}`
+  await client.request('createOrAttach', {
+    sessionId,
+    cols: 120,
+    rows: 40,
+    cwd,
+    command,
+    launchAgent: 'codex'
+  })
+  return { client, sessionId }
+}
+
 test('removing a project stops its headed remote-runtime PTYs @headful', async ({
+  electronApp,
   orcaPage,
   testRepoPath
 }, testInfo) => {
@@ -50,7 +79,7 @@ test('removing a project stops its headed remote-runtime PTYs @headful', async (
     ].join('\n')
   )
 
-  let ptyId = ''
+  let daemonSession: Awaited<ReturnType<typeof spawnDetachedDaemonSession>> | undefined
   let pid = 0
   let client: Awaited<ReturnType<typeof launchPairedElectronClient>> | undefined
   try {
@@ -66,24 +95,12 @@ test('removing a project stops its headed remote-runtime PTYs @headful', async (
       return { repoId: repo.id, worktreeId: worktree.id }
     }, testRepoPath)
 
-    ptyId = await orcaPage.evaluate(
-      async ({ command, cwd, worktreeId }) => {
-        const result = await window.api.pty.spawn({
-          cols: 120,
-          rows: 40,
-          command,
-          cwd,
-          initiallyHidden: true,
-          launchAgent: 'codex',
-          worktreeId
-        })
-        return result.id
-      },
-      {
-        command: fixtureCommand(fixturePath, markerPath),
-        cwd: testRepoPath,
-        worktreeId: owner.worktreeId
-      }
+    const userDataDir = await electronApp.evaluate(({ app }) => app.getPath('userData'))
+    daemonSession = await spawnDetachedDaemonSession(
+      userDataDir,
+      owner.worktreeId,
+      testRepoPath,
+      fixtureCommand(fixturePath, markerPath)
     )
 
     await expect.poll(() => readPid(markerPath), { timeout: 20_000 }).toBeGreaterThan(0)
@@ -135,9 +152,111 @@ test('removing a project stops its headed remote-runtime PTYs @headful', async (
     await expect.poll(() => isProcessAlive(pid), { timeout: 20_000 }).toBe(false)
   } finally {
     await client?.dispose().catch(() => undefined)
-    if (ptyId) {
-      await orcaPage.evaluate((id) => window.api.pty.kill(id), ptyId).catch(() => undefined)
+    if (daemonSession) {
+      await daemonSession.client
+        .request('kill', { sessionId: daemonSession.sessionId, immediate: true })
+        .catch(() => undefined)
+      daemonSession.client.disconnect()
     }
+    if (isProcessAlive(pid)) {
+      try {
+        process.kill(pid, 'SIGKILL')
+      } catch {
+        // Already exited.
+      }
+    }
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+test('removing a project stops its headless remote-runtime PTYs @headful', async ({
+  testRepoPath
+}, testInfo) => {
+  test.setTimeout(180_000)
+  const scratch = mkdtempSync(path.join(os.tmpdir(), 'orca-headless-project-removal-'))
+  const markerPath = path.join(scratch, 'agent.pid')
+  const fixturePath = path.join(scratch, 'agent-fixture.cjs')
+  writeFileSync(
+    fixturePath,
+    [
+      "require('node:fs').writeFileSync(process.argv[2], String(process.pid))",
+      "process.stdout.write('READY\\r\\n')",
+      'setInterval(() => {}, 1_000)'
+    ].join('\n')
+  )
+
+  const host = await launchHeadlessPairedRuntimeHost()
+  let pid = 0
+  let daemonSession: Awaited<ReturnType<typeof spawnDetachedDaemonSession>> | undefined
+  let client: Awaited<ReturnType<typeof launchPairedElectronClient>> | undefined
+  try {
+    const added = await host.client.call<{ repo: { id: string } }>('repo.add', {
+      path: testRepoPath,
+      kind: 'git'
+    })
+    let worktreeId = ''
+    await expect
+      .poll(async () => {
+        const listed = await host.client.call<{ worktrees: { id: string }[] }>('worktree.list', {
+          repo: `id:${added.result.repo.id}`
+        })
+        worktreeId = listed.result.worktrees[0]?.id ?? ''
+        return worktreeId
+      })
+      .not.toBe('')
+    daemonSession = await spawnDetachedDaemonSession(
+      host.userDataDir,
+      worktreeId,
+      testRepoPath,
+      fixtureCommand(fixturePath, markerPath)
+    )
+
+    await expect.poll(() => readPid(markerPath), { timeout: 20_000 }).toBeGreaterThan(0)
+    pid = readPid(markerPath)
+    client = await launchPairedElectronClient(host.offer, testInfo, 'headless-project-removal-host')
+    await expect
+      .poll(
+        () =>
+          client?.page.evaluate(async (repoId) => {
+            const store = window.__store
+            if (!store) {
+              return false
+            }
+            await store.getState().fetchRepos()
+            const repo = store.getState().repos.find((candidate) => candidate.id === repoId)
+            if (!repo) {
+              return false
+            }
+            await store.getState().fetchWorktrees(repo.id)
+            return (store.getState().worktreesByRepo[repo.id]?.length ?? 0) > 0
+          }, added.result.repo.id) ?? false,
+        { timeout: 30_000 }
+      )
+      .toBe(true)
+
+    await client.page.evaluate(async (repoId) => {
+      await window.__store?.getState().removeProject(repoId)
+    }, added.result.repo.id)
+
+    await expect
+      .poll(
+        () =>
+          client?.page.evaluate(
+            (repoId) => !window.__store?.getState().repos.some((repo) => repo.id === repoId)
+          ),
+        { timeout: 20_000 }
+      )
+      .toBe(true)
+    await expect.poll(() => isProcessAlive(pid), { timeout: 20_000 }).toBe(false)
+  } finally {
+    await client?.dispose().catch(() => undefined)
+    if (daemonSession) {
+      await daemonSession.client
+        .request('kill', { sessionId: daemonSession.sessionId, immediate: true })
+        .catch(() => undefined)
+      daemonSession.client.disconnect()
+    }
+    await host.dispose()
     if (isProcessAlive(pid)) {
       try {
         process.kill(pid, 'SIGKILL')
