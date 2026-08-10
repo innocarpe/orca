@@ -1,5 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { DaemonClient } from '../../src/main/daemon/client'
@@ -24,6 +25,23 @@ function fixtureCommand(scriptPath: string, markerPath: string): string {
 
 function readPid(markerPath: string): number {
   return existsSync(markerPath) ? Number(readFileSync(markerPath, 'utf8').trim()) : 0
+}
+
+function createRemovalTestRepo(): string {
+  const repoPath = mkdtempSync(path.join(os.tmpdir(), 'orca-project-removal-repo-'))
+  execFileSync('git', ['init'], { cwd: repoPath, stdio: 'ignore' })
+  execFileSync('git', ['config', 'user.email', 'e2e@test.local'], {
+    cwd: repoPath,
+    stdio: 'ignore'
+  })
+  execFileSync('git', ['config', 'user.name', 'E2E Test'], {
+    cwd: repoPath,
+    stdio: 'ignore'
+  })
+  writeFileSync(path.join(repoPath, 'README.md'), '# Project removal E2E\n')
+  execFileSync('git', ['add', 'README.md'], { cwd: repoPath, stdio: 'ignore' })
+  execFileSync('git', ['commit', '-m', 'Initial commit'], { cwd: repoPath, stdio: 'ignore' })
+  return repoPath
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -96,9 +114,10 @@ test('removing a project stops its headed remote-runtime PTYs @headful', async (
     }, testRepoPath)
 
     const userDataDir = await electronApp.evaluate(({ app }) => app.getPath('userData'))
+    const sleepingWorktreeId = `${owner.repoId}::${path.join(testRepoPath, 'sleeping-agent')}`
     daemonSession = await spawnDetachedDaemonSession(
       userDataDir,
-      owner.worktreeId,
+      sleepingWorktreeId,
       testRepoPath,
       fixtureCommand(fixturePath, markerPath)
     )
@@ -170,12 +189,13 @@ test('removing a project stops its headed remote-runtime PTYs @headful', async (
 })
 
 test('removing a project stops its headless remote-runtime PTYs @headful', async ({
-  testRepoPath
+  testRepoPath: _testRepoPath
 }, testInfo) => {
   test.setTimeout(180_000)
   const scratch = mkdtempSync(path.join(os.tmpdir(), 'orca-headless-project-removal-'))
   const markerPath = path.join(scratch, 'agent.pid')
   const fixturePath = path.join(scratch, 'agent-fixture.cjs')
+  const testRepoPath = createRemovalTestRepo()
   writeFileSync(
     fixturePath,
     [
@@ -190,24 +210,14 @@ test('removing a project stops its headless remote-runtime PTYs @headful', async
   let daemonSession: Awaited<ReturnType<typeof spawnDetachedDaemonSession>> | undefined
   let client: Awaited<ReturnType<typeof launchPairedElectronClient>> | undefined
   try {
-    const added = await host.client.call<{ repo: { id: string } }>('repo.add', {
+    const added = await host.client.call<{ repo: { id: string; path: string } }>('repo.add', {
       path: testRepoPath,
       kind: 'git'
     })
-    let worktreeId = ''
-    await expect
-      .poll(async () => {
-        const listed = await host.client.call<{ worktrees: { id: string }[] }>('worktree.list', {
-          repo: `id:${added.result.repo.id}`
-        })
-        worktreeId = listed.result.worktrees[0]?.id ?? ''
-        return worktreeId
-      })
-      .not.toBe('')
     daemonSession = await spawnDetachedDaemonSession(
       host.userDataDir,
-      worktreeId,
-      testRepoPath,
+      `${added.result.repo.id}::${path.join(added.result.repo.path, 'sleeping-agent')}`,
+      added.result.repo.path,
       fixtureCommand(fixturePath, markerPath)
     )
 
@@ -224,11 +234,7 @@ test('removing a project stops its headless remote-runtime PTYs @headful', async
             }
             await store.getState().fetchRepos()
             const repo = store.getState().repos.find((candidate) => candidate.id === repoId)
-            if (!repo) {
-              return false
-            }
-            await store.getState().fetchWorktrees(repo.id)
-            return (store.getState().worktreesByRepo[repo.id]?.length ?? 0) > 0
+            return Boolean(repo)
           }, added.result.repo.id) ?? false,
         { timeout: 30_000 }
       )
@@ -265,5 +271,6 @@ test('removing a project stops its headless remote-runtime PTYs @headful', async
       }
     }
     rmSync(scratch, { recursive: true, force: true })
+    rmSync(testRepoPath, { recursive: true, force: true })
   }
 })
