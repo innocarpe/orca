@@ -80,7 +80,7 @@ async function spawnDetachedDaemonSession(
   return { client, sessionId }
 }
 
-test('removing a local project stops a sleeping PTY known only by its durable wake hint @headful', async ({
+test('removing a local project stops a sleeping PTY known only by its durable wake hint', async ({
   electronApp,
   orcaPage,
   testRepoPath
