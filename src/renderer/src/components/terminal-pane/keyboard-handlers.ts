@@ -410,19 +410,12 @@ export function useTerminalKeyboardShortcuts({
       if (!activePane) {
         return false
       }
-      const state = useAppStore.getState()
       const localSessionMetadata = paneTransportsRef.current
         .get(activePane.id)
         ?.getLocalSessionMetadata?.()
-      const tabShellOverride = state.tabsByWorktree[worktreeId]?.find(
-        (candidate) => candidate.id === tabId
-      )?.shellOverride
       return isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: isActivePaneWindowsTerminalHost(),
-        hasLocalSessionMetadata: localSessionMetadata != null,
-        sessionShellOverride: localSessionMetadata?.shellOverride,
-        tabShellOverride,
-        globalWindowsShell: state.settings?.terminalWindowsShell
+        sessionShellOverride: localSessionMetadata?.shellOverride
       })
     }
 

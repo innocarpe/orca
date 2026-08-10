@@ -120,10 +120,7 @@ describe('Windows Git Bash terminal-first Ctrl+W', () => {
     expect(
       isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: true,
-        hasLocalSessionMetadata: true,
-        sessionShellOverride: 'git-bash',
-        tabShellOverride: 'powershell.exe',
-        globalWindowsShell: 'cmd.exe'
+        sessionShellOverride: 'git-bash'
       })
     ).toBe(true)
   })
@@ -132,51 +129,26 @@ describe('Windows Git Bash terminal-first Ctrl+W', () => {
     expect(
       isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: true,
-        hasLocalSessionMetadata: true,
-        sessionShellOverride: 'powershell.exe',
-        globalWindowsShell: 'git-bash'
+        sessionShellOverride: 'powershell.exe'
       })
     ).toBe(false)
     expect(
       isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: true,
-        hasLocalSessionMetadata: true,
-        sessionShellOverride: 'cmd.exe',
-        globalWindowsShell: 'git-bash'
+        sessionShellOverride: 'cmd.exe'
       })
     ).toBe(false)
     expect(
       isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: true,
-        hasLocalSessionMetadata: false,
-        tabShellOverride: 'git-bash',
-        globalWindowsShell: 'git-bash'
+        sessionShellOverride: undefined
       })
     ).toBe(false)
     expect(
       isWindowsGitBashPaneForShortcut({
         isWindowsTerminalHost: false,
-        hasLocalSessionMetadata: true,
         sessionShellOverride: 'git-bash'
       })
     ).toBe(false)
-  })
-
-  it('falls back through the tab and global shell configuration', () => {
-    expect(
-      isWindowsGitBashPaneForShortcut({
-        isWindowsTerminalHost: true,
-        hasLocalSessionMetadata: true,
-        tabShellOverride: 'git-bash',
-        globalWindowsShell: 'powershell.exe'
-      })
-    ).toBe(true)
-    expect(
-      isWindowsGitBashPaneForShortcut({
-        isWindowsTerminalHost: true,
-        hasLocalSessionMetadata: true,
-        globalWindowsShell: 'git-bash'
-      })
-    ).toBe(true)
   })
 })
