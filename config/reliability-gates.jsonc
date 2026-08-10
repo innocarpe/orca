@@ -2000,7 +2000,7 @@
           "platform": "macos",
           "command": "SKIP_BUILD=1 pnpm exec playwright test tests/e2e/paired-remote-project-removal.spec.ts --config tests/playwright.config.ts --project electron-headful --workers=1",
           "result": "passed",
-          "durationSeconds": 10.2,
+          "durationSeconds": 11,
           "summary": "The headed and headless paired-runtime provider-only process oracles passed."
         }
       ],
@@ -2013,8 +2013,8 @@
         "evidence": "The two-topology E2E slice passed locally once; CI and soak history are pending."
       },
       "redGreenEvidence": {
-        "status": "partial",
-        "evidence": "Current main was red and the corrected candidate was green for the headed provider process oracle; the final disabled run and CI artifacts are pending."
+        "status": "complete",
+        "evidence": "The byte-identical headed and headless provider-only PID oracle failed on current main and on the authoritative runtime cleanup disabled, then passed on the corrected candidate; both red runs removed the visible catalog row while the exact host PID stayed alive beyond 20 seconds."
       },
       "performanceBudget": {
         "required": true,
