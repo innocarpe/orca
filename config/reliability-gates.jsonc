@@ -2012,10 +2012,19 @@
           "result": "passed",
           "durationSeconds": 53,
           "summary": "The local durable-wake-hint and headed/headless paired-runtime provider-only process oracles each passed three consecutive runs with visible catalog removal."
+        },
+        {
+          "date": "2026-08-11",
+          "runner": "local",
+          "platform": "macos",
+          "command": "pnpm exec vitest run --config config/vitest.config.ts src/main/runtime/runtime-remove-project-host-scope.test.ts src/main/runtime/worktree-teardown.test.ts src/renderer/src/store/slices/repos-project-removal.test.ts",
+          "result": "passed",
+          "durationSeconds": 6,
+          "summary": "The runtime host-scope, worktree-teardown, and renderer project-removal suites passed in one local run with 43 tests."
         }
       ],
       "runtimeBudget": {
-        "p95Seconds": 45,
+        "p95Seconds": 60,
         "scope": "one local and two isolated paired-runtime Electron journeys"
       },
       "flakeHistory": {

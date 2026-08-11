@@ -205,6 +205,30 @@ describe('repo.rm with the same repo id on two execution hosts', () => {
     expect(provider.listProcesses).toHaveBeenCalledTimes(1)
   })
 
+  it('uses a repo execution host for unqualified terminal spawn admission', async () => {
+    const { runtime, repos, provider } = createRuntime()
+    repos.push({
+      id: 'runtime-only',
+      path: '/runtime/only',
+      displayName: 'Runtime Only',
+      badgeColor: '#000',
+      addedAt: 3,
+      executionHostId: 'runtime:runtime-1'
+    } as Repo)
+
+    const releaseSpawn = await runtime.acquireWorktreeTerminalSpawn('runtime-only::/runtime/only')
+    const removal = runtime.removeProject('runtime-only')
+
+    await Promise.resolve()
+    await expect(
+      runtime.acquireWorktreeTerminalSpawn('runtime-only::/runtime/only')
+    ).rejects.toThrow('Project removal in progress')
+
+    releaseSpawn()
+    await expect(removal).resolves.toEqual({ removed: true })
+    expect(provider.listProcesses).toHaveBeenCalled()
+  })
+
   it('drains an admitted uncatalogued-worktree spawn before project inventory', async () => {
     const providerProcesses: PtyProcessInfo[] = []
     const { runtime, repos, provider } = createRuntime(providerProcesses)

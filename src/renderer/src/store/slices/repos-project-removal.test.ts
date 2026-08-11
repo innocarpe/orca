@@ -64,9 +64,9 @@ describe('project terminal removal', () => {
     })
     expect(ptyKill).toHaveBeenCalledWith('pty-local-stale')
     expect(ptyKill).toHaveBeenCalledWith('pty-current')
-    expect(ptyKill).not.toHaveBeenCalledWith('pty-last-known-relay')
+    expect(ptyKill).toHaveBeenCalledWith('pty-last-known-relay')
     expect(ptyKill).not.toHaveBeenCalledWith('remote:term-1')
-    expect(ptyKill).toHaveBeenCalledTimes(2)
+    expect(ptyKill).toHaveBeenCalledTimes(3)
   })
 
   it('stops remote terminals before removing the project from its runtime', async () => {

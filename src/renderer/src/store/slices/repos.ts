@@ -3358,7 +3358,13 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         const tabs = get().tabsByWorktree[wId] ?? []
         for (const tab of tabs) {
           killedTabIds.add(tab.id)
-          for (const ptyId of get().ptyIdsByTabId[tab.id] ?? []) {
+          const lastKnownRelayPtyId = get().lastKnownRelayPtyIdByTabId[tab.id]
+          const ptyIds = new Set<string>([
+            ...(get().ptyIdsByTabId[tab.id] ?? []),
+            ...(tab.ptyId ? [tab.ptyId] : []),
+            ...(lastKnownRelayPtyId ? [lastKnownRelayPtyId] : [])
+          ])
+          for (const ptyId of ptyIds) {
             if (!ptyId.startsWith('remote:')) {
               window.api.pty.kill(ptyId)
             }

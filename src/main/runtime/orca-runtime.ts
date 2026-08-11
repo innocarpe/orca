@@ -19141,15 +19141,16 @@ export class OrcaRuntimeService {
     }
     const releases: (() => void)[] = []
     try {
+      const deadline = Date.now() + WORKTREE_PROCESS_SWEEP_TIMEOUT_MS
       const knownWorktreeIds = this.getProjectRemovalWorktreeIds(repo, [])
       for (const worktreeId of [...knownWorktreeIds].sort()) {
         releases.push(
           await this.acquireWorktreeTerminalMutation(worktreeId, {
+            deadline,
             hostId: getRepoExecutionHostId(repo)
           })
         )
       }
-      const deadline = Date.now() + WORKTREE_PROCESS_SWEEP_TIMEOUT_MS
       const providerProcesses = await provider.listProcesses({
         deadlineMs: teardownRpcDeadline(deadline)
       })
@@ -27737,12 +27738,7 @@ export class OrcaRuntimeService {
     if (connectionId) {
       return toSshExecutionHostId(connectionId)
     }
-    const repo = this.store
-      ?.getRepos()
-      .find(
-        (candidate) =>
-          candidate.id === repoId && getRepoExecutionHostId(candidate) === LOCAL_EXECUTION_HOST_ID
-      )
+    const repo = this.store?.getRepos().find((candidate) => candidate.id === repoId)
     return repo ? getRepoExecutionHostId(repo) : LOCAL_EXECUTION_HOST_ID
   }
 
