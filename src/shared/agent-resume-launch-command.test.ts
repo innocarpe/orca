@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildClaudeResumeLaunchCommand } from './agent-resume-launch-command'
+import { COMMAND_TOKEN_SCAN_MAX_CHARS } from './command-token-scanner'
 import { buildAgentResumeStartupPlan, buildAgentStartupPlan } from './tui-agent-startup'
 import { tokenizeStartupCommand, type AgentStartupShell } from './tui-agent-startup-shell'
 
@@ -364,6 +365,13 @@ describe('buildClaudeResumeLaunchCommand', () => {
   it('fails open when the base cannot be tokenized', () => {
     expect(buildClaudeResumeLaunchCommand('claude "unterminated', RESUME, 'posix')).toBe(
       `claude "unterminated '--resume' '${SESSION_ID}'`
+    )
+  })
+
+  it('fails open before scanning an oversized persisted command', () => {
+    const base = `claude --resume stale ${'x'.repeat(COMMAND_TOKEN_SCAN_MAX_CHARS)}`
+    expect(buildClaudeResumeLaunchCommand(base, RESUME, 'posix')).toBe(
+      `${base} '--resume' '${SESSION_ID}'`
     )
   })
 

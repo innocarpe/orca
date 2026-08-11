@@ -1,4 +1,5 @@
 import type { ResumableTuiAgent } from './agent-session-resume'
+import { COMMAND_TOKEN_SCAN_MAX_CHARS } from './command-token-scanner'
 import {
   quoteStartupArg,
   tokenizeStartupCommand,
@@ -90,6 +91,11 @@ export function buildClaudeResumeLaunchCommand(
     return baseCommand
   }
   const appended = `${baseCommand} ${quotedResume}`
+  // Why: persisted commands may be pasted scripts; cold restore must not
+  // synchronously scan unbounded text.
+  if (baseCommand.length > COMMAND_TOKEN_SCAN_MAX_CHARS) {
+    return appended
+  }
   const tokenized = tokenizeStartupCommand(baseCommand, shell)
   if (!tokenized.ok) {
     return appended
