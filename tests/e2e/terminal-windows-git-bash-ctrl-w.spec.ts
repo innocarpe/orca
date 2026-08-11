@@ -74,9 +74,7 @@ async function activeTopology(
   }, tabId)
 }
 
-async function pressCtrlWAndSettleClose(page: Page, tabId: string): Promise<void> {
-  await focusActiveTerminalInput(page)
-  await page.keyboard.press('Control+w')
+async function settleTerminalClose(page: Page, tabId: string): Promise<void> {
   const confirmButton = page.getByRole('button', { name: /Stop and Close/i })
   await expect
     .poll(
@@ -89,6 +87,12 @@ async function pressCtrlWAndSettleClose(page: Page, tabId: string): Promise<void
       { timeout: 10_000, message: `Ctrl+W did not close terminal tab ${tabId}` }
     )
     .toBe(false)
+}
+
+async function pressCtrlWAndSettleClose(page: Page, tabId: string): Promise<void> {
+  await focusActiveTerminalInput(page)
+  await page.keyboard.press('Control+w')
+  await settleTerminalClose(page, tabId)
 }
 
 test.describe('Windows Git Bash Ctrl+W ownership', () => {
@@ -202,7 +206,7 @@ test.describe('Windows Git Bash Ctrl+W ownership', () => {
         })
       )
     })
-    await expect.poll(async () => (await activeTopology(orcaPage, tabId)).exists).toBe(false)
+    await settleTerminalClose(orcaPage, tabId)
   })
 
   test('Terminal-first Git Bash keeps global Ctrl+W ownership on a non-terminal surface', async ({
