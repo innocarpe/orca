@@ -12,7 +12,7 @@ import {
   WORKSPACE_FILE_PATH_MIME
 } from '@/lib/workspace-file-drag'
 import { executeOpenEditorPathMove } from '@/lib/execute-open-editor-path-move'
-import { useConfirmationDialog } from '@/components/confirmation-dialog'
+import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
 import { translate } from '@/i18n/i18n'
 import { commitFileExplorerOp } from './fileExplorerUndoRedo'
 import type { FileExplorerOperationOwner } from './file-explorer-types'
@@ -51,7 +51,7 @@ type UseFileExplorerDragDropResult = {
   setDragSourcePath: (
     path: string | null,
     isDirectory?: boolean,
-    selectionDirectoryFlags?: ReadonlyArray<readonly [string, boolean]>
+    selectionDirectoryFlags?: readonly (readonly [string, boolean])[]
   ) => void
   isRootDragOver: boolean
   /** True when a native OS file drag (Files) is hovering over the explorer */
@@ -132,13 +132,15 @@ export function useFileExplorerDragDrop({
     (
       path: string | null,
       isDirectory = false,
-      selectionDirectoryFlags?: ReadonlyArray<readonly [string, boolean]>
+      selectionDirectoryFlags?: readonly (readonly [string, boolean])[]
     ) => {
       setDragSourcePathState(path)
       if (path !== null) {
         dragSourceIsDirectoryRef.current = isDirectory
         lastDragSourceMetaRef.current = { path, isDirectory }
-        dragSourceDirectoryByPathRef.current = new Map(selectionDirectoryFlags ?? [[path, isDirectory]])
+        dragSourceDirectoryByPathRef.current = new Map(
+          selectionDirectoryFlags ?? [[path, isDirectory]]
+        )
         if (!dragSourceDirectoryByPathRef.current.has(path)) {
           dragSourceDirectoryByPathRef.current.set(path, isDirectory)
         }
@@ -261,7 +263,7 @@ export function useFileExplorerDragDrop({
             : false)
 
       const run = async (): Promise<void> => {
-        const mode = (useAppStore.getState().settings.confirmFileExplorerMove ??
+        const mode = (useAppStore.getState().settings?.confirmFileExplorerMove ??
           'never') as FileExplorerMoveConfirmMode
         if (shouldConfirmFileExplorerMove(mode, isDirectory)) {
           const fromLabel = formatFileExplorerMovePath(sourcePath, worktreePath)
