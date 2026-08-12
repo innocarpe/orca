@@ -5120,10 +5120,10 @@
           "codexSessionSource": "要匯入的 Codex 主目錄",
           "codexSessionSourceInfo": "關於匯入 Codex 歷史記錄",
           "codexSessionSourceTooltip": "Orca 在隔離的主目錄中執行 Codex。將此項指向您現有的 Codex 主目錄以匯入會話歷史記錄。留空則使用 ~/.codex。",
-          "03e1a5081a": "on {{value0}}",
-          "25a41a9aad": "Re-detect agents installed on the active server",
-          "remoteDetectionFailed": "Couldn’t detect installed agents. Check the host connection and try again.",
-          "retryDetection": "Retry"
+          "03e1a5081a": "位於 {{value0}}",
+          "25a41a9aad": "重新偵測作用中伺服器上已安裝的智慧體",
+          "remoteDetectionFailed": "無法偵測已安裝的智慧體。請檢查主機連線後重試。",
+          "retryDetection": "重試"
         },
         "AppIconSelector": {
           "d5a112dc9b": "下一個圖示",
@@ -13782,13 +13782,13 @@
     "bucket": {
       "attention": "需要你",
       "working": "執行中",
-      "idle": "Idle",
-      "empty": "None"
+      "idle": "閒置中",
+      "empty": "無"
     },
     "title": "智慧體",
     "total": "共 {{count}} 個",
     "card": {
-      "you": "You",
+      "you": "你",
       "time": {
         "justNow": "剛剛",
         "minutes": "{{count}} 分鐘",
@@ -13812,25 +13812,25 @@
   },
   "browser": {
     "loadFailure": {
-      "connectionNotSecure": "Connection isn't secure",
-      "cantReachHost": "Can't reach {{value0}}",
-      "cantLoadPage": "Can't load this page",
-      "certificateNameMismatch": "The certificate doesn't match {{value0}}.",
-      "certificateDateInvalid": "The certificate for {{value0}} isn't valid at the current date and time.",
-      "certificateAuthorityInvalid": "Orca doesn't trust the authority that issued the certificate for {{value0}}.",
-      "certificateVerificationFailed": "Orca couldn't verify the certificate for {{value0}}.",
-      "trustedCertificateGuidance": "For local development, use a trusted local certificate when possible.",
-      "retry": "Retry",
-      "copyAddress": "Copy Address",
-      "addressCopied": "Copied the current page address.",
-      "openExternally": "Open Externally",
-      "tryHttps": "Try HTTPS",
-      "proceedUnsafe": "Proceed Anyway (Unsafe)",
+      "connectionNotSecure": "連線不安全",
+      "cantReachHost": "無法連線到 {{value0}}",
+      "cantLoadPage": "無法載入此頁面",
+      "certificateNameMismatch": "憑證與 {{value0}} 不相符。",
+      "certificateDateInvalid": "{{value0}} 的憑證在目前日期和時間無效。",
+      "certificateAuthorityInvalid": "Orca 不信任簽發 {{value0}} 憑證的機構。",
+      "certificateVerificationFailed": "Orca 無法驗證 {{value0}} 的憑證。",
+      "trustedCertificateGuidance": "在本機開發時，請盡可能使用受信任的本機憑證。",
+      "retry": "重試",
+      "copyAddress": "複製地址",
+      "addressCopied": "已複製目前頁面的地址。",
+      "openExternally": "在外部開啟",
+      "tryHttps": "嘗試 HTTPS",
+      "proceedUnsafe": "仍要繼續（不安全）",
       "connecting": "連線中…",
-      "certificateChallengeExpired": "This certificate approval expired. Retry the page to request a new one.",
-      "certificateChallengeChanged": "The certificate request changed. Retry the page and review the new warning.",
-      "certificateChallengeUnavailable": "This certificate request is no longer available. Retry the page to request a new one.",
-      "certificateProceedFailed": "Orca could not approve this certificate request. Retry the page and try again."
+      "certificateChallengeExpired": "此憑證核准已過期。請重試頁面以要求新的核准。",
+      "certificateChallengeChanged": "憑證請求已變更。請重試頁面並檢查新的警告。",
+      "certificateChallengeUnavailable": "此憑證請求已不再可用。請重試頁面以要求新的核准。",
+      "certificateProceedFailed": "Orca 無法核准此憑證請求。請重試頁面並再試一次。"
     }
   }
 }
