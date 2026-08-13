@@ -101,6 +101,7 @@ export function createAutomationRun(
     terminalSessionId: null,
     terminalPaneKey: null,
     terminalPtyId: null,
+    completionAttribution: null,
     outputSnapshot: null,
     precheckResult: null,
     usage: null,
@@ -212,6 +213,9 @@ export function updateAutomationRun(
     terminalPtyId: Object.hasOwn(result, 'terminalPtyId')
       ? normalizeAutomationRunTerminalPtyId(result.terminalPtyId)
       : normalizeAutomationRunTerminalPtyId(current.terminalPtyId),
+    completionAttribution: Object.hasOwn(result, 'completionAttribution')
+      ? (result.completionAttribution ?? null)
+      : (current.completionAttribution ?? null),
     outputSnapshot: Object.hasOwn(result, 'outputSnapshot')
       ? normalizeAutomationRunOutputSnapshot(result.outputSnapshot)
       : normalizeAutomationRunOutputSnapshot(current.outputSnapshot),

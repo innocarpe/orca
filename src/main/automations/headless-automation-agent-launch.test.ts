@@ -86,6 +86,7 @@ function previousRun(overrides: Partial<AutomationRun> = {}): AutomationRun {
     terminalSessionId: 'tab-prev',
     terminalPaneKey: 'tab-prev:leaf-1',
     terminalPtyId: 'pty-prev',
+    completionAttribution: null,
     outputSnapshot: null,
     precheckResult: null,
     usage: null,
