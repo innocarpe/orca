@@ -7,8 +7,10 @@ import { submitPromptToAgentPty } from '@/lib/agent-paste-draft'
 import { findReusableAutomationSession } from '@/lib/automation-session-reuse'
 import { observeExistingAutomationSession } from '@/lib/automation-session-observer'
 import {
+  buildAutomationRunCompletionAttribution,
   createAutomationAgentSessionTracker,
-  noteAutomationAgentStatus
+  noteAutomationAgentStatus,
+  resolveAutomationRunUsageProvider
 } from '@/lib/automation-agent-session-attribution'
 import { launchWorktreeBackgroundTerminals } from '@/lib/launch-worktree-background-terminals'
 import { useAppStore } from '@/store'
@@ -341,6 +343,15 @@ export function useAutomationDispatchEvents(): void {
           // Why: bind completion to the primary provider session so nested same-pane
           // agents (SessionStart `claude -p`) cannot finalize the run early (#10999).
           const agentSessionTracker = createAutomationAgentSessionTracker()
+          let completionTerminalPaneKey: string | null = null
+          let completionTerminalPtyId: string | null = null
+          const buildCompletionAttribution = () =>
+            buildAutomationRunCompletionAttribution({
+              tracker: agentSessionTracker,
+              provider: resolveAutomationRunUsageProvider(automation.agentId),
+              terminalPtyId: completionTerminalPtyId,
+              terminalPaneKey: completionTerminalPaneKey
+            })
           let unsubscribeAgentStatus = (): void => {}
           let unsubscribeSessionObserver = (): void => {}
           let releaseReuseDispatchTab = (): void => {}
@@ -365,6 +376,7 @@ export function useAutomationDispatchEvents(): void {
                 workspaceId: worktree.id,
                 workspaceDisplayName: worktree.displayName,
                 outputSnapshot: getOutputSnapshot(),
+                completionAttribution: buildCompletionAttribution(),
                 precheckResult,
                 error: null
               })
@@ -406,6 +418,7 @@ export function useAutomationDispatchEvents(): void {
                 workspaceId: worktree.id,
                 workspaceDisplayName: worktree.displayName,
                 outputSnapshot: getOutputSnapshot(),
+                completionAttribution: code === 0 ? buildCompletionAttribution() : null,
                 precheckResult,
                 error: code === 0 ? null : `Automation process exited with code ${code}.`
               })
@@ -608,6 +621,8 @@ export function useAutomationDispatchEvents(): void {
                     observeAgentStatus(reusableSession.paneKey, reuseCompletionStartedAt, {
                       requireWorkingAfterStart: true
                     })
+                    completionTerminalPaneKey = reusableSession.paneKey
+                    completionTerminalPtyId = reusableSession.ptyId
                     await markDispatchResult({
                       runId: run.id,
                       status: 'dispatched',
@@ -688,6 +703,8 @@ export function useAutomationDispatchEvents(): void {
           const launchedTabId = result.tabId
           observeAgentStatus(result.paneKey, dispatchStartedAt)
           try {
+            completionTerminalPaneKey = result.paneKey
+            completionTerminalPtyId = result.ptyId
             await markDispatchResult({
               runId: run.id,
               status: 'dispatched',
