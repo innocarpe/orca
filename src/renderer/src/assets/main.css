@@ -700,6 +700,16 @@
   overflow: hidden;
 }
 
+/* Why: Windows acrylic renders behind the web contents, so the app root must not
+   paint an opaque --background over it (#8797). The class is only applied on the
+   desktop shell; chrome keeps its own tokens. */
+html.window-blur,
+html.window-blur body,
+html.window-blur #root,
+html.window-blur .app-layout {
+  background: transparent;
+}
+
 /* Why: native windows have a stable content box and need no wake-time viewport reflow. */
 html.native-shell,
 html.native-shell body,

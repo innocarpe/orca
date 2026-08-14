@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { buildAppFontFamily } from '@/lib/app-font-family'
+import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
+import { applyWindowBlurRootClass } from '@/lib/window-blur-root-class'
 import { applyDocumentTheme } from '../lib/document-theme'
 import { scheduleRuntimeGraphSync } from '../runtime/sync-runtime-graph'
 import { useAppStore } from '../store'
@@ -38,4 +40,13 @@ export function useDocumentAppearance(): void {
       buildAppFontFamily(settings?.appFontFamily)
     )
   }, [settings?.appFontFamily])
+
+  // Why: acrylic sits behind the web contents; an opaque app root hides it (#8797).
+  useEffect(() => {
+    applyWindowBlurRootClass(
+      document.documentElement,
+      settings?.windowBackgroundBlur ?? false,
+      !isPairedWebClientWindow()
+    )
+  }, [settings?.windowBackgroundBlur])
 }

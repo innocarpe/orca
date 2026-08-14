@@ -261,8 +261,8 @@ export function createMainWindow(
     return false
   })
   const blur = settings?.windowBackgroundBlur ?? false
-  // Why: blur uses platform APIs (macOS vibrancy, Windows acrylic, Linux none)
-  // and only applies at creation — changing the setting requires a restart.
+  // Why: only Windows acrylic is a supported visible material; macOS vibrancy+transparent
+  // stays off (#8482). Applies at creation only, so it needs a restart.
   const { backgroundColor, platformBlurOptions } = resolveMainWindowChromeOptions({
     platform: process.platform,
     blur,

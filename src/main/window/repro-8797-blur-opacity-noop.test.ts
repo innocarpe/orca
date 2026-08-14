@@ -1,12 +1,8 @@
 /**
- * Issue #8797 — Background Opacity + Window Blur have no visible effect on macOS.
+ * Issue #8797 — Window Blur + Background Opacity look like no-ops.
  *
- * Before: createMainWindow painted an always-opaque solid `backgroundColor`
- * even when blur enabled vibrancy+transparent, covering the blur layer so
- * terminalBackgroundOpacity only revealed that solid fill.
- *
- * After: resolveMainWindowChromeOptions uses a transparent window fill when
- * blur materials are active so lowered terminal alpha can reveal vibrancy.
+ * Current main already requests Windows acrylic, but an opaque window fill
+ * covers it. macOS vibrancy+transparent stays off (#8482).
  *
  * Re-run:
  *   pnpm exec vitest run --config config/vitest.config.ts \
@@ -23,30 +19,26 @@ import { resolveMainWindowChromeOptions } from './main-window-chrome-options'
 
 const createMainWindowSource = readFileSync(join(__dirname, 'createMainWindow.ts'), 'utf8')
 
-describe('#8797 macOS window blur + background opacity', () => {
+describe('#8797 window blur + background opacity', () => {
   it('wires createMainWindow through resolveMainWindowChromeOptions', () => {
     expect(createMainWindowSource).toMatch(
       /const\s+\{\s*backgroundColor,\s*platformBlurOptions\s*\}\s*=\s*resolveMainWindowChromeOptions\s*\(/
     )
     expect(createMainWindowSource).toMatch(/\.\.\.platformBlurOptions/)
-    expect(createMainWindowSource).toMatch(/only applies at creation/)
-    expect(createMainWindowSource).toMatch(/requires a restart/)
-    // No longer hard-codes an always-opaque fill next to the constructor.
+    expect(createMainWindowSource).toMatch(/needs a restart/)
     expect(createMainWindowSource).not.toMatch(
       /backgroundColor:\s*nativeTheme\.shouldUseDarkColors\s*\?\s*'#0a0a0a'\s*:\s*'#ffffff'/
     )
   })
 
-  it('does not cover macOS vibrancy with an opaque BrowserWindow fill', () => {
+  it('does not reintroduce macOS vibrancy or transparency (#8482)', () => {
     const chrome = resolveMainWindowChromeOptions({
       platform: 'darwin',
       blur: true,
       dark: true
     })
-    expect(chrome.platformBlurOptions.vibrancy).toBe('under-window')
-    expect(chrome.platformBlurOptions.transparent).toBe(true)
-    expect(chrome.platformBlurOptions.visualEffectState).toBe('active')
-    expect(chrome.backgroundColor).toBe('#00000000')
+    expect(chrome.platformBlurOptions).toEqual({})
+    expect(chrome.backgroundColor).toBe('#0a0a0a')
   })
 
   it('does not cover Windows acrylic with an opaque BrowserWindow fill', () => {
@@ -69,18 +61,17 @@ describe('#8797 macOS window blur + background opacity', () => {
     expect(theme.background).toBe('rgba(10, 10, 10, 0.3)')
   })
 
-  it('allows a transparent terminal to sit on a non-opaque window fill under blur', () => {
+  it('allows a transparent terminal to sit on a non-opaque Windows fill under blur', () => {
     const fullyTransparentTerminal = composeActiveTerminalTheme(
       { background: '#0a0a0a' },
       { terminalBackgroundOpacity: 0 }
     )
     expect(fullyTransparentTerminal.background).toBe('rgba(10, 10, 10, 0)')
     const chrome = resolveMainWindowChromeOptions({
-      platform: 'darwin',
+      platform: 'win32',
       blur: true,
       dark: true
     })
-    // Fully transparent xterm + transparent window fill ⇒ desktop/vibrancy can show.
-    expect(chrome.backgroundColor).toMatch(/00$|#00000000/i)
+    expect(chrome.backgroundColor).toBe('#00000000')
   })
 })
