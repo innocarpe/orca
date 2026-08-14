@@ -3,7 +3,7 @@ import {
   getDiscardAreaConfirmationCopy,
   getDiscardEntryConfirmationCopy
 } from './source-control-discard-confirmation'
-import type { GitStatusEntry } from '../../../../shared/types'
+import type { GitStatusEntry } from '../../../../shared/git-status-types'
 
 function entry(partial: Partial<GitStatusEntry> & { path: string }): GitStatusEntry {
   return {
@@ -109,15 +109,6 @@ describe('getDiscardAreaConfirmationCopy', () => {
       title: 'Discard all unstaged changes?',
       description: 'This will revert unstaged changes in 2 files. This cannot be undone.',
       confirmLabel: 'Discard all'
-    })
-  })
-
-  it('discloses permanent deletion for combined Changes', () => {
-    expect(getDiscardAreaConfirmationCopy('unstaged', 3, true)).toEqual({
-      title: 'Discard changes and delete untracked files?',
-      description:
-        'Tracked changes will be reverted and untracked files will be permanently deleted. This cannot be undone.',
-      confirmLabel: 'Delete and discard'
     })
   })
 })

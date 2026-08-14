@@ -1,5 +1,5 @@
 import { basename } from '@/lib/path'
-import type { GitStatusEntry } from '../../../../shared/types'
+import type { GitStatusEntry } from '../../../../shared/git-status-types'
 import type { DiscardAllArea } from './discard-all-sequence'
 import { translate } from '@/i18n/i18n'
 
@@ -62,25 +62,8 @@ export function getDiscardEntryConfirmationCopy(
 
 export function getDiscardAreaConfirmationCopy(
   area: DiscardAllArea,
-  count: number,
-  hasUntracked = false
+  count: number
 ): DiscardConfirmationCopy {
-  if (area === 'unstaged' && hasUntracked) {
-    return {
-      title: translate(
-        'auto.components.right.sidebar.source.control.discard.confirmation.mixedTitle',
-        'Discard changes and delete untracked files?'
-      ),
-      description: translate(
-        'auto.components.right.sidebar.source.control.discard.confirmation.mixedDescription',
-        'Tracked changes will be reverted and untracked files will be permanently deleted. This cannot be undone.'
-      ),
-      confirmLabel: translate(
-        'auto.components.right.sidebar.source.control.discard.confirmation.mixedConfirm',
-        'Delete and discard'
-      )
-    }
-  }
   switch (area) {
     case 'untracked':
       return {
