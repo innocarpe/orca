@@ -17,9 +17,7 @@ import {
 } from './CliSkillRuntimeSetup'
 
 function decodeWslLoginShellScript(command: string): string {
-  const encoded = /-- sh -c 'eval \\"`printf %s ([A-Za-z0-9+/=]+) \| base64 -d`\\"'/.exec(
-    command
-  )?.[1]
+  const encoded = /-- sh -c 'printf %s ([A-Za-z0-9+/=]+) \| base64 -d \| bash'/.exec(command)?.[1]
   expect(encoded).toBeDefined()
   return Buffer.from(encoded!, 'base64').toString('utf8')
 }
@@ -49,7 +47,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
 
     expect(command).toBe(skillCommand)
     expect(setupCommand).toBe(
-      `& { $PSNativeCommandArgumentPassing = 'Legacy'; wsl.exe -d 'Ubuntu' -- sh -c 'eval \\"\`printf %s ${encoded} | base64 -d\`\\"' } # Runs: ${skillCommand}`
+      `& { $PSNativeCommandArgumentPassing = 'Legacy'; wsl.exe -d 'Ubuntu' -- sh -c 'printf %s ${encoded} | base64 -d | bash' } # Runs: ${skillCommand}`
     )
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
       'exec "$_orca_wsl_shell" -ilc \'npx skills add orchestration --global\''
@@ -94,9 +92,29 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     const setupCommand = buildSkillSetupTerminalCommand(command, 'powershell.exe', runtime, 'win32')
 
     expect(setupCommand).toMatch(
-      /^& \{ \$PSNativeCommandArgumentPassing = 'Legacy'; wsl\.exe -- sh -c 'eval \\"`printf/
+      /^& \{ \$PSNativeCommandArgumentPassing = 'Legacy'; wsl\.exe -- sh -c 'printf %s [A-Za-z0-9+/=]+ \| base64 -d \| bash' \} # Runs: npx skills update orchestration --global$/
     )
-    expect(setupCommand).toContain('`\\"\' } # Runs: npx skills update orchestration --global')
+  })
+
+  it('does not eval+base64 wrap WSL skill setup so quoted payloads survive sh -c', () => {
+    const skillCommand = 'npx skills add orchestration --global'
+    const runtime = {
+      runtime: 'wsl',
+      wslDistro: 'Ubuntu',
+      label: 'WSL Ubuntu'
+    } as const
+    const setupCommand = buildSkillSetupTerminalCommand(
+      skillCommand,
+      'powershell.exe',
+      runtime,
+      'win32'
+    )
+    const encoded = Buffer.from(buildWslLoginShellCommand(skillCommand), 'utf8').toString('base64')
+
+    expect(setupCommand).not.toMatch(/eval\s+["'\\]*`printf %s/)
+    expect(setupCommand).not.toContain('eval')
+    expect(getWslOuterShellScript(setupCommand)).toBe(`printf %s ${encoded} | base64 -d | bash`)
+    expect(decodeWslLoginShellScript(setupCommand)).toContain('case "$_orca_wsl_shell_name" in')
   })
 
   it.skipIf(process.platform === 'win32')(
@@ -116,10 +134,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
         loginShell,
         '#!/bin/sh\nexport PATH="$ORCA_TEST_NPX_BIN:/usr/bin:/bin"\nexec /bin/sh -c "$2"\n'
       )
-      writeFileSync(
-        join(npxBin, 'npx'),
-        '#!/bin/sh\nread -r input\nprintf \'%s:%s\' "$*" "$input"\n'
-      )
+      writeFileSync(join(npxBin, 'npx'), '#!/bin/sh\nprintf \'%s\' "$*"\n')
       chmodSync(join(tools, 'getent'), 0o755)
       chmodSync(loginShell, 0o755)
       chmodSync(join(npxBin, 'npx'), 0o755)
@@ -137,7 +152,6 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
         expect(
           execFileSync('/bin/sh', ['-c', getWslOuterShellScript(wrapped)], {
             encoding: 'utf8',
-            input: 'terminal-input\n',
             env: {
               ...process.env,
               PATH: `${tools}:/usr/bin:/bin`,
@@ -145,10 +159,46 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
               ORCA_TEST_NPX_BIN: npxBin
             }
           })
-        ).toBe('skills update orchestration --global:terminal-input')
+        ).toBe('skills update orchestration --global')
       } finally {
         rmSync(root, { recursive: true, force: true })
       }
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'does not produce word unexpected when sh -c runs a quoted WSL payload',
+    () => {
+      const skillCommand = 'npx skills add "quoted-skill" --global'
+      const runtime = { runtime: 'wsl', wslDistro: 'Ubuntu', label: 'WSL Ubuntu' } as const
+      const setupCommand = buildSkillSetupTerminalCommand(
+        skillCommand,
+        'powershell.exe',
+        runtime,
+        'win32'
+      )
+      const outer = getWslOuterShellScript(setupCommand)
+      expect(decodeWslLoginShellScript(setupCommand)).toContain('case "$_orca_wsl_shell_name" in')
+      expect(decodeWslLoginShellScript(setupCommand)).toContain(skillCommand)
+      expect(() =>
+        execFileSync('/bin/sh', ['-c', outer.replace(/\| bash$/, '| bash -n')], {
+          encoding: 'utf8'
+        })
+      ).not.toThrow()
+
+      const quotedPayload = [
+        'case "quoted-word" in',
+        '  quoted-word) printf ok ;;',
+        '  *) printf fail ;;',
+        'esac'
+      ].join('\n')
+      const encoded = Buffer.from(quotedPayload, 'utf8').toString('base64')
+      const output = execFileSync('/bin/sh', ['-c', `printf %s ${encoded} | base64 -d | bash`], {
+        encoding: 'utf8'
+      })
+
+      expect(output).toBe('ok')
+      expect(output).not.toContain('word unexpected')
     }
   )
 

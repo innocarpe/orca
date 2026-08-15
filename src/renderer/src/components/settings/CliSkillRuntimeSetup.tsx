@@ -162,9 +162,10 @@ function buildPowerShellWslSkillCommand(command: string, runtime: LocalAgentRunt
     ? ` -d ${quotePowerShellLiteral(runtime.wslDistro.trim())}`
     : ''
   // Why: encoding preserves the user's configured login-shell PATH across the Windows argv boundary.
+  // Pipe into bash instead of eval so payload quotes cannot terminate sh -c.
   const encodedScript = encodeWslLoginShellScript(command)
   const visibleCommand = command.replace(/[\r\n]+/g, ' ')
-  const shellScript = `eval "\`printf %s ${encodedScript} | base64 -d\`"`
+  const shellScript = `printf %s ${encodedScript} | base64 -d | bash`
   const wslCommand = `wsl.exe${distroArg} -- sh -c ${quotePowerShellNativeArgument(shellScript)}`
   return `& { $PSNativeCommandArgumentPassing = 'Legacy'; ${wslCommand} } # Runs: ${visibleCommand}`
 }
@@ -177,9 +178,7 @@ function decodeWslSetupTerminalCommand(command: string): string | null {
     return null
   }
 
-  const encoded = /-- sh -c 'eval \\"`printf %s ([A-Za-z0-9+/=]+) \| base64 -d`\\"'/.exec(
-    command
-  )?.[1]
+  const encoded = /-- sh -c 'printf %s ([A-Za-z0-9+/=]+) \| base64 -d \| bash'/.exec(command)?.[1]
   if (!encoded) {
     return null
   }
