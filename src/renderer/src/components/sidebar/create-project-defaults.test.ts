@@ -81,6 +81,18 @@ describe('create project defaults', () => {
     ).toBe('~/orca/projects')
     expect(
       formatCreateProjectParentSummary({
+        parent: 'J:\\PROJECTS',
+        defaultParent: 'J:\\PROJECTS'
+      })
+    ).toBe('J:\\PROJECTS')
+    expect(
+      formatCreateProjectParentSummary({
+        parent: '/Users/alice/orca/workspaces',
+        defaultParent: '/Users/alice/orca/workspaces'
+      })
+    ).toBe('/Users/alice/orca/workspaces')
+    expect(
+      formatCreateProjectParentSummary({
         parent: '',
         defaultParent: '',
         runtimeEnvironmentId: 'env-1'

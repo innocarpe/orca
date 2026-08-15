@@ -33,7 +33,8 @@ const {
     addRepo: vi.fn(),
     removeProject: vi.fn(),
     getRepo: vi.fn(),
-    updateRepo: vi.fn()
+    updateRepo: vi.fn(),
+    getSettings: vi.fn().mockReturnValue({})
   },
   mkdirMock: vi.fn(),
   accessMock: vi.fn(),
@@ -132,6 +133,7 @@ describe('repos:create', () => {
     removeHandlerMock.mockReset()
     mockStore.getRepos.mockReset().mockReturnValue([])
     mockStore.addRepo.mockReset()
+    mockStore.getSettings.mockReset().mockReturnValue({})
     mockWindow.webContents.send.mockReset()
     invalidateAuthorizedRootsCacheMock.mockReset()
     prepareLocalWorktreeRootForRepoMock.mockReset().mockResolvedValue(undefined)
@@ -153,6 +155,21 @@ describe('repos:create', () => {
 
   it('registers the home-backed create-project default handler', async () => {
     expect(handlers.has('repos:getDefaultCreateProjectParent')).toBe(true)
+    await expect(callDefaultCreateProjectParent()).resolves.toBe(defaultProjectParent)
+  })
+
+  it('uses the configured workspace directory as the create-project default parent', async () => {
+    mockStore.getSettings.mockReturnValue({ workspaceDir: 'J:\\PROJECTS' })
+    await expect(callDefaultCreateProjectParent()).resolves.toBe('J:\\PROJECTS')
+  })
+
+  it('falls back to the home projects directory when workspace directory is unset', async () => {
+    mockStore.getSettings.mockReturnValue({ workspaceDir: '' })
+    await expect(callDefaultCreateProjectParent()).resolves.toBe(defaultProjectParent)
+  })
+
+  it('falls back to the home projects directory when workspace directory is whitespace', async () => {
+    mockStore.getSettings.mockReturnValue({ workspaceDir: '   ' })
     await expect(callDefaultCreateProjectParent()).resolves.toBe(defaultProjectParent)
   })
 

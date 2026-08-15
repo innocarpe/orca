@@ -1106,7 +1106,12 @@ async function isGitAvailable(): Promise<boolean> {
   }
 }
 
-function getDefaultCreateProjectParent(): string {
+function getDefaultCreateProjectParent(store: Store): string {
+  const workspaceDir = store.getSettings().workspaceDir?.trim()
+  // Why: Settings → Workspace Directory is the user-facing root; keep ~/orca/projects only when that setting is empty.
+  if (workspaceDir) {
+    return workspaceDir
+  }
   return join(homedir(), 'orca', 'projects')
 }
 
@@ -1482,7 +1487,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
   )
 
   ipcMain.handle('repos:isGitAvailable', () => isGitAvailable())
-  ipcMain.handle('repos:getDefaultCreateProjectParent', () => getDefaultCreateProjectParent())
+  ipcMain.handle('repos:getDefaultCreateProjectParent', () => getDefaultCreateProjectParent(store))
 
   ipcMain.handle('projectGroups:list', () => store.getProjectGroups())
 
