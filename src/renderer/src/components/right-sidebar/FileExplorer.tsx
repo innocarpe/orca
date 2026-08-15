@@ -40,6 +40,7 @@ import { useFileExplorerKeys } from './useFileExplorerKeys'
 import { useFileDuplicate } from './useFileDuplicate'
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop'
 import { useFileExplorerImport } from './useFileExplorerImport'
+import { useFileExplorerPaste } from './useFileExplorerPaste'
 import { useFileExplorerManualRefresh } from './useFileExplorerManualRefresh'
 import { useFileExplorerTree } from './useFileExplorerTree'
 import { decideExpandedDirLoad } from './file-explorer-stale-dir-cache'
@@ -415,6 +416,13 @@ function FileExplorerFiles(): React.JSX.Element {
     setSelectedPath: setSingleSelectedPath,
     operationOwner: rootCache?.operationOwner
   })
+  const pasteClipboardFiles = useFileExplorerPaste({
+    worktreePath: visibleFilesWorktreePath,
+    activeWorktreeId,
+    refreshDir,
+    setSelectedPath: setSingleSelectedPath,
+    operationOwner: rootCache?.operationOwner
+  })
 
   const totalCount = visibleRowCount + (inlineInputIndex >= 0 ? 1 : 0)
 
@@ -553,7 +561,9 @@ function FileExplorerFiles(): React.JSX.Element {
     requestDelete,
     requestDeleteAll,
     scrollToIndex,
-    activeWorktreeId
+    activeWorktreeId,
+    worktreePath: visibleFilesWorktreePath,
+    onPasteFiles: pasteClipboardFiles
   })
 
   // Why: context-menu Delete should respect the multi-selection — if the
@@ -787,6 +797,7 @@ function FileExplorerFiles(): React.JSX.Element {
                 onViewFile={handleClick}
                 onContextMenuSelect={preserveSelectionForContextMenu}
                 onCopyPaths={copyPathsForNode}
+                onPasteFiles={pasteClipboardFiles}
                 onStartNew={startNew}
                 onStartRename={handleStartRename}
                 onDuplicate={handleDuplicate}
@@ -836,6 +847,7 @@ function FileExplorerFiles(): React.JSX.Element {
         point={bgMenuPoint}
         worktreePath={worktreePath}
         onStartNew={startNew}
+        onPasteFiles={pasteClipboardFiles}
       />
     </>
   )

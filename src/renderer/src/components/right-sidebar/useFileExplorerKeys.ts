@@ -7,6 +7,7 @@ import type { InlineInput } from './FileExplorerRow'
 import type { TreeNode } from './file-explorer-types'
 import type { FileExplorerRowProjection } from './file-explorer-row-projection'
 import { formatFileExplorerPathsForClipboard } from './file-explorer-selection'
+import { resolveFileExplorerPasteDestination } from './file-explorer-clipboard-paste'
 import {
   fileExplorerHasRedo,
   fileExplorerHasUndo,
@@ -51,6 +52,8 @@ export function useFileExplorerKeys(opts: {
   requestDeleteAll: (nodes: TreeNode[]) => void
   scrollToIndex: (index: number) => void
   activeWorktreeId: string | null
+  worktreePath: string | null
+  onPasteFiles: (destinationDir: string) => void
 }): void {
   const rightSidebarOpen = useAppStore((s) => s.rightSidebarOpen)
   const rightSidebarTab = useAppStore((s) => s.rightSidebarTab)
@@ -85,6 +88,10 @@ export function useFileExplorerKeys(opts: {
   scrollToIndexRef.current = opts.scrollToIndex
   const activeWorktreeIdRef = useRef(opts.activeWorktreeId)
   activeWorktreeIdRef.current = opts.activeWorktreeId
+  const worktreePathRef = useRef(opts.worktreePath)
+  worktreePathRef.current = opts.worktreePath
+  const onPasteFilesRef = useRef(opts.onPasteFiles)
+  onPasteFilesRef.current = opts.onPasteFiles
 
   useEffect(() => {
     // Find the row index whose button is currently focused. Each virtualized
@@ -246,6 +253,21 @@ export function useFileExplorerKeys(opts: {
       if (!focusInExplorer()) {
         return
       }
+      const wantsPaste = keybindingMatchesAction('fileExplorer.paste', e, platform, keybindings)
+      if (wantsPaste) {
+        const focused = findFocusedIndex()
+        const node =
+          (focused !== null ? rowProjectionRef.current.getRowAtIndex(focused) : null) ??
+          selectedNodeRef.current
+        const destinationDir = resolveFileExplorerPasteDestination(node, worktreePathRef.current)
+        if (!destinationDir) {
+          return
+        }
+        e.preventDefault()
+        onPasteFilesRef.current(destinationDir)
+        return
+      }
+
       const wantsCopyRelativePath = keybindingMatchesAction(
         'fileExplorer.copyRelativePath',
         e,

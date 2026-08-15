@@ -2803,6 +2803,7 @@ function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
       Promise.reject(new Error('Selection clipboard is unavailable in the web client')),
     writeClipboardImage: () => Promise.resolve(),
     writeClipboardFile: () => Promise.resolve({ ok: false, reason: 'unsupported-platform' }),
+    readClipboardFile: () => Promise.resolve({ ok: true, filePaths: [] }),
     performNativePaste: () => {
       document.execCommand?.('paste')
     },

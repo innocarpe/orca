@@ -4,6 +4,7 @@ import { basename } from '@/lib/path'
 import {
   ChevronRight,
   CircleSlash,
+  ClipboardPaste,
   Copy,
   Download,
   ExternalLink,
@@ -47,6 +48,7 @@ import type { GitFileStatus } from '../../../../shared/git-status-types'
 import { STATUS_LABELS } from './status-display'
 import { RENAME_HOTSPOT_ATTR } from './file-explorer-dir-toggle-timing'
 import type { TreeNode } from './file-explorer-types'
+import { shouldShowPasteFileAction } from './file-explorer-clipboard-paste'
 import { useFileExplorerRowDrag } from './useFileExplorerRowDrag'
 import { isLocalPathOpenBlocked, showLocalPathOpenBlockedToast } from '@/lib/local-path-open-guard'
 import { translate } from '@/i18n/i18n'
@@ -277,6 +279,7 @@ type FileExplorerRowProps = {
   onViewFile: () => void
   onContextMenuSelect: () => void
   onCopyPaths: (pathKind: 'absolute' | 'relative') => void
+  onPasteFiles?: (destinationDir: string) => void
   onStartNew: (type: 'file' | 'folder', dir: string, depth: number) => void
   onStartRename: (node: TreeNode) => void
   onDuplicate: (node: TreeNode) => void
@@ -466,6 +469,7 @@ export function FileExplorerRow({
   onViewFile,
   onContextMenuSelect,
   onCopyPaths,
+  onPasteFiles,
   onStartNew,
   onStartRename,
   onDuplicate,
@@ -486,6 +490,7 @@ export function FileExplorerRow({
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const copyPathShortcutLabel = useShortcutLabel('fileExplorer.copyPath')
   const copyRelativePathShortcutLabel = useShortcutLabel('fileExplorer.copyRelativePath')
+  const pasteShortcutLabel = useShortcutLabel('fileExplorer.paste')
   const findInFolderShortcutLabel = useShortcutLabel('sidebar.search.toggle')
   const FileIcon = getFileTypeIcon(node.relativePath || node.name)
   const rowDropDir = node.isDirectory ? node.path : targetDir
@@ -496,6 +501,7 @@ export function FileExplorerRow({
     supportsFolderDownload
   )
   const showCopyFileAction = shouldShowCopyFileAction(node, connectionId, selectionSize)
+  const showPasteFileAction = shouldShowPasteFileAction()
   const { setRowDragNode, handleDragOver, handleDragEnter, handleDragLeave, handleDrop } =
     useFileExplorerRowDrag({
       rowDropDir,
@@ -710,6 +716,15 @@ export function FileExplorerRow({
           <ContextMenuItem onSelect={handleCopyFile}>
             <Copy />
             {translate('auto.components.right.sidebar.FileExplorerRow.98a79948b3', 'Copy')}
+          </ContextMenuItem>
+        )}
+        {showPasteFileAction && (
+          <ContextMenuItem onSelect={() => onPasteFiles?.(rowDropDir)}>
+            <ClipboardPaste />
+            {translate('auto.components.right.sidebar.FileExplorerRow.paste', 'Paste')}
+            {pasteShortcutLabel !== 'Unassigned' ? (
+              <ContextMenuShortcut>{pasteShortcutLabel}</ContextMenuShortcut>
+            ) : null}
           </ContextMenuItem>
         )}
         <ContextMenuItem onSelect={() => onCopyPaths('absolute')}>

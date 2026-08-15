@@ -30,6 +30,11 @@ import {
   type ClipboardFileResult
 } from './clipboard-file-copy'
 import {
+  readFilesFromClipboard,
+  type ClipboardFileReadDeps,
+  type ClipboardFileReadResult
+} from './clipboard-file-read'
+import {
   cleanupExpiredRemoteClipboardFiles,
   scheduleLegacyRemoteClipboardFileCleanup,
   writeRemoteFileToClipboard
@@ -83,6 +88,7 @@ export function registerClipboardHandlers(store: Store): void {
   ipcMain.removeHandler('clipboard:writeSelectionText')
   ipcMain.removeHandler('clipboard:writeImage')
   ipcMain.removeHandler('clipboard:writeFile')
+  ipcMain.removeHandler('clipboard:readFile')
   ipcMain.removeHandler('clipboard:saveImageAsTempFile')
 
   void cleanupExpiredRemoteClipboardFiles()
@@ -159,6 +165,10 @@ export function registerClipboardHandlers(store: Store): void {
       return writeFileToClipboard(request.filePath, deps)
     }
   )
+  ipcMain.handle('clipboard:readFile', (event): Promise<ClipboardFileReadResult> => {
+    assertTrustedClipboardSender(event)
+    return readFilesFromClipboard(makeClipboardFileReadDeps())
+  })
   ipcMain.handle('clipboard:writeText', async (event, text: string) => {
     assertTrustedClipboardTextSender(event)
     return clipboard.writeText(await assertClipboardTextWriteWithinLimitWithYield(text))
@@ -240,6 +250,31 @@ function makeClipboardFileDeps(
     writeBuffer: (format, buffer) => clipboard.writeBuffer(format, buffer),
     runCommand
   }
+}
+
+function makeClipboardFileReadDeps(): ClipboardFileReadDeps {
+  return {
+    platform: process.platform,
+    desktop: process.env.XDG_CURRENT_DESKTOP,
+    readBuffer: (format) => clipboard.readBuffer(format),
+    runCommand: runCommandCapture
+  }
+}
+
+function runCommandCapture(command: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'] })
+    const chunks: Buffer[] = []
+    child.stdout?.on('data', (chunk: Buffer) => {
+      chunks.push(chunk)
+    })
+    child.on('error', reject)
+    child.on('exit', (code) =>
+      code === 0
+        ? resolve(Buffer.concat(chunks).toString('utf8'))
+        : reject(new Error(`${command} exited with ${code}`))
+    )
+  })
 }
 
 function assertTrustedClipboardSender(event: IpcMainInvokeEvent): void {

@@ -98,6 +98,7 @@ export type KeybindingActionId =
   | 'fileExplorer.redo'
   | 'fileExplorer.copyPath'
   | 'fileExplorer.copyRelativePath'
+  | 'fileExplorer.paste'
   | 'fileExplorer.delete'
   | 'settings.search'
   | 'terminal.copySelection'
@@ -922,6 +923,14 @@ export const KEYBINDING_DEFINITIONS: readonly KeybindingDefinition[] = [
     scope: 'fileExplorer',
     searchKeywords: ['shortcut', 'file explorer', 'copy', 'relative', 'path'],
     defaultBindings: platformBindings(['Mod+Alt+Shift+C'])
+  },
+  {
+    id: 'fileExplorer.paste',
+    title: 'Paste file',
+    group: 'File Explorer',
+    scope: 'fileExplorer',
+    searchKeywords: ['shortcut', 'file explorer', 'paste', 'clipboard', 'file'],
+    defaultBindings: platformBindings(['Mod+V'])
   },
   {
     id: 'fileExplorer.delete',

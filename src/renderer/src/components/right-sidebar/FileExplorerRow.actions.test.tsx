@@ -9,6 +9,7 @@ import {
   shouldShowRemoteDownloadAction,
   shouldShowViewFileAction
 } from './FileExplorerRow'
+import { shouldShowPasteFileAction } from './file-explorer-clipboard-paste'
 import { directoryNode, fileNode } from './file-explorer-tree-node-test-fixtures'
 import type * as RuntimeFileClient from '@/runtime/runtime-file-client'
 
@@ -125,6 +126,17 @@ describe('FileExplorerRow collapse folder action', () => {
       ;(globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ = true
 
       expect(shouldShowCopyFileAction(fileNode, null, 1)).toBe(false)
+    } finally {
+      ;(globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ = previous
+    }
+  })
+
+  it('shows paste on desktop File Explorer rows and hides it on the web client', () => {
+    const previous = (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__
+    try {
+      expect(shouldShowPasteFileAction()).toBe(true)
+      ;(globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ = true
+      expect(shouldShowPasteFileAction()).toBe(false)
     } finally {
       ;(globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ = previous
     }
