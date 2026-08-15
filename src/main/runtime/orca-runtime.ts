@@ -9919,6 +9919,13 @@ export class OrcaRuntimeService {
       this.paneExitScanStateByPtyId.set(ptyId, createPaneExitScanState()).get(ptyId)
     if (paneExitScan) {
       const scanned = scanPaneExitMarker(paneExitScan, data)
+      if (scanned.output.length !== data.length) {
+        // Why: stripped marker bytes must not keep the longer rawLength/sourceRanges.
+        sourceRanges = undefined
+        if (!transformed) {
+          sequenceChars = scanned.output.length
+        }
+      }
       data = scanned.output
       if (scanned.exitCode !== null) {
         this.lastReportedPaneExitCodeByPtyId.set(ptyId, scanned.exitCode)
