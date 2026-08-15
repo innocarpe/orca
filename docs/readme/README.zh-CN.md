@@ -216,7 +216,7 @@ _也可以通过包管理器安装：_
 
 ```bash
 # macOS (Homebrew)
-# Always use the fully-qualified token. Bare `orca` is Plotly's deprecated cask, not Orca ADE.
+# 请始终使用完整 token。单独的 `orca` 是已弃用的 Plotly cask，不是 Orca ADE。
 brew install --cask stablyai/orca/orca
 brew upgrade --cask stablyai/orca/orca
 

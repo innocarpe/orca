@@ -224,7 +224,7 @@ _Ou via un gestionnaire de paquets :_
 
 ```bash
 # macOS (Homebrew)
-# Always use the fully-qualified token. Bare `orca` is Plotly's deprecated cask, not Orca ADE.
+# Utilisez toujours le jeton pleinement qualifie. Le `orca` nu est le cask deprecie de Plotly, pas Orca ADE.
 brew install --cask stablyai/orca/orca
 brew upgrade --cask stablyai/orca/orca
 
