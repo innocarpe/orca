@@ -78,12 +78,15 @@ describe('keep-awake corner chip copy', () => {
 })
 
 describe('keep-awake corner chip under a Chinese UI language', () => {
+  let previousLanguage: string
+
   beforeAll(async () => {
+    previousLanguage = i18n.language
     await i18n.changeLanguage('zh')
   })
 
   afterAll(async () => {
-    await i18n.changeLanguage('en')
+    await i18n.changeLanguage(previousLanguage)
   })
 
   it('uses the shared Agents title and mode labels instead of English fallbacks', () => {
