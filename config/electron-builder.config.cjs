@@ -335,6 +335,10 @@ module.exports = {
     entitlements: 'resources/build/entitlements.mac.plist',
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
     extendInfo: {
+      // Why: macOS defaults press-and-hold to the accent picker, which
+      // swallows key repeat in the terminal (vim hjkl). Ship false so packaged
+      // Orca does not need a manual defaults write (#14746).
+      ApplePressAndHoldEnabled: false,
       NSAppleEventsUsageDescription:
         'Orca allows terminal-launched developer tools to automate local apps when you request it.',
       NSBluetoothAlwaysUsageDescription:

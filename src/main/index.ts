@@ -133,6 +133,7 @@ import {
   installUncaughtPipeErrorGuard,
   installUnhandledRejectionLogging
 } from './startup/main-process-error-guards'
+import { disableApplePressAndHold } from './startup/macos-press-and-hold'
 import { enableRendererHeapHeadroom } from './startup/renderer-heap-headroom'
 import { argvRequestsServeMode, normalizeServeModeArgv } from './startup/serve-mode-argv'
 import { ensureVirtualDisplayForHeadlessServe } from './startup/ensure-virtual-display'
@@ -850,6 +851,7 @@ if (hasSingleInstanceLock) {
     ...getMainProcessLifecycleIdentity()
   })
   disableUnsupportedChromiumFeatures()
+  disableApplePressAndHold()
   configureElectronNetworkCompatibility()
   enableRendererHeapHeadroom()
   maybeApplyGpuFallbackForThisLaunch()
