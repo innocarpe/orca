@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFilesFromClipboard, type ClipboardFileReadDeps } from './clipboard-file-read'
+import {
+  CLIPBOARD_FILE_LIST_MAX_BYTES,
+  readFilesFromClipboard,
+  runClipboardCommandCapture,
+  type ClipboardFileReadDeps
+} from './clipboard-file-read'
 
 function makeDeps(overrides: Partial<ClipboardFileReadDeps> = {}): ClipboardFileReadDeps {
   return {
@@ -116,4 +121,21 @@ describe('readFilesFromClipboard', () => {
       )
     ).toEqual({ ok: true, filePaths: [] })
   })
+})
+
+describe('runClipboardCommandCapture', () => {
+  it('rejects after the byte cap instead of buffering the whole payload', async () => {
+    await expect(
+      runClipboardCommandCapture(process.execPath, [
+        '-e',
+        `process.stdout.write('x'.repeat(${CLIPBOARD_FILE_LIST_MAX_BYTES + 1}))`
+      ])
+    ).rejects.toThrow(/exceeded/)
+  })
+
+  it('rejects when the command exceeds the timeout', async () => {
+    await expect(
+      runClipboardCommandCapture(process.execPath, ['-e', 'setTimeout(() => {}, 10_000)'])
+    ).rejects.toThrow(/timed out/)
+  }, 8_000)
 })

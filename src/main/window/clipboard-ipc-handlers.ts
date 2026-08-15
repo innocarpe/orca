@@ -31,6 +31,7 @@ import {
 } from './clipboard-file-copy'
 import {
   readFilesFromClipboard,
+  runClipboardCommandCapture,
   type ClipboardFileReadDeps,
   type ClipboardFileReadResult
 } from './clipboard-file-read'
@@ -257,24 +258,8 @@ function makeClipboardFileReadDeps(): ClipboardFileReadDeps {
     platform: process.platform,
     desktop: process.env.XDG_CURRENT_DESKTOP,
     readBuffer: (format) => clipboard.readBuffer(format),
-    runCommand: runCommandCapture
+    runCommand: runClipboardCommandCapture
   }
-}
-
-function runCommandCapture(command: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'] })
-    const chunks: Buffer[] = []
-    child.stdout?.on('data', (chunk: Buffer) => {
-      chunks.push(chunk)
-    })
-    child.on('error', reject)
-    child.on('exit', (code) =>
-      code === 0
-        ? resolve(Buffer.concat(chunks).toString('utf8'))
-        : reject(new Error(`${command} exited with ${code}`))
-    )
-  })
 }
 
 function assertTrustedClipboardSender(event: IpcMainInvokeEvent): void {

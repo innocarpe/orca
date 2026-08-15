@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 export type ClipboardFileReadResult = { ok: true; filePaths: string[] }
@@ -10,7 +11,52 @@ export type ClipboardFileReadDeps = {
   runCommand: (command: string, args: string[]) => Promise<string>
 }
 
-const CLIPBOARD_FILE_LIST_MAX_BYTES = 64 * 1024
+export const CLIPBOARD_FILE_LIST_MAX_BYTES = 64 * 1024
+export const CLIPBOARD_FILE_READ_TIMEOUT_MS = 2_000
+
+export function runClipboardCommandCapture(command: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'] })
+    const chunks: Buffer[] = []
+    let received = 0
+    let settled = false
+
+    const finish = (error?: Error, value?: string): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      clearTimeout(timer)
+      if (!child.killed) {
+        child.kill('SIGKILL')
+      }
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(value ?? '')
+    }
+
+    const timer = setTimeout(() => {
+      finish(new Error(`${command} timed out`))
+    }, CLIPBOARD_FILE_READ_TIMEOUT_MS)
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      received += chunk.length
+      if (received > CLIPBOARD_FILE_LIST_MAX_BYTES) {
+        finish(new Error(`${command} exceeded ${CLIPBOARD_FILE_LIST_MAX_BYTES} bytes`))
+        return
+      }
+      chunks.push(chunk)
+    })
+    child.on('error', (error) => finish(error))
+    child.on('exit', (code) =>
+      code === 0
+        ? finish(undefined, Buffer.concat(chunks).toString('utf8'))
+        : finish(new Error(`${command} exited with ${code}`))
+    )
+  })
+}
 
 export async function readFilesFromClipboard(
   deps: ClipboardFileReadDeps

@@ -7,7 +7,10 @@ import type { InlineInput } from './FileExplorerRow'
 import type { TreeNode } from './file-explorer-types'
 import type { FileExplorerRowProjection } from './file-explorer-row-projection'
 import { formatFileExplorerPathsForClipboard } from './file-explorer-selection'
-import { resolveFileExplorerPasteDestination } from './file-explorer-clipboard-paste'
+import {
+  resolveFileExplorerPasteDestination,
+  shouldShowPasteFileAction
+} from './file-explorer-clipboard-paste'
 import {
   fileExplorerHasRedo,
   fileExplorerHasUndo,
@@ -254,7 +257,7 @@ export function useFileExplorerKeys(opts: {
         return
       }
       const wantsPaste = keybindingMatchesAction('fileExplorer.paste', e, platform, keybindings)
-      if (wantsPaste) {
+      if (wantsPaste && shouldShowPasteFileAction()) {
         const focused = findFocusedIndex()
         const node =
           (focused !== null ? rowProjectionRef.current.getRowAtIndex(focused) : null) ??
