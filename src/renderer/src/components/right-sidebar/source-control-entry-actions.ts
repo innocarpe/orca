@@ -25,3 +25,8 @@ export function canDiscardStatusEntry(entry: GitStatusEntry): boolean {
     (entry.area === 'unstaged' || entry.area === 'untracked')
   )
 }
+
+// Why: deleted rows have nothing on disk; hide Open file instead of failing later.
+export function canOpenWorkingTreeStatusEntry(entry: Pick<GitStatusEntry, 'status'>): boolean {
+  return entry.status !== 'deleted'
+}
