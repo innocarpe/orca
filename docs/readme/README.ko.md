@@ -219,7 +219,9 @@ _또는 패키지 매니저로 설치:_
 
 ```bash
 # macOS (Homebrew)
+# Always use the fully-qualified token. Bare `orca` is Plotly's deprecated cask, not Orca ADE.
 brew install --cask stablyai/orca/orca
+brew upgrade --cask stablyai/orca/orca
 
 # Arch Linux (AUR) — or stably-orca-git to build from source
 yay -S stably-orca-bin
