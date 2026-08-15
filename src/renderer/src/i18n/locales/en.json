@@ -3762,7 +3762,7 @@
             "off": "Off",
             "active": "Active",
             "inactive": "Inactive",
-            "ariaLabel": "Caffeinate, {{status}}",
+            "ariaLabel": "{{title}}, {{status}}",
             "title": "Caffeinate",
             "onDescription": "Keep this computer awake continuously",
             "autoDescription": "Stay awake while an agent is working",
