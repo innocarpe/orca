@@ -26,7 +26,9 @@ export function canDiscardStatusEntry(entry: GitStatusEntry): boolean {
   )
 }
 
-// Why: deleted rows have nothing on disk; hide Open file instead of failing later.
-export function canOpenWorkingTreeStatusEntry(entry: Pick<GitStatusEntry, 'status'>): boolean {
-  return entry.status !== 'deleted'
+// Why: deleted rows and submodule gitlinks are not regular files on disk.
+export function canOpenWorkingTreeStatusEntry(
+  entry: Pick<GitStatusEntry, 'status' | 'submodule'>
+): boolean {
+  return entry.status !== 'deleted' && entry.submodule == null
 }
