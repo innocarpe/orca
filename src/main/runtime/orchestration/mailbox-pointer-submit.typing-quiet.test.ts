@@ -17,7 +17,9 @@ describe('mailbox pointer submit typing quiet (#14832)', () => {
     const writePty = vi.fn()
     const settle = vi.fn()
     const redrive = vi.fn()
+    const scheduleTypingQuietRetry = vi.fn()
     const deactivateWatermark = vi.fn(() => true)
+    const markAsUndelivered = vi.fn()
     const target = {
       leaf,
       terminalHandle: 'term-1',
@@ -34,7 +36,7 @@ describe('mailbox pointer submit typing quiet (#14832)', () => {
         } as never,
         getDb: () =>
           ({
-            markAsUndelivered: vi.fn(),
+            markAsUndelivered,
             areUnreadMessages: () => true
           }) as never,
         resolveSubmitTarget: () => target,
@@ -45,6 +47,7 @@ describe('mailbox pointer submit typing quiet (#14832)', () => {
         lastUserInputAt: () => 9_200,
         isOrcaWindowFocused: () => true,
         now: () => 10_000,
+        scheduleTypingQuietRetry,
         settle,
         redrive
       },
@@ -64,6 +67,8 @@ describe('mailbox pointer submit typing quiet (#14832)', () => {
     })
 
     expect(writePty).not.toHaveBeenCalled()
+    expect(markAsUndelivered).not.toHaveBeenCalled()
     expect(deactivateWatermark).toHaveBeenCalled()
+    expect(scheduleTypingQuietRetry).toHaveBeenCalledWith('pty-1', 'run:run_1')
   })
 })
