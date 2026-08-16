@@ -27,6 +27,7 @@ export type OrchestrationMailboxPointerStageDependencies<
   lastUserInputAt?: (ptyId: string) => number | undefined
   isOrcaWindowFocused?: () => boolean
   now?: () => number
+  scheduleTypingQuietRetry?: (ptyId: string, mailboxHandle: string) => void
   settle: (ptyId: string, flight: OrchestrationMailboxDeliveryFlight) => void
   redrive: (mailboxHandle: string, force?: boolean) => void
 }
@@ -45,10 +46,21 @@ export function stageOrchestrationMailboxPointer<TWaiter extends OrchestrationMe
     return
   }
   const flight = deps.state.beginFlight(ptyId)
-  const writeResult = deps.writePty(
-    ptyId,
-    formatMessagePointer(input.unread.length, input.mailboxHandle)
-  )
+  let writeResult: boolean | Promise<boolean>
+  try {
+    writeResult = deps.writePty(
+      ptyId,
+      formatMessagePointer(input.unread.length, input.mailboxHandle)
+    )
+  } catch {
+    finishOrchestrationMailboxPointerWrite(deps, {
+      ...input,
+      ptyId,
+      flight,
+      accepted: false
+    })
+    return
+  }
   if (typeof writeResult === 'boolean') {
     finishOrchestrationMailboxPointerWrite(deps, { ...input, ptyId, flight, accepted: writeResult })
     return

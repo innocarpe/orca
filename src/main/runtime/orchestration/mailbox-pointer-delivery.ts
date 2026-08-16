@@ -162,6 +162,16 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
         writePty: this.deps.writePty,
         lastUserInputAt: this.deps.lastUserInputAt,
         isOrcaWindowFocused: this.deps.isOrcaWindowFocused,
+        scheduleTypingQuietRetry: (ptyId, retryMailbox) => {
+          this.typingQuietRetry.defer(
+            {
+              lastUserInputAt: this.deps.lastUserInputAt?.(ptyId),
+              now: this.deps.now?.() ?? performance.now(),
+              windowFocused: this.deps.isOrcaWindowFocused?.() ?? false
+            },
+            retryMailbox
+          )
+        },
         now: this.deps.now,
         settle: (ptyId, flight) => this.settle(ptyId, flight),
         redrive: (mailboxHandle, force) => this.redrive(mailboxHandle, force)

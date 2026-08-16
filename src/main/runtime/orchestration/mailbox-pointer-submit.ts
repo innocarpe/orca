@@ -22,6 +22,7 @@ type PointerSubmitDependencies<TWaiter extends OrchestrationMessageWaiter> = {
   lastUserInputAt?: (ptyId: string) => number | undefined
   isOrcaWindowFocused?: () => boolean
   now?: () => number
+  scheduleTypingQuietRetry?: (ptyId: string, mailboxHandle: string) => void
   settle: (ptyId: string, flight: OrchestrationMailboxDeliveryFlight) => void
   redrive: (mailboxHandle: string, force?: boolean) => void
 }
@@ -77,7 +78,8 @@ export function submitOrchestrationMailboxPointer<TWaiter extends OrchestrationM
             windowFocused: deps.isOrcaWindowFocused?.() ?? false
           })
         ) {
-          // Why: pointer is already on the prompt; Enter would submit the user's draft.
+          // Why: keep delivered_at and retry later unread; do not rewrite or submit the draft.
+          deps.scheduleTypingQuietRetry?.(input.ptyId, input.mailboxHandle)
         } else {
           submitted = await deps.writePty(input.ptyId, '\r')
         }
