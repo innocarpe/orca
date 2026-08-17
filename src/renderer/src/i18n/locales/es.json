@@ -3229,9 +3229,9 @@
             "active": "Activo",
             "inactive": "Inactivo",
             "ariaLabel": "{{title}}, {{status}}",
-            "onDescription": "Mantener esta computadora activa de forma continua",
-            "autoDescription": "Permanecer activa mientras un agente está trabajando",
-            "offDescription": "Permitir el comportamiento de suspensión normal del sistema"
+            "onDescription": "Mantener esta computadora activa en todo momento",
+            "autoDescription": "Mantener la computadora activa mientras un agente está trabajando",
+            "offDescription": "Permitir que el sistema entre en suspensión normalmente"
           },
           "StatusBar": {
             "9659e38343": "Puertos",

@@ -28,7 +28,7 @@ async function postCodexHookEvent(
   expect(response.status).toBe(204)
 }
 
-test('shows Caffeinate mode and Agent activity in the status bar', async ({
+test('shows keep-awake mode and Agent activity in the status bar', async ({
   electronApp,
   orcaPage
 }) => {
