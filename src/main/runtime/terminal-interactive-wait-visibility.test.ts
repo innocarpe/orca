@@ -187,6 +187,49 @@ describe('terminal interactive-wait visibility (STA-4513, STA-3714)', () => {
       await expect(runtime.showTerminal(handle)).resolves.toMatchObject({ agentWait: null })
     })
 
+    it('resolves tui-idle from a visible snapshot when an adopted PTY retained no tail', async () => {
+      const { runtime, handle } = await createPane({
+        paneTitle: 'bash',
+        foregroundProcess: 'zsh',
+        data: ''
+      })
+      vi.spyOn(
+        runtime as unknown as {
+          readVisibleTerminalState: (ptyId: string) => Promise<{ lines: string[] } | null>
+        },
+        'readVisibleTerminalState'
+      ).mockResolvedValue({
+        lines: ['OpenAI Codex', 'model: gpt-5', 'directory: /repo']
+      })
+
+      await expect(
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 1_000 })
+      ).resolves.toMatchObject({ satisfied: true })
+    })
+
+    it('keeps a blocked visible snapshot blocked for an adopted PTY', async () => {
+      const { runtime, handle } = await createPane({
+        paneTitle: 'bash',
+        foregroundProcess: 'zsh',
+        data: ''
+      })
+      vi.spyOn(
+        runtime as unknown as {
+          readVisibleTerminalState: (ptyId: string) => Promise<{ lines: string[] } | null>
+        },
+        'readVisibleTerminalState'
+      ).mockResolvedValue({
+        lines: CLAUDE_TRUST.split('\n')
+      })
+
+      await expect(
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 1_000 })
+      ).resolves.toMatchObject({
+        satisfied: false,
+        blockedReason: 'codex-trust-workspace'
+      })
+    })
+
     it('reports no wait once the agent is idle again', async () => {
       const { runtime, handle } = await createPane({
         paneTitle: CURSOR_TITLE,

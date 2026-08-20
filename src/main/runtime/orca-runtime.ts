@@ -19619,6 +19619,20 @@ export class OrcaRuntimeService {
       ) {
         return buildPtyTerminalWaitResult(handle, condition, pty.pty)
       }
+      if (condition === 'tui-idle' && !ptyWaitText && pty.pty.lastAgentStatus == null) {
+        const snapshotVerdict = await this.resolveTuiIdleFromVisibleSnapshot(pty.pty.ptyId)
+        if (snapshotVerdict?.kind === 'blocked') {
+          return buildPtyTerminalWaitBlockedResult(
+            handle,
+            condition,
+            pty.pty,
+            snapshotVerdict.reason
+          )
+        }
+        if (snapshotVerdict?.kind === 'idle') {
+          return buildPtyTerminalWaitResult(handle, condition, pty.pty)
+        }
+      }
       return await new Promise<RuntimeTerminalWait>((resolve, reject) => {
         const effectiveTimeoutMs =
           typeof options?.timeoutMs === 'number' && options.timeoutMs > 0
@@ -19709,6 +19723,15 @@ export class OrcaRuntimeService {
         isKnownReadyPromptPreview(leafWaitText)
       ) {
         return buildTerminalWaitResult(handle, condition, leaf)
+      }
+      if (!leafWaitText && leaf.lastAgentStatus == null && leaf.ptyId) {
+        const snapshotVerdict = await this.resolveTuiIdleFromVisibleSnapshot(leaf.ptyId)
+        if (snapshotVerdict?.kind === 'blocked') {
+          return buildTerminalWaitBlockedResult(handle, condition, leaf, snapshotVerdict.reason)
+        }
+        if (snapshotVerdict?.kind === 'idle') {
+          return buildTerminalWaitResult(handle, condition, leaf)
+        }
       }
     }
 
@@ -35454,6 +35477,33 @@ export class OrcaRuntimeService {
     }, TUI_IDLE_POLL_INTERVAL_MS)
   }
 
+  private async resolveTuiIdleFromVisibleSnapshot(
+    ptyId: string
+  ): Promise<
+    { kind: 'blocked'; reason: RuntimeTerminalWaitBlockedReason } | { kind: 'idle' } | null
+  > {
+    const visibleState = await this.readVisibleTerminalState(ptyId)
+    let lines = visibleState?.lines ?? []
+    if (lines.length === 0) {
+      lines = await this.readRendererVisibleSnapshotLines(ptyId)
+    }
+    if (lines.length === 0) {
+      lines = await this.readProviderTerminalTailLines(ptyId, undefined)
+    }
+    if (lines.length === 0) {
+      return null
+    }
+    const snapshotText = lines.join('\n')
+    const blockedReason = detectTerminalWaitBlockedReason(snapshotText)
+    if (blockedReason) {
+      return { kind: 'blocked', reason: blockedReason }
+    }
+    if (isKnownReadyPromptPreview(snapshotText)) {
+      return { kind: 'idle' }
+    }
+    return null
+  }
+
   private startPtyTuiIdleFallbackPoll(waiter: TerminalWaiter, pty: RuntimePtyWorktreeRecord): void {
     let foregroundPollInFlight = false
     waiter.pollInterval = setInterval(async () => {
@@ -35482,6 +35532,33 @@ export class OrcaRuntimeService {
             buildPtyTerminalWaitBlockedResult(waiter.handle, 'tui-idle', pty, blockedReason)
           )
           return
+        }
+        if (!ptyWaitText && pty.lastAgentStatus == null) {
+          const snapshotVerdict = await this.resolveTuiIdleFromVisibleSnapshot(pty.ptyId)
+          if (snapshotVerdict?.kind === 'blocked') {
+            if (waiter.pollInterval) {
+              clearInterval(waiter.pollInterval)
+              waiter.pollInterval = null
+            }
+            this.resolveWaiter(
+              waiter,
+              buildPtyTerminalWaitBlockedResult(
+                waiter.handle,
+                'tui-idle',
+                pty,
+                snapshotVerdict.reason
+              )
+            )
+            return
+          }
+          if (snapshotVerdict?.kind === 'idle') {
+            if (waiter.pollInterval) {
+              clearInterval(waiter.pollInterval)
+              waiter.pollInterval = null
+            }
+            this.resolveWaiter(waiter, buildPtyTerminalWaitResult(waiter.handle, 'tui-idle', pty))
+            return
+          }
         }
         // Why: adopted background PTY handles use their live xterm title as the same readiness signal as leaf handles.
         if (
