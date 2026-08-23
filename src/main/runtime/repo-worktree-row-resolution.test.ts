@@ -140,6 +140,36 @@ describe('path-equal worktree row collapse', () => {
     expect(deps.metaById['repo::/home/me/wt/feature'].instanceId).toBe('stable-instance')
   })
 
+  it('ignores foreign-host metadata when choosing the canonical spelling', async () => {
+    const owner = repo('repo', '/home/me/repo', { executionHostId: 'local' })
+    const foreignOwner = repo('repo', '/remote/repo', {
+      connectionId: 'builder',
+      executionHostId: 'ssh:builder'
+    })
+    const deps = createDeps([owner, foreignOwner])
+    deps.metaById['repo::/home/me/wt/feature'] = {
+      instanceId: 'foreign-instance',
+      comment: 'registered on the builder host',
+      hostId: 'ssh:builder' as ExecutionHostId
+    } as WorktreeMeta
+    deps.scanRepo.mockResolvedValueOnce({
+      ok: true,
+      worktrees: [scanRow('/home/me/wt/./feature'), scanRow('/home/me/wt/feature')]
+    })
+
+    const rows = await resolveRepoWorktreeRows(deps, owner, deps.metaById, new Map())
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      id: 'repo::/home/me/wt/./feature',
+      path: '/home/me/wt/./feature',
+      hostId: 'local'
+    })
+    expect(rows[0].instanceId).toBeUndefined()
+    // foreign-host meta is left untouched and never wins the canonical spelling
+    expect(deps.metaById['repo::/home/me/wt/feature'].instanceId).toBe('foreign-instance')
+  })
+
   it('never prunes lineage for a spelling the collapse dropped', async () => {
     const owner = repo('repo', '/home/me/repo')
     const childId = 'repo::/home/me/wt/./feature'

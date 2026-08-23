@@ -23,17 +23,14 @@ export function resolveRepoWorktreePathPlatform(repo: Repo): NodeJS.Platform {
 }
 
 /**
- * Collapse rows naming the same directory under different spellings (`.` or `..` segments, repeated
- * or trailing separators, Windows slash style and drive-letter case) into a single row, in place, so
+ * Collapse rows naming the same directory under different spellings (`.`/`..` segments, repeated or
+ * trailing separators, Windows slash style and drive-letter case) into a single row, in place, so
  * Git's own ordering survives — downstream `slice(0, limit)` and `candidates[0]` callers depend on it.
  *
  * The survivor keeps the canonical spelling (the repo's own path, else a spelling that already has
  * metadata, else Git's first row) so the derived worktree id stays stable, and adopts the branch,
- * head and flags of the peers it absorbs.
- *
- * Case-sensitive roots are never case-folded — POSIX paths (including on macOS, where APFS/HFSX can
- * be formatted case-sensitive) and the WSL UNC aliases Windows hosts report worktrees under.
- * Silently dropping a real worktree row is worse than showing a duplicate one.
+ * head and flags of the peers it absorbs. Case-sensitive roots are never case-folded — silently
+ * dropping a real worktree row is worse than showing a duplicate one.
  */
 export function collapsePathEqualWorktreeRows(
   rows: readonly GitWorktreeInfo[],
@@ -66,7 +63,15 @@ function mergePathEqualRows(
     // Why: the stored-metadata fallback row carries an empty head/branch, so a real Git row fills them.
     head: survivor.head || duplicate.head,
     branch: survivor.branch || duplicate.branch,
+    isBare: survivor.isBare || duplicate.isBare,
     isMainWorktree: survivor.isMainWorktree || duplicate.isMainWorktree,
+    // Why: a partial metadata row can precede the real Git row, so every state flag must survive.
+    ...(survivor.locked || duplicate.locked
+      ? { locked: true, lockReason: survivor.lockReason || duplicate.lockReason }
+      : {}),
+    ...(survivor.prunable || duplicate.prunable
+      ? { prunable: true, prunableReason: survivor.prunableReason || duplicate.prunableReason }
+      : {}),
     ...(survivor.isSparse || duplicate.isSparse ? { isSparse: true } : {})
   }
 }
@@ -76,7 +81,14 @@ function pickCanonicalSpelling(
   duplicatePath: string,
   options: PathEqualWorktreeRowCollapseOptions
 ): string {
-  if (survivorPath === options.repoPath || duplicatePath === options.repoPath) {
+  const platform = options.platform ?? process.platform
+  // Why: the collapse loop already keyed rows by comparison key, so an equivalent
+  // repo-path spelling (dot segment, trailing slash, drive-letter case) must win too.
+  const repoPathKey = worktreePathComparisonKey(options.repoPath, platform)
+  if (
+    worktreePathComparisonKey(survivorPath, platform) === repoPathKey ||
+    worktreePathComparisonKey(duplicatePath, platform) === repoPathKey
+  ) {
     return options.repoPath
   }
   const { hasStoredMeta } = options

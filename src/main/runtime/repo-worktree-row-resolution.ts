@@ -132,7 +132,10 @@ export async function resolveRepoWorktreeRows(
   }
   const gitWorktrees = collapsePathEqualWorktreeRows(scan.worktrees, {
     repoPath: repo.path,
-    hasStoredMeta: (worktreePath) => metaById[`${repo.id}::${worktreePath}`] !== undefined,
+    // Why: a bare metaById lookup would let a foreign-host spelling win the canonical pick.
+    hasStoredMeta: (worktreePath) =>
+      getRepoOwnedWorktreeMeta(repo, `${repo.id}::${worktreePath}`, metaById, repoOwnerCount) !==
+      undefined,
     platform: pathPlatform
   })
   const expectedHostId = getRepoExecutionHostId(repo)

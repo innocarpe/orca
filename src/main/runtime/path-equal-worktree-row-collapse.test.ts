@@ -134,6 +134,45 @@ describe('collapsePathEqualWorktreeRows', () => {
       })[0].path
     ).toBe('/home/me/wt/feature')
   })
+
+  it('merges bare, lock and prunable state from a partial first row', () => {
+    const rows = [
+      row('/home/me/wt/feature/', { head: '', branch: '', isBare: false, isMainWorktree: false }),
+      row('/home/me/wt/feature', {
+        isBare: true,
+        locked: true,
+        lockReason: 'checked out elsewhere',
+        prunable: true,
+        prunableReason: 'gitdir file points to non-existent location'
+      })
+    ]
+
+    const collapsed = collapsePathEqualWorktreeRows(rows, {
+      repoPath: '/home/me/repo',
+      platform: 'linux'
+    })
+
+    expect(collapsed).toHaveLength(1)
+    expect(collapsed[0]).toMatchObject({
+      path: '/home/me/wt/feature/',
+      isBare: true,
+      locked: true,
+      lockReason: 'checked out elsewhere',
+      prunable: true,
+      prunableReason: 'gitdir file points to non-existent location'
+    })
+  })
+
+  it('treats an equivalent repo-path spelling as canonical', () => {
+    const rows = [row('/home/me/repo'), row('/home/me/repo/')]
+
+    expect(
+      collapsePathEqualWorktreeRows(rows, {
+        repoPath: '/home/me/repo/./',
+        platform: 'linux'
+      })[0].path
+    ).toBe('/home/me/repo/./')
+  })
 })
 
 describe('resolveRepoWorktreePathPlatform', () => {
