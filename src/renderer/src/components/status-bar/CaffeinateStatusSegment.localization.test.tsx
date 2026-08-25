@@ -58,7 +58,11 @@ const localeCopy = [
       auto: 'Agente',
       off: 'Desactivado',
       active: 'Activo',
-      inactive: 'Inactivo'
+      inactive: 'Inactivo',
+      ariaLabel: 'Mantener la computadora activa, Desactivado · Inactivo',
+      onDescription: 'Mantener esta computadora activa en todo momento',
+      autoDescription: 'Mantener la computadora activa mientras un agente está trabajando',
+      offDescription: 'Permitir que el sistema entre en suspensión normalmente'
     }
   ],
   [
@@ -69,7 +73,11 @@ const localeCopy = [
       auto: 'Agent',
       off: 'オフ',
       active: 'アクティブ',
-      inactive: '非アクティブ'
+      inactive: '非アクティブ',
+      ariaLabel: 'コンピュータをスリープさせない、オフ · 非アクティブ',
+      onDescription: 'このコンピュータを常にスリープさせない',
+      autoDescription: 'Agent の作業中はスリープさせない',
+      offDescription: '通常のシステムスリープを許可する'
     }
   ],
   [
@@ -80,7 +88,11 @@ const localeCopy = [
       auto: '에이전트',
       off: '꺼짐',
       active: '활성',
-      inactive: '비활성'
+      inactive: '비활성',
+      ariaLabel: '컴퓨터 절전 방지, 꺼짐 · 비활성',
+      onDescription: '이 컴퓨터가 절전 모드로 전환되지 않도록 항상 유지',
+      autoDescription: '에이전트가 작업하는 동안 절전 모드로 전환되지 않도록 유지',
+      offDescription: '시스템의 기본 절전 동작 허용'
     }
   ],
   [
@@ -91,7 +103,11 @@ const localeCopy = [
       auto: '智能体',
       off: '关闭',
       active: '生效中',
-      inactive: '未生效'
+      inactive: '未生效',
+      ariaLabel: '防止电脑休眠，关闭 · 未生效',
+      onDescription: '始终防止此电脑进入睡眠状态',
+      autoDescription: '智能体工作时防止电脑进入睡眠状态',
+      offDescription: '允许系统正常进入睡眠状态'
     }
   ]
 ] as const
@@ -137,7 +153,33 @@ describe('keep-awake copy under non-English UI languages', () => {
       auto: getAgentAwakeModeLabel('auto'),
       off: getAgentAwakeModeLabel('off'),
       active: translate('auto.components.status.bar.CaffeinateStatusSegment.active', 'Active'),
-      inactive: translate('auto.components.status.bar.CaffeinateStatusSegment.inactive', 'Inactive')
+      inactive: translate(
+        'auto.components.status.bar.CaffeinateStatusSegment.inactive',
+        'Inactive'
+      ),
+      ariaLabel: translate(
+        'auto.components.status.bar.CaffeinateStatusSegment.ariaLabel',
+        '{{title}}, {{status}}',
+        {
+          title: getAgentAwakeTitle(),
+          status: `${getAgentAwakeModeLabel('off')} · ${translate(
+            'auto.components.status.bar.CaffeinateStatusSegment.inactive',
+            'Inactive'
+          )}`
+        }
+      ),
+      onDescription: translate(
+        'auto.components.status.bar.CaffeinateStatusSegment.onDescription',
+        'Keep this computer awake continuously'
+      ),
+      autoDescription: translate(
+        'auto.components.status.bar.CaffeinateStatusSegment.autoDescription',
+        'Stay awake while an agent is working'
+      ),
+      offDescription: translate(
+        'auto.components.status.bar.CaffeinateStatusSegment.offDescription',
+        'Allow normal system sleep behavior'
+      )
     }).toEqual(copy)
   })
 
