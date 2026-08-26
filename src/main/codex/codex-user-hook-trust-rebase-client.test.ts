@@ -111,4 +111,37 @@ describe('Codex user hook trust rebase RPCs', () => {
     )
     expect(edits).toContainEqual(expect.objectContaining({ value: { enabled: false } }))
   })
+
+  it('lists currentHash for each reported hook without writing config', async () => {
+    requestRpcMock.mockResolvedValueOnce(
+      listResult([
+        listing('/runtime/hooks.json:pre_tool_use:1:0', 'user-pre-tool-hook', 'modified'),
+        listing('/runtime/hooks.json:post_tool_use:1:0', 'user-post-tool-hook', 'trusted')
+      ])
+    )
+
+    await expect(
+      runCodexUserHookTrustRebaseSession({
+        operation: 'list-hook-current-hashes',
+        invocation,
+        hooksListCwd: '/tmp'
+      })
+    ).resolves.toEqual({
+      outcome: 'listed',
+      listings: [
+        {
+          key: '/runtime/hooks.json:pre_tool_use:1:0',
+          command: 'user-pre-tool-hook',
+          currentHash: 'sha256:/runtime/hooks.json:pre_tool_use:1:0'
+        },
+        {
+          key: '/runtime/hooks.json:post_tool_use:1:0',
+          command: 'user-post-tool-hook',
+          currentHash: 'sha256:/runtime/hooks.json:post_tool_use:1:0'
+        }
+      ]
+    })
+    expect(requestRpcMock).toHaveBeenCalledTimes(1)
+    expect(requestRpcMock).toHaveBeenCalledWith('hooks/list', { cwds: ['/tmp'] })
+  })
 })

@@ -42,6 +42,7 @@ import {
   computeTrustedHash,
   escapeTomlString,
   getCodexExplicitHomeHookSourcePath,
+  getHookTrustKeyWriteVariants,
   normalizeCodexHookSourcePath,
   normalizeCodexProjectPathForLookup,
   normalizeHookTrustKeyForLookup,
@@ -84,6 +85,10 @@ import {
 } from './codex-managed-trust-reconciliation'
 import type { CodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
+import {
+  clearHookTrustKeySeparatorVariants,
+  resolveMirroredRuntimeUserHookTrustEntries
+} from './codex-mirrored-hook-runtime-trust'
 
 // Why: Pre/PostToolUse feed the live in-flight-tool readout; PermissionRequest exits with no decision so Codex still shows its approval UI while Orca flips the pane to waiting.
 const CODEX_EVENTS = [
@@ -275,7 +280,7 @@ function removeStaleRuntimeHookTrustEntries(
     if (expectedHashes.get(normalizeHookTrustKeyForLookup(key)) === state.trustedHash) {
       continue
     }
-    staleKeys.push(key)
+    staleKeys.push(...getHookTrustKeyWriteVariants(key))
   }
   if (staleKeys.length > 0) {
     removeHookTrustEntries(tomlPath, staleKeys)
@@ -421,7 +426,7 @@ function resolveTrustedSystemHookState(
     return { enabled: reorderedEnabled, trustedHash: expectedHash }
   }
   if (state?.trustedHash) {
-    // Why: carry a key-matched system hash verbatim — recomputing caused #7110 re-approval loops since Codex owns its hash algorithm.
+    // Why: approval match only — #7110 re-approval loops if we recompute; runtime writes use Codex currentHash.
     return { enabled: state.enabled !== false, trustedHash: state.trustedHash }
   }
   return null
@@ -1424,7 +1429,6 @@ export class CodexHookService {
         timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
       })
     }
-    const trustEntries: CodexTrustEntry[] = [...mirroredTrustEntries, ...managedTrustEntries]
     let recentGrantEntries: readonly CodexTrustEntry[] = []
 
     config.hooks = nextHooks
@@ -1442,8 +1446,8 @@ export class CodexHookService {
       // managed entries are granted through codex app-server RPCs (verified by
       // re-list) whenever the installed CLI supports them; the granted entries
       // then carry Codex's verbatim hashes into stale cleanup so it cannot
-      // delete what Codex just wrote. Mirrored user trust keeps its existing
-      // verbatim-carry lane either way.
+      // delete what Codex just wrote. Mirrored user trust is approved by
+      // signature, then written with runtime currentHash from hooks/list.
       const grant = await grantManagedCodexHookTrust({
         runtimeHomePath,
         tomlPath,
@@ -1452,11 +1456,20 @@ export class CodexHookService {
         host: { kind: 'native' },
         telemetryLane: 'managed'
       })
+      const resolvedMirroredTrustEntries = resolveMirroredRuntimeUserHookTrustEntries({
+        entries: mirroredTrustEntries,
+        runtimeHomePath,
+        tomlPath
+      })
+      clearHookTrustKeySeparatorVariants(
+        tomlPath,
+        resolvedMirroredTrustEntries.map((entry) => computeTrustKey(entry))
+      )
       if (grant.lane === 'rpc') {
         recentGrantEntries = grant.entries
-        upsertHookTrustEntries(tomlPath, mirroredTrustEntries)
+        upsertHookTrustEntries(tomlPath, resolvedMirroredTrustEntries)
         removeStaleRuntimeHookTrustEntries(tomlPath, configPath, [
-          ...mirroredTrustEntries,
+          ...resolvedMirroredTrustEntries,
           ...grant.entries
         ])
       } else {
@@ -1465,10 +1478,17 @@ export class CodexHookService {
         // all old runtime [hooks.state.*] blocks would keep Orca Codex trusted.
         // Upsert first so duplicate repair can preserve a disabled managed copy
         // before stale cleanup removes old managed hook keys.
-        upsertHookTrustEntries(tomlPath, trustEntries)
-        removeStaleRuntimeHookTrustEntries(tomlPath, configPath, trustEntries)
+        const resolvedTrustEntries = [...resolvedMirroredTrustEntries, ...managedTrustEntries]
+        upsertHookTrustEntries(tomlPath, resolvedTrustEntries)
+        removeStaleRuntimeHookTrustEntries(tomlPath, configPath, resolvedTrustEntries)
       }
-      applyMirroredRuntimeUserHookTrustStates(tomlPath, mirroredUserTrustEntries)
+      applyMirroredRuntimeUserHookTrustStates(
+        tomlPath,
+        mirroredUserTrustEntries.map((item, index) => ({
+          entry: resolvedMirroredTrustEntries[index] ?? item.entry,
+          enabled: item.enabled
+        }))
+      )
     } catch (error) {
       return {
         agent: 'codex',
@@ -1636,18 +1656,32 @@ export class CodexHookService {
 
     try {
       const tomlPath = getCodexConfigTomlPath(runtimeHomePath)
-      const trustEntries = hookPlan.trustEntries.map(({ entry }) => entry)
       syncSystemConfigIntoManagedCodexHome({
         runtimeHomePath,
         systemHomePath: getSystemCodexHomePath()
       })
+      const trustEntries = resolveMirroredRuntimeUserHookTrustEntries({
+        entries: hookPlan.trustEntries.map(({ entry }) => entry),
+        runtimeHomePath,
+        tomlPath
+      })
       // Why: this path is used when Orca status hooks are disabled. The
       // runtime CODEX_HOME should keep user hooks, but not Orca-managed trust.
       // Write current mirrored user trust first so stale cleanup compares
-      // against current hashes while deleting old managed hook keys.
+      // against runtime current hashes while deleting old managed hook keys.
+      clearHookTrustKeySeparatorVariants(
+        tomlPath,
+        trustEntries.map((entry) => computeTrustKey(entry))
+      )
       upsertHookTrustEntries(tomlPath, trustEntries)
       removeStaleRuntimeHookTrustEntries(tomlPath, configPath, trustEntries)
-      applyMirroredRuntimeUserHookTrustStates(tomlPath, hookPlan.trustEntries)
+      applyMirroredRuntimeUserHookTrustStates(
+        tomlPath,
+        hookPlan.trustEntries.map((item, index) => ({
+          entry: trustEntries[index] ?? item.entry,
+          enabled: item.enabled
+        }))
+      )
     } catch (error) {
       return {
         agent: 'codex',

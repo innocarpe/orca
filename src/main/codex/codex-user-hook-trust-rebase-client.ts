@@ -71,13 +71,25 @@ export type CodexUserHookTrustRepairRequest = CodexUserHookTrustRebaseRequestBas
   moves: CodexCapturedUserHookTrustMove[]
 }
 
+export type CodexUserHookCurrentHashListRequest = CodexUserHookTrustRebaseRequestBase & {
+  operation: 'list-hook-current-hashes'
+}
+
+export type CodexHookCurrentHashListing = {
+  key: string
+  command: string | null
+  currentHash: string
+}
+
 export type CodexUserHookTrustRebaseRequest =
   | CodexUserHookTrustInspectRequest
   | CodexUserHookTrustRepairRequest
+  | CodexUserHookCurrentHashListRequest
 
 export type CodexUserHookTrustRebaseResult =
   | { outcome: 'inspected'; moves: CodexCapturedUserHookTrustMove[] }
   | { outcome: 'repaired'; repaired: number }
+  | { outcome: 'listed'; listings: CodexHookCurrentHashListing[] }
 
 function matchingListings(
   listings: readonly CodexHookListing[],
@@ -196,10 +208,30 @@ async function repairUserHookTrust(
   })
 }
 
+async function listHookCurrentHashes(
+  request: CodexUserHookCurrentHashListRequest
+): Promise<CodexUserHookTrustRebaseResult> {
+  return runCodexAppServerSession(request.invocation, async ({ request: requestRpc }) => {
+    const result = await requestRpc('hooks/list', { cwds: [request.hooksListCwd] })
+    return {
+      outcome: 'listed' as const,
+      listings: collectCodexHookListings(result).map((listing) => ({
+        key: listing.key,
+        command: listing.command,
+        currentHash: listing.currentHash
+      }))
+    }
+  })
+}
+
 export function runCodexUserHookTrustRebaseSession(
   request: CodexUserHookTrustRebaseRequest
 ): Promise<CodexUserHookTrustRebaseResult> {
-  return request.operation === 'inspect-user-hook-trust'
-    ? inspectUserHookTrust(request)
-    : repairUserHookTrust(request)
+  if (request.operation === 'inspect-user-hook-trust') {
+    return inspectUserHookTrust(request)
+  }
+  if (request.operation === 'repair-user-hook-trust') {
+    return repairUserHookTrust(request)
+  }
+  return listHookCurrentHashes(request)
 }
