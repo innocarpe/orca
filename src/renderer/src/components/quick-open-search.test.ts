@@ -62,12 +62,30 @@ describe('quick-open-search', () => {
     ])
   })
 
+  it('lists indexed recents first for an empty query, then remaining files', () => {
+    const files = prepareQuickOpenFiles(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
+
+    expect(
+      rankQuickOpenFiles('', files, QUICK_OPEN_RESULT_LIMIT, ['c.ts', 'a.ts']).map(
+        (item) => item.path
+      )
+    ).toEqual(['c.ts', 'a.ts', 'b.ts', 'd.ts'])
+  })
+
   it('prefers filename substring matches over path-only matches', () => {
     const files = ['button-area/deep/path/file.tsx', 'src/components/Button.tsx']
 
     expect(
       rankQuickOpenFiles('button', prepareQuickOpenFiles(files)).map((item) => item.path)
     ).toEqual(['src/components/Button.tsx', 'button-area/deep/path/file.tsx'])
+  })
+
+  it('prefers recency over inputIndex when fuzzy scores are equal', () => {
+    const files = prepareQuickOpenFiles(['a.ts', 'c.ts'])
+    const ranked = rankQuickOpenFiles('ts', files, QUICK_OPEN_RESULT_LIMIT, ['c.ts'])
+
+    expect(ranked.map((item) => item.path)).toEqual(['c.ts', 'a.ts'])
+    expect(ranked[0]?.score).toBe(ranked[1]?.score)
   })
 
   it('uses natural order for tie-heavy results at the limit boundary', () => {
