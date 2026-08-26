@@ -94,6 +94,36 @@ describe('FileExplorerRow reveal in file manager', () => {
       )
     ).toBe(true)
   })
+
+  it('blocks a detected SSH worktree that is absent from worktreesByRepo', () => {
+    expect(
+      isFileExplorerRevealBlocked(
+        {
+          settings: { activeRuntimeEnvironmentId: null },
+          repos: [{ id: 'ssh-repo', connectionId: 'ssh-1', executionHostId: 'ssh:ssh-1' }],
+          worktreesByRepo: {},
+          folderWorkspaces: [],
+          projectGroups: []
+        },
+        'ssh-repo::/home/neil/repo-feature'
+      )
+    ).toBe(true)
+  })
+
+  it('blocks reveal when the worktree owner cannot be resolved', () => {
+    expect(
+      isFileExplorerRevealBlocked(
+        {
+          settings: { activeRuntimeEnvironmentId: null },
+          repos: [],
+          worktreesByRepo: {},
+          folderWorkspaces: [],
+          projectGroups: []
+        },
+        'missing-repo::/home/neil/repo-feature'
+      )
+    ).toBe(true)
+  })
 })
 
 describe('FileExplorerRow collapse folder action', () => {

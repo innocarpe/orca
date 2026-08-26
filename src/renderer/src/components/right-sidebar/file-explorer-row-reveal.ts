@@ -1,22 +1,27 @@
+import { getConnectionIdFromState } from '@/lib/connection-context'
 import { isLocalPathOpenBlockedForRuntimeOwner } from '@/lib/local-path-open-guard'
 import { getExplicitRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 
 export function isFileExplorerRevealBlocked(
-  state: Parameters<typeof getExplicitRuntimeEnvironmentIdForWorktree>[0] & {
-    repos?: readonly { id: string; connectionId?: string | null }[]
-    worktreesByRepo?: Record<string, readonly { id: string; repoId: string }[]>
-  },
+  state: Parameters<typeof getExplicitRuntimeEnvironmentIdForWorktree>[0],
   worktreeId: string | null | undefined
 ): boolean {
-  const activeWorktree = Object.values(state.worktreesByRepo ?? {})
-    .flat()
-    .find((worktree) => worktree.id === worktreeId)
-  const activeRepo = activeWorktree
-    ? state.repos?.find((repo) => repo.id === activeWorktree.repoId)
-    : null
+  const connectionId = getConnectionIdFromState(
+    {
+      folderWorkspaces: state.folderWorkspaces ?? [],
+      projectGroups: state.projectGroups ?? [],
+      repos: state.repos ?? [],
+      worktreesByRepo: state.worktreesByRepo ?? {}
+    },
+    worktreeId ?? null
+  )
+  // Why: an unresolved SSH worktree must not fall through to local openPath.
+  if (connectionId === undefined) {
+    return true
+  }
   return isLocalPathOpenBlockedForRuntimeOwner(
     state.settings,
     getExplicitRuntimeEnvironmentIdForWorktree(state, worktreeId),
-    { connectionId: activeRepo?.connectionId ?? null }
+    { connectionId }
   )
 }
