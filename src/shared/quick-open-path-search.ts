@@ -248,12 +248,19 @@ function finalizeResults(results: QuickOpenRankedResult[]): QuickOpenSearchResul
 }
 
 function compareRankedResult(a: QuickOpenRankedResult, b: QuickOpenRankedResult): number {
-  return (
-    a.score - b.score ||
-    compareRecencyRank(a.recencyRank, b.recencyRank) ||
-    compareFileNames(a.path, b.path) ||
-    a.inputIndex - b.inputIndex
-  )
+  const scoreCmp = a.score - b.score
+  if (scoreCmp !== 0) {
+    return scoreCmp
+  }
+  const recencyCmp = compareRecencyRank(a.recencyRank, b.recencyRank)
+  if (recencyCmp !== 0) {
+    return recencyCmp
+  }
+  // Why: unranked equal-score ties must keep input order, not path sort.
+  if (a.recencyRank === undefined && b.recencyRank === undefined) {
+    return a.inputIndex - b.inputIndex || compareFileNames(a.path, b.path)
+  }
+  return compareFileNames(a.path, b.path) || a.inputIndex - b.inputIndex
 }
 
 function compareRecencyRank(a: number | undefined, b: number | undefined): number {
