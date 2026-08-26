@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   isWebRuntimeSessionActive: vi.fn(() => false),
   makePreviewFilePermanent: vi.fn(),
   openFile: vi.fn(),
+  openNewTerminalTabInActiveWorkspace: vi.fn(),
   pinFile: vi.fn(),
   recordFeatureInteraction: vi.fn(),
   setActiveBrowserTab: vi.fn(),
@@ -151,6 +152,7 @@ function resetStore(): void {
     focusGroup: mocks.focusGroup,
     makePreviewFilePermanent: mocks.makePreviewFilePermanent,
     openFile: mocks.openFile,
+    openNewTerminalTabInActiveWorkspace: mocks.openNewTerminalTabInActiveWorkspace,
     pinFile: mocks.pinFile,
     recordFeatureInteraction: mocks.recordFeatureInteraction,
     setActiveBrowserTab: mocks.setActiveBrowserTab,
@@ -197,16 +199,20 @@ describe('useTabGroupWorkspaceModel terminal activation focus', () => {
     expect(mocks.focusTerminalTabSurface).toHaveBeenCalledWith('terminal-1', null)
   })
 
-  it('falls back to a local shell when the typed remote-create outcome is unavailable', async () => {
-    mocks.createTab.mockReturnValue({ id: 'terminal-new' })
+  it('creates plus-menu shell tabs through the same active-workspace group path as Ctrl+T', async () => {
     const { useTabGroupWorkspaceModel } = await import('./useTabGroupWorkspaceModel')
     const model = useTabGroupWorkspaceModel({ groupId: 'group-1', worktreeId: 'wt-1' })
 
-    model.commands.newTerminalWithShell('zsh')
-    await vi.waitFor(() => expect(mocks.createTab).toHaveBeenCalled())
+    model.commands.newTerminalTab()
+    model.commands.newTerminalWithShell('pwsh.exe')
 
-    expect(mocks.createTab).toHaveBeenCalledWith('wt-1', 'group-1', 'zsh')
-    expect(mocks.setActiveTab).toHaveBeenCalledWith('terminal-new')
+    expect(mocks.openNewTerminalTabInActiveWorkspace).toHaveBeenNthCalledWith(1, 'group-1')
+    expect(mocks.openNewTerminalTabInActiveWorkspace).toHaveBeenNthCalledWith(
+      2,
+      'group-1',
+      'pwsh.exe'
+    )
+    expect(mocks.createTab).not.toHaveBeenCalled()
   })
 
   it('returns keyboard focus to the active split pane leaf when a terminal tab is activated', async () => {

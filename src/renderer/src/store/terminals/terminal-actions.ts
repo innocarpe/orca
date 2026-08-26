@@ -76,7 +76,7 @@ export type TerminalActions = {
       forceHostRuntime?: boolean
     }
   ) => TerminalTab
-  openNewTerminalTabInActiveWorkspace: (groupId: string) => Promise<void>
+  openNewTerminalTabInActiveWorkspace: (groupId: string, shellOverride?: string) => Promise<void>
   /** Synchronous retirement: provider teardown starts before state removal but is never awaited. */
   closeTab: (
     tabId: string,

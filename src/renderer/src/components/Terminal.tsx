@@ -1573,11 +1573,11 @@ function Terminal(): React.JSX.Element | null {
         })
         return
       }
-      if (!shellOverride && targetGroupId) {
-        void openNewTerminalTabInActiveWorkspace(targetGroupId)
+      if (targetGroupId) {
+        void openNewTerminalTabInActiveWorkspace(targetGroupId, shellOverride)
         return
       }
-      const newTab = createTab(activeWorktreeId, undefined, shellOverride)
+      const newTab = createTab(activeWorktreeId, targetGroupId, shellOverride)
       setActiveTabType('terminal')
       // Why: persist tab-bar order with the new terminal appended; else reconcileOrder falls back to terminals-first and jumps it to index 0 before editor tabs.
       const state = useAppStore.getState()
@@ -1601,7 +1601,6 @@ function Terminal(): React.JSX.Element | null {
       const order = base.filter((id) => id !== newTab.id)
       order.push(newTab.id)
       setTabBarOrder(activeWorktreeId, order)
-      // Why: shell-specific creation still uses the legacy path; keep focus here until the lifted action accepts shell overrides.
       focusTerminalTabSurface(newTab.id)
     },
     [

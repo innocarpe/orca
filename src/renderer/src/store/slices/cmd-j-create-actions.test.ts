@@ -318,4 +318,76 @@ describe('Cmd+J lifted creation actions', () => {
     expect(createWebRuntimeSessionTerminalMock).not.toHaveBeenCalled()
     expect(store.getState().tabsByWorktree['wt-1'] ?? []).toHaveLength(1)
   })
+
+  it.each(['pwsh.exe', 'git-bash', 'wsl.exe'] as const)(
+    'creates plus-menu %s tabs in the requested group, not a stale active group',
+    async (shellOverride) => {
+      // Why: Windows plus-menu used createTab(worktreeId, undefined, shell); a stale
+      // activeGroupId then attached the tab to the wrong group (issue #16444).
+      delete pairedWebFlag.__ORCA_WEB_CLIENT__
+      const store = createTestStore()
+      seedActiveWorkspace(store)
+      store.setState({
+        repos: [{ ...TEST_REPO, executionHostId: 'local' }],
+        worktreesByRepo: {
+          [TEST_REPO.id]: [makeWorktree({ id: 'wt-1', repoId: TEST_REPO.id, hostId: 'local' })]
+        },
+        settings: { activeRuntimeEnvironmentId: null } as AppState['settings'],
+        groupsByWorktree: {
+          'wt-1': [
+            { id: 'stale-group', worktreeId: 'wt-1', activeTabId: null, tabOrder: [] },
+            { id: 'group-1', worktreeId: 'wt-1', activeTabId: null, tabOrder: [] }
+          ]
+        },
+        activeGroupIdByWorktree: { 'wt-1': 'stale-group' }
+      })
+      const createTab = store.getState().createTab
+      const createTabSpy = vi.fn(createTab)
+      store.setState({ createTab: createTabSpy })
+
+      await store.getState().openNewTerminalTabInActiveWorkspace('group-1')
+      await store.getState().openNewTerminalTabInActiveWorkspace('group-1', shellOverride)
+
+      expect(createWebRuntimeSessionTerminalMock).not.toHaveBeenCalled()
+      expect(createTabSpy).toHaveBeenCalledTimes(2)
+      expect(createTabSpy.mock.calls[0]?.[1]).toBe('group-1')
+      expect(createTabSpy.mock.calls[1]?.[1]).toBe('group-1')
+      expect(createTabSpy.mock.calls[1]?.[2]).toBe(shellOverride)
+      const tabs = store.getState().tabsByWorktree['wt-1'] ?? []
+      expect(tabs).toHaveLength(2)
+      expect(tabs[1]?.shellOverride).toBe(shellOverride)
+      const requestedGroup = store
+        .getState()
+        .groupsByWorktree['wt-1']?.find((group) => group.id === 'group-1')
+      const staleGroup = store
+        .getState()
+        .groupsByWorktree['wt-1']?.find((group) => group.id === 'stale-group')
+      expect(requestedGroup?.tabOrder).toEqual([tabs[0]?.id, tabs[1]?.id])
+      expect(staleGroup?.tabOrder).toEqual([])
+    }
+  )
+
+  it('forwards plus-menu shell overrides on the same web runtime group path as Ctrl+T', async () => {
+    createWebRuntimeSessionTerminalMock.mockResolvedValue(false)
+    const store = createTestStore()
+    seedActiveWorkspace(store)
+
+    await store.getState().openNewTerminalTabInActiveWorkspace('group-1')
+    await store.getState().openNewTerminalTabInActiveWorkspace('group-1', 'pwsh.exe')
+
+    expect(createWebRuntimeSessionTerminalMock).toHaveBeenNthCalledWith(1, {
+      worktreeId: 'wt-1',
+      environmentId: 'runtime-1',
+      targetGroupId: 'group-1',
+      activate: true
+    })
+    expect(createWebRuntimeSessionTerminalMock).toHaveBeenNthCalledWith(2, {
+      worktreeId: 'wt-1',
+      environmentId: 'runtime-1',
+      targetGroupId: 'group-1',
+      command: 'pwsh.exe',
+      activate: true
+    })
+    expect(store.getState().tabsByWorktree['wt-1'] ?? []).toEqual([])
+  })
 })
