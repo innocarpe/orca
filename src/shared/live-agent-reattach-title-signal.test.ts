@@ -16,7 +16,6 @@ describe('isNativeStatuslessAgentReattachTitle', () => {
     expect(isNativeStatuslessAgentReattachTitle('OC | Native Stable Session')).toBe(true)
     expect(isNativeStatuslessAgentReattachTitle('OC | Understand about the plugin')).toBe(true)
     expect(isNativeStatuslessAgentReattachTitle('tmux | OC | ses_123')).toBe(true)
-    expect(isNativeStatuslessAgentReattachTitle('OC|compact-session')).toBe(true)
   })
 
   it('rejects shells, lookalikes, and status-bearing agent names', () => {
@@ -27,6 +26,8 @@ describe('isNativeStatuslessAgentReattachTitle', () => {
     expect(isNativeStatuslessAgentReattachTitle('ssh devin@host')).toBe(false)
     expect(isNativeStatuslessAgentReattachTitle('oc | lowercase lookalike')).toBe(false)
     expect(isNativeStatuslessAgentReattachTitle('OC |')).toBe(false)
+    // Why: native OpenCode always spaces `OC |`; compact `OC|x` is another tool.
+    expect(isNativeStatuslessAgentReattachTitle('OC|compact-session')).toBe(false)
     expect(isNativeStatuslessAgentReattachTitle('Codex ready')).toBe(false)
   })
 })
