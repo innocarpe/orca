@@ -152,6 +152,13 @@ async function grantAndVerifyMirroredRuntimeTrust(
     const approvedIndexes = await inspectApprovedSystemHooks(args, resolvedHost)
     const fallbackEntries = preserveExistingRuntimeHashes(args.entries, args.tomlPath)
     if (approvedIndexes.length === 0) {
+      retryAfterByScope.delete(scopeKey)
+      if (resolvedHost.binaryStamp) {
+        verifiedRuntimeTrustByScope.set(scopeKey, {
+          fingerprint: getMirroredRuntimeTrustFingerprint(args, resolvedHost.binaryStamp),
+          grants: []
+        })
+      }
       return fallbackEntries
     }
     const approvedEntries = approvedIndexes.map((index) => args.entries[index]!)

@@ -1,5 +1,5 @@
 import { runCodexAppServerSession, type CodexAppServerInvocation } from './codex-app-server-session'
-import { normalizeHookTrustKeyForLookup } from './config-toml-trust'
+import { getHookTrustKeyWriteVariants, normalizeHookTrustKeyForLookup } from './config-toml-trust'
 
 type CodexHookListing = {
   key: string
@@ -176,10 +176,9 @@ async function repairUserHookTrust(
       )
     }
 
-    const keysToClear = new Set([
-      ...request.moves.map((move) => move.reportedOldKey),
-      ...Array.from(byNewKey.values(), (listing) => listing.key)
-    ])
+    const oldKeys = request.moves.map((move) => move.reportedOldKey)
+    const newKeys = Array.from(byNewKey.values(), (listing) => listing.key)
+    const keysToClear = new Set([...oldKeys, ...newKeys].flatMap(getHookTrustKeyWriteVariants))
     const edits: { keyPath: string; value: unknown; mergeStrategy: 'replace' }[] = Array.from(
       keysToClear,
       (key) => ({

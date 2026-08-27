@@ -142,6 +142,48 @@ describe('Codex user hook trust rebase RPCs', () => {
     expect(edits).toContainEqual(expect.objectContaining({ value: { enabled: false } }))
   })
 
+  it('clears both Windows separator variants when repairing moved trust', async () => {
+    const oldBackslashKey = 'C:\\runtime\\hooks.json:stop:1:0'
+    const oldSlashKey = 'C:/runtime/hooks.json:stop:1:0'
+    const newBackslashKey = 'C:\\runtime\\hooks.json:stop:0:0'
+    const newSlashKey = 'C:/runtime/hooks.json:stop:0:0'
+    const postMutation = listing(newBackslashKey, 'user-stop-hook', 'untrusted')
+    const verified = listing(newBackslashKey, 'user-stop-hook', 'trusted')
+    requestRpcMock
+      .mockResolvedValueOnce(listResult([postMutation, { ...postMutation, key: newSlashKey }]))
+      .mockResolvedValueOnce({ status: 'ok' })
+      .mockResolvedValueOnce(listResult([verified, { ...verified, key: newSlashKey }]))
+
+    await runCodexUserHookTrustRebaseSession({
+      operation: 'repair-user-hook-trust',
+      invocation,
+      hooksListCwd: 'C:\\runtime',
+      moves: [
+        {
+          oldKey: oldBackslashKey,
+          newKey: newBackslashKey,
+          command: 'user-stop-hook',
+          reportedOldKey: oldBackslashKey,
+          wasTrusted: true,
+          enabled: true
+        }
+      ]
+    })
+
+    const edits = (
+      requestRpcMock.mock.calls[1]![1] as {
+        edits: { keyPath: string; value: unknown }[]
+      }
+    ).edits
+    const clearedKeyPaths = edits.filter((edit) => edit.value === null).map((edit) => edit.keyPath)
+    expect(clearedKeyPaths).toEqual([
+      'hooks.state."C:\\\\runtime\\\\hooks.json:stop:1:0"',
+      `hooks.state."${oldSlashKey}"`,
+      'hooks.state."C:\\\\runtime\\\\hooks.json:stop:0:0"',
+      `hooks.state."${newSlashKey}"`
+    ])
+  })
+
   it('writes runtime currentHash for approved mirrored hooks and verifies by re-list', async () => {
     const preToolKey = '/runtime/hooks.json:pre_tool_use:1:0'
     const postToolKey = '/runtime/hooks.json:post_tool_use:1:0'

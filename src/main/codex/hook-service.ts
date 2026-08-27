@@ -1409,7 +1409,7 @@ export class CodexHookService {
       hookPlan.trustEntries
     )
     const mirroredTrustEntries: CodexTrustEntry[] = mirroredUserTrustEntries.map(
-      ({ entry }) => entry
+      ({ entry, enabled }) => ({ ...entry, enabled })
     )
     const managedTrustEntries: CodexTrustEntry[] = []
     const trustSourcePath = getCodexExplicitHomeHookSourcePath(configPath)
@@ -1664,7 +1664,7 @@ export class CodexHookService {
         systemHomePath: getSystemCodexHomePath()
       })
       const trustEntries = await resolveMirroredRuntimeUserHookTrustEntries({
-        entries: hookPlan.trustEntries.map(({ entry }) => entry),
+        entries: hookPlan.trustEntries.map(({ entry, enabled }) => ({ ...entry, enabled })),
         systemEntries: hookPlan.trustEntries.map(({ systemEntry }) => systemEntry),
         systemHomePath: getSystemCodexHomePath(),
         runtimeHomePath,

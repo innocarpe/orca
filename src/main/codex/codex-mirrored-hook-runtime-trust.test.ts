@@ -192,8 +192,10 @@ describe('mirrored runtime hook trust', () => {
     _internals.setSessionRunner(runner)
 
     const resolved = await resolveMirroredRuntimeUserHookTrustEntries(resolveArgs(entry))
+    const repeated = await resolveMirroredRuntimeUserHookTrustEntries(resolveArgs(entry))
 
     expect(resolved[0]?.trustedHash).toBe(SYSTEM_HASH)
+    expect(repeated[0]?.trustedHash).toBe(SYSTEM_HASH)
     expect(runner).toHaveBeenCalledTimes(1)
   })
 
