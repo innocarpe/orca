@@ -85,10 +85,7 @@ import {
 } from './codex-managed-trust-reconciliation'
 import type { CodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
-import {
-  clearHookTrustKeySeparatorVariants,
-  resolveMirroredRuntimeUserHookTrustEntries
-} from './codex-mirrored-hook-runtime-trust'
+import { resolveMirroredRuntimeUserHookTrustEntries } from './codex-mirrored-hook-runtime-trust'
 
 // Why: Pre/PostToolUse feed the live in-flight-tool readout; PermissionRequest exits with no decision so Codex still shows its approval UI while Orca flips the pane to waiting.
 const CODEX_EVENTS = [
@@ -144,6 +141,7 @@ const LEGACY_ORCA_PROFILE_BLOCK_END = '# END ORCA AGENT STATUS HOOKS'
 
 type MirroredRuntimeUserHookTrustEntry = {
   entry: CodexTrustEntry
+  systemEntry: CodexTrustEntry
   enabled: boolean
 }
 
@@ -356,6 +354,7 @@ function getRuntimeHooksWithSystemUserHooks(
 }
 
 type TrustedSystemHookSignatureState = {
+  approvalEntry: CodexTrustEntry
   enabled: boolean
   trustedHash: string
 }
@@ -419,15 +418,19 @@ function resolveTrustedSystemHookState(
   const expectedHash = computeTrustedHash(entry)
   const state = trustEntries.get(computeTrustKey(entry))
   if (state?.trustedHash === expectedHash) {
-    return { enabled: state.enabled !== false, trustedHash: expectedHash }
+    return { approvalEntry: entry, enabled: state.enabled !== false, trustedHash: expectedHash }
   }
   const reorderedEnabled = trustedHashesByEvent.get(entry.eventLabel)?.get(expectedHash)
   if (reorderedEnabled !== undefined) {
-    return { enabled: reorderedEnabled, trustedHash: expectedHash }
+    return { approvalEntry: entry, enabled: reorderedEnabled, trustedHash: expectedHash }
   }
   if (state?.trustedHash) {
     // Why: approval match only — #7110 re-approval loops if we recompute; runtime writes use Codex currentHash.
-    return { enabled: state.enabled !== false, trustedHash: state.trustedHash }
+    return {
+      approvalEntry: entry,
+      enabled: state.enabled !== false,
+      trustedHash: state.trustedHash
+    }
   }
   return null
 }
@@ -498,6 +501,7 @@ function collectMirroredRuntimeUserHookTrustEntries(
         if (state !== undefined) {
           entries.push({
             entry: { ...entry, trustedHash: state.trustedHash },
+            systemEntry: { ...state.approvalEntry, trustedHash: state.trustedHash },
             enabled: state.enabled
           })
         }
@@ -510,12 +514,13 @@ function collectMirroredRuntimeUserHookTrustEntries(
 function moveMirroredRuntimeUserTrustAfterManagedStatusHook(
   entries: readonly MirroredRuntimeUserHookTrustEntry[]
 ): MirroredRuntimeUserHookTrustEntry[] {
-  return entries.map(({ entry, enabled }) => {
+  return entries.map(({ entry, systemEntry, enabled }) => {
     if (!CODEX_MANAGED_EVENT_LABELS.has(entry.eventLabel)) {
-      return { entry, enabled }
+      return { entry, systemEntry, enabled }
     }
     return {
       entry: { ...entry, groupIndex: entry.groupIndex + 1 },
+      systemEntry,
       enabled
     }
   })
@@ -548,7 +553,7 @@ function buildHookTrustHeaderKeyPattern(key: string): string {
 
 function applyMirroredRuntimeUserHookTrustStates(
   tomlPath: string,
-  entries: readonly MirroredRuntimeUserHookTrustEntry[]
+  entries: readonly { entry: CodexTrustEntry; enabled: boolean }[]
 ): void {
   if (entries.length === 0 || !existsSync(tomlPath)) {
     return
@@ -1456,15 +1461,13 @@ export class CodexHookService {
         host: { kind: 'native' },
         telemetryLane: 'managed'
       })
-      const resolvedMirroredTrustEntries = resolveMirroredRuntimeUserHookTrustEntries({
+      const resolvedMirroredTrustEntries = await resolveMirroredRuntimeUserHookTrustEntries({
         entries: mirroredTrustEntries,
+        systemEntries: mirroredUserTrustEntries.map(({ systemEntry }) => systemEntry),
+        systemHomePath: getSystemCodexHomePath(),
         runtimeHomePath,
         tomlPath
       })
-      clearHookTrustKeySeparatorVariants(
-        tomlPath,
-        resolvedMirroredTrustEntries.map((entry) => computeTrustKey(entry))
-      )
       if (grant.lane === 'rpc') {
         recentGrantEntries = grant.entries
         upsertHookTrustEntries(tomlPath, resolvedMirroredTrustEntries)
@@ -1660,8 +1663,10 @@ export class CodexHookService {
         runtimeHomePath,
         systemHomePath: getSystemCodexHomePath()
       })
-      const trustEntries = resolveMirroredRuntimeUserHookTrustEntries({
+      const trustEntries = await resolveMirroredRuntimeUserHookTrustEntries({
         entries: hookPlan.trustEntries.map(({ entry }) => entry),
+        systemEntries: hookPlan.trustEntries.map(({ systemEntry }) => systemEntry),
+        systemHomePath: getSystemCodexHomePath(),
         runtimeHomePath,
         tomlPath
       })
@@ -1669,10 +1674,6 @@ export class CodexHookService {
       // runtime CODEX_HOME should keep user hooks, but not Orca-managed trust.
       // Write current mirrored user trust first so stale cleanup compares
       // against runtime current hashes while deleting old managed hook keys.
-      clearHookTrustKeySeparatorVariants(
-        tomlPath,
-        trustEntries.map((entry) => computeTrustKey(entry))
-      )
       upsertHookTrustEntries(tomlPath, trustEntries)
       removeStaleRuntimeHookTrustEntries(tomlPath, configPath, trustEntries)
       applyMirroredRuntimeUserHookTrustStates(

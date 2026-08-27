@@ -52,11 +52,41 @@ describe('Codex user hook trust rebase RPCs', () => {
     expect(result).toEqual({
       outcome: 'inspected',
       moves: [
-        expect.objectContaining({ command: 'trusted-user', wasTrusted: true, enabled: true }),
-        expect.objectContaining({ command: 'untrusted-user', wasTrusted: false, enabled: false })
+        expect.objectContaining({
+          command: 'trusted-user',
+          currentHash: `sha256:${oldTrusted}`,
+          wasTrusted: true,
+          enabled: true
+        }),
+        expect.objectContaining({
+          command: 'untrusted-user',
+          currentHash: `sha256:${oldUntrusted}`,
+          wasTrusted: false,
+          enabled: false
+        })
       ]
     })
     expect(requestRpcMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects conflicting Windows variants during system trust inspection', async () => {
+    const backslashKey = 'C:\\system\\hooks.json:stop:0:0'
+    const slashKey = 'C:/system/hooks.json:stop:0:0'
+    requestRpcMock.mockResolvedValueOnce(
+      listResult([
+        listing(backslashKey, 'user-stop-hook', 'trusted'),
+        listing(slashKey, 'user-stop-hook', 'modified')
+      ])
+    )
+
+    await expect(
+      runCodexUserHookTrustRebaseSession({
+        operation: 'inspect-user-hook-trust',
+        invocation,
+        hooksListCwd: 'C:\\system',
+        moves: [{ oldKey: backslashKey, newKey: newTrusted, command: 'user-stop-hook' }]
+      })
+    ).rejects.toThrow('ambiguous hook key variants')
   })
 
   it('clears shifted states, re-grants only prior trust, and verifies by re-list', async () => {
@@ -112,36 +142,92 @@ describe('Codex user hook trust rebase RPCs', () => {
     expect(edits).toContainEqual(expect.objectContaining({ value: { enabled: false } }))
   })
 
-  it('lists currentHash for each reported hook without writing config', async () => {
-    requestRpcMock.mockResolvedValueOnce(
-      listResult([
-        listing('/runtime/hooks.json:pre_tool_use:1:0', 'user-pre-tool-hook', 'modified'),
-        listing('/runtime/hooks.json:post_tool_use:1:0', 'user-post-tool-hook', 'trusted')
-      ])
-    )
+  it('writes runtime currentHash for approved mirrored hooks and verifies by re-list', async () => {
+    const preToolKey = '/runtime/hooks.json:pre_tool_use:1:0'
+    const postToolKey = '/runtime/hooks.json:post_tool_use:1:0'
+    requestRpcMock
+      .mockResolvedValueOnce(
+        listResult([
+          listing(preToolKey, 'user-pre-tool-hook', 'modified'),
+          listing(postToolKey, 'user-post-tool-hook', 'modified', false)
+        ])
+      )
+      .mockResolvedValueOnce({ status: 'ok' })
+      .mockResolvedValueOnce(
+        listResult([
+          listing(preToolKey, 'user-pre-tool-hook', 'trusted'),
+          listing(postToolKey, 'user-post-tool-hook', 'trusted', false)
+        ])
+      )
 
     await expect(
       runCodexUserHookTrustRebaseSession({
-        operation: 'list-hook-current-hashes',
+        operation: 'grant-mirrored-runtime-hook-trust',
         invocation,
-        hooksListCwd: '/tmp'
+        hooksListCwd: '/tmp',
+        targets: [
+          { key: preToolKey, command: 'user-pre-tool-hook', enabled: true },
+          { key: postToolKey, command: 'user-post-tool-hook', enabled: false }
+        ]
       })
     ).resolves.toEqual({
-      outcome: 'listed',
-      listings: [
+      outcome: 'mirrored-granted',
+      entries: [
         {
-          key: '/runtime/hooks.json:pre_tool_use:1:0',
+          key: preToolKey,
           command: 'user-pre-tool-hook',
-          currentHash: 'sha256:/runtime/hooks.json:pre_tool_use:1:0'
+          currentHash: `sha256:${preToolKey}`
         },
         {
-          key: '/runtime/hooks.json:post_tool_use:1:0',
+          key: postToolKey,
           command: 'user-post-tool-hook',
-          currentHash: 'sha256:/runtime/hooks.json:post_tool_use:1:0'
+          currentHash: `sha256:${postToolKey}`
         }
       ]
     })
-    expect(requestRpcMock).toHaveBeenCalledTimes(1)
-    expect(requestRpcMock).toHaveBeenCalledWith('hooks/list', { cwds: ['/tmp'] })
+    expect(requestRpcMock).toHaveBeenCalledTimes(3)
+    const batch = requestRpcMock.mock.calls[1]
+    expect(batch?.[0]).toBe('config/batchWrite')
+    expect(batch).toBeDefined()
+    const edits = (batch![1] as { edits: { value: unknown }[] }).edits
+    expect(edits).toContainEqual(
+      expect.objectContaining({
+        value: { trusted_hash: `sha256:${preToolKey}` }
+      })
+    )
+    expect(edits).toContainEqual(
+      expect.objectContaining({
+        value: { trusted_hash: `sha256:${postToolKey}`, enabled: false }
+      })
+    )
+  })
+
+  it('accepts equivalent Windows separator variants reported by hooks/list', async () => {
+    const backslashKey = 'C:\\runtime\\hooks.json:pre_tool_use:1:0'
+    const slashKey = 'C:/runtime/hooks.json:pre_tool_use:1:0'
+    const before = listing(backslashKey, 'user-pre-tool-hook', 'modified')
+    const after = listing(backslashKey, 'user-pre-tool-hook', 'trusted')
+    requestRpcMock
+      .mockResolvedValueOnce(listResult([before, { ...before, key: slashKey }]))
+      .mockResolvedValueOnce({ status: 'ok' })
+      .mockResolvedValueOnce(listResult([after, { ...after, key: slashKey }]))
+
+    await expect(
+      runCodexUserHookTrustRebaseSession({
+        operation: 'grant-mirrored-runtime-hook-trust',
+        invocation,
+        hooksListCwd: 'C:\\runtime',
+        targets: [{ key: backslashKey, command: 'user-pre-tool-hook', enabled: true }]
+      })
+    ).resolves.toEqual({
+      outcome: 'mirrored-granted',
+      entries: [
+        {
+          key: backslashKey,
+          command: 'user-pre-tool-hook',
+          currentHash: before.currentHash
+        }
+      ]
+    })
   })
 })

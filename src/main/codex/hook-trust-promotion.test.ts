@@ -67,8 +67,6 @@ beforeEach(() => {
 
 afterEach(() => {
   restoreCodexTrustSessionsForTests()
-  mirroredTrustInternals.setListRunner(null)
-  mirroredTrustInternals.resetRetryState()
   rmSync(tmpHome, { recursive: true, force: true })
   rmSync(userDataDir, { recursive: true, force: true })
   if (previousUserDataPath === undefined) {
@@ -278,13 +276,33 @@ describe('codex hook trust write-back promotion', () => {
       join(systemCodexDir(), 'config.toml'),
       upsertHookTrustEntriesInContent('', [{ ...systemUserStopEntry(), trustedHash: systemHash }])
     )
-    mirroredTrustInternals.setListRunner((runtimeHomePath) => [
-      {
-        key: `${getCodexExplicitHomeHookSourcePath(join(runtimeHomePath, 'hooks.json'))}:stop:1:0`,
-        command: USER_HOOK_COMMAND,
-        currentHash: runtimeHash
+    mirroredTrustInternals.setSessionRunner(async (request) => {
+      if (request.operation === 'inspect-user-hook-trust') {
+        return {
+          outcome: 'inspected',
+          moves: request.moves.map((move) => ({
+            ...move,
+            reportedOldKey: move.oldKey,
+            currentHash: systemHash,
+            wasTrusted: true,
+            enabled: true
+          }))
+        }
       }
-    ])
+      if (request.operation !== 'grant-mirrored-runtime-hook-trust') {
+        throw new Error('unexpected repair operation')
+      }
+      return {
+        outcome: 'mirrored-granted',
+        entries: [
+          {
+            key: request.targets[0]!.key,
+            command: USER_HOOK_COMMAND,
+            currentHash: runtimeHash
+          }
+        ]
+      }
+    })
 
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
