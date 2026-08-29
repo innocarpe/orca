@@ -1,7 +1,6 @@
 import {
   buildRegistry,
   isStreamingMethod,
-  type PairingRpcContext,
   type RpcAnyMethod,
   type RpcEnvelopeMeta,
   type RpcRegistry,
@@ -31,16 +30,7 @@ import { RpcStreamingDispatcher } from './rpc-streaming-dispatcher'
 export type DispatcherOptions = { runtime: OrcaRuntimeService; methods?: readonly RpcAnyMethod[] }
 
 // oxfmt-ignore
-type DispatchCallOptions = Pick<
-  RpcDispatchStreamingOptions,
-  | 'signal'
-  | 'connectionId'
-  | 'clientId'
-  | 'clientKind'
-  | 'clientCapabilities'
-  | 'authenticatedCallerFingerprint'
-  | 'pairing'
->
+type DispatchCallOptions = Pick<RpcDispatchStreamingOptions, 'signal' | 'connectionId' | 'clientId' | 'clientKind' | 'clientCapabilities' | 'authenticatedCallerFingerprint' | 'pairing'>
 
 export class RpcDispatcher {
   private readonly runtime: OrcaRuntimeService
