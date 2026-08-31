@@ -22,6 +22,7 @@ import {
 } from '../../../../shared/agent-title-owner'
 import { resolvePaneAgentOwner } from '../../../../shared/pane-agent-owner'
 import { isClaudeIdentityFrameTitle } from '../../../../shared/terminal-title-agent-type'
+import { buildTitleDerivedIdleAgentRow } from './worktree-title-derived-agent-idle-row'
 
 /** Fixed, not per-process: title rows are a pure projection of the current title, so they are
  *  comparable across restarts in a way a sequenced authority's rows are not. Ordering against
@@ -226,45 +227,24 @@ function buildTitleDerivedAgentRow(args: {
     }
   }
 
-  // Why: idle fallback is only safe for the launch-owning leaf because launchAgent is tab-scoped.
+  // Why: SSH Codex can lose hooks after a turn; other agents must keep title-based identity.
   if (
-    !launchAgent ||
+    launchAgent !== 'codex' ||
     !args.allowLaunchAgentIdleFallback ||
     status === 'working' ||
     status === 'permission'
   ) {
     return null
   }
-  const rowLabel = formatAgentTypeLabel(launchAgent)
-  const entry: AgentStatusEntry = {
+  return buildTitleDerivedIdleAgentRow({
     paneKey,
-    state: 'working',
-    prompt: rowLabel,
-    updatedAt: args.now,
-    stateStartedAt: args.now,
-    stateHistory: [],
-    agentType: launchAgent,
-    terminalTitle: title,
-    lastAssistantMessage: 'Idle',
-    ...(orchestration ? { orchestration } : {}),
-    observation: {
-      origin: 'title',
-      authorityId: TITLE_DERIVED_AGENT_ROW_AUTHORITY_ID,
-      incarnation: 0,
-      revision: args.now,
-      observedAt: args.now,
-      kind: 'snapshot'
-    }
-  }
-  return {
-    paneKey,
-    entry,
     tab: args.tab,
-    agentType: launchAgent,
-    rowSource: 'live',
-    state: 'idle',
-    startedAt: 0
-  }
+    title,
+    launchAgent,
+    now: args.now,
+    authorityId: TITLE_DERIVED_AGENT_ROW_AUTHORITY_ID,
+    orchestration
+  })
 }
 
 export function resolveTitleDerivedAgentType(
