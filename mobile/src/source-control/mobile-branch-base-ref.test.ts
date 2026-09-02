@@ -40,6 +40,17 @@ describe('resolveMobileBranchCompareBaseRef', () => {
     expect(calls.map((call) => call.method)).toEqual(['worktree.show', 'repo.list'])
   })
 
+  it('prefers repo origin/master over a stale local worktree master pin', async () => {
+    const { client } = clientWith([
+      ok({ worktree: { baseRef: 'master' } }),
+      ok({ repos: [{ id: 'repo-1', worktreeBaseRef: 'origin/master' }] })
+    ])
+
+    await expect(resolveMobileBranchCompareBaseRef(client, 'repo-1::/tmp/wt')).resolves.toBe(
+      'origin/master'
+    )
+  })
+
   it('falls back to repo worktreeBaseRef when the worktree has no pinned base', async () => {
     const { client } = clientWith([
       ok({ worktree: { baseRef: null } }),
