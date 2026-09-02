@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as path from 'node:path'
 import { GitCapabilityCache } from '../shared/git-capability-cache'
+import { isWorktreeCatalogUnavailableError } from '../shared/worktree/worktree-catalog-availability'
 import type { GitExec } from './git-handler-ops'
 import { addWorktreeOp, removeWorktreeOp } from './git-handler-worktree-ops'
 
@@ -25,6 +26,12 @@ function worktreeList(...entries: { path: string; branch?: string }[]): string {
 
 function resolvedRepoPath(): string {
   return path.posix.resolve('/repo-feature', '/repo/.git', '..')
+}
+
+function expectWorktreeRemoveNotInvoked(git: ReturnType<typeof vi.fn<GitExec>>) {
+  expect(
+    git.mock.calls.filter(([args]) => args[0] === 'worktree' && args[1] === 'remove')
+  ).toHaveLength(0)
 }
 
 describe('addWorktreeOp', () => {
@@ -222,6 +229,60 @@ describe('addWorktreeOp', () => {
 })
 
 describe('removeWorktreeOp', () => {
+  it('refuses SSH worktree removal when the worktree listing fails', async () => {
+    const git = vi.fn<GitExec>(async (args) => {
+      if (args[0] === 'rev-parse') {
+        return { stdout: '/repo/.git\n', stderr: '' }
+      }
+      if (args[0] === 'worktree' && args[1] === 'list') {
+        throw new Error('git worktree list failed')
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    await expect(
+      removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
+    ).rejects.toThrow('git worktree list failed')
+    expectWorktreeRemoveNotInvoked(git)
+  })
+
+  it('refuses SSH worktree removal when a successful listing is empty', async () => {
+    const git = vi.fn<GitExec>(async (args) => {
+      if (args[0] === 'rev-parse') {
+        return { stdout: '/repo/.git\n', stderr: '' }
+      }
+      if (args[0] === 'worktree' && args[1] === 'list') {
+        return { stdout: '', stderr: '' }
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    await expect(
+      removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
+    ).rejects.toSatisfy(isWorktreeCatalogUnavailableError)
+    expectWorktreeRemoveNotInvoked(git)
+  })
+
+  it('refuses SSH worktree removal when the target is absent from the catalog', async () => {
+    const git = vi.fn<GitExec>(async (args) => {
+      if (args[0] === 'rev-parse') {
+        return { stdout: '/repo/.git\n', stderr: '' }
+      }
+      if (args[0] === 'worktree' && args[1] === 'list') {
+        return {
+          stdout: worktreeList({ path: '/repo', branch: 'main' }),
+          stderr: ''
+        }
+      }
+      return { stdout: '', stderr: '' }
+    })
+
+    await expect(
+      removeWorktreeWithCapabilityCache(git, { worktreePath: '/repo-feature' })
+    ).rejects.toThrow('Refusing to delete unregistered worktree path: /repo-feature')
+    expectWorktreeRemoveNotInvoked(git)
+  })
+
   it('rejects a locked SSH worktree before invoking remove', async () => {
     const git = vi.fn<GitExec>(async (args) => {
       if (args[0] === 'rev-parse') {
