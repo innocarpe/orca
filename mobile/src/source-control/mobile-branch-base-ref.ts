@@ -30,20 +30,19 @@ export async function resolveMobileBranchCompareBaseRef(
     : null
   const repo = repos?.accepted ? repos.value.find((candidate) => candidate.id === repoId) : undefined
   const repoBaseRef = repo?.worktreeBaseRef?.trim() || null
-  const pinnedBaseRef = preferRemoteTrackingCompareBase(worktreeBaseRef, repoBaseRef)
-  if (pinnedBaseRef) {
-    return pinnedBaseRef
+  let remoteCandidate = repoBaseRef
+  if (!repoBaseRef) {
+    const defaultReply = await repoDefaultBaseRefRead.request(client, { repo: `id:${repoId}` })
+    // Why the raw refusal: a host that does not offer git to mobile is a capability gap to degrade
+    // on, not an error to surface, and no acceptance policy carries the code and message through.
+    if (isMobileGitUnavailableReply(defaultReply)) {
+      return null
+    }
+    try {
+      remoteCandidate = repoDefaultBaseRefRead.interpret(defaultReply)
+    } catch (error) {
+      throw new Error(refusedRpcMessageOrFallback(error, 'Unable to resolve branch base'))
+    }
   }
-
-  const defaultReply = await repoDefaultBaseRefRead.request(client, { repo: `id:${repoId}` })
-  // Why the raw refusal: a host that does not offer git to mobile is a capability gap to degrade
-  // on, not an error to surface, and no acceptance policy carries the code and message through.
-  if (isMobileGitUnavailableReply(defaultReply)) {
-    return null
-  }
-  try {
-    return repoDefaultBaseRefRead.interpret(defaultReply)
-  } catch (error) {
-    throw new Error(refusedRpcMessageOrFallback(error, 'Unable to resolve branch base'))
-  }
+  return preferRemoteTrackingCompareBase(worktreeBaseRef, remoteCandidate)
 }

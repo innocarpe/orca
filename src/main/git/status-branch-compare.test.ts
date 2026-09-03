@@ -353,6 +353,31 @@ describe('getBranchCompare', () => {
     )
   })
 
+  it('compares against origin/release/24 when the configured base is a slash-containing local branch', async () => {
+    mockBranchCompareGit({
+      branch: 'feature\n',
+      probe: { 'refs/remotes/origin/release/24^{commit}': 'origin-release-oid\n' },
+      headOid: 'head-oid\n',
+      baseOid: 'origin-release-oid\n',
+      mergeBase: 'origin-release-oid\n',
+      nameStatus: 'A\tfeature-1.ts\n',
+      numstat: '1\t0\tfeature-1.ts\n',
+      revList: '0\t1\n'
+    })
+
+    const result = await getBranchCompare('/repo', 'release/24')
+
+    expect(result.summary).toMatchObject({
+      baseOid: 'origin-release-oid',
+      commitsAhead: 1,
+      status: 'ready'
+    })
+    expect(gitExecFileAsyncMock).toHaveBeenCalledWith(
+      ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/release/24^{commit}'],
+      expect.objectContaining({ cwd: '/repo' })
+    )
+  })
+
   it('falls back to local master when origin/master is missing', async () => {
     mockBranchCompareGit({
       branch: 'feature\n',
