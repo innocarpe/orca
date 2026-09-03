@@ -136,4 +136,54 @@ describe('loading Store write-risk characterization', () => {
     }
     expect(persisted.sshPtyConsumerRecoveries[0]?.clientInstanceId).toBe('client-1')
   })
+
+  it('rejects waitForPendingWrite when a debounced primary write fails and persists after a later flush', async () => {
+    const store = await createStore()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      writeControl.failPrimaryOpen = true
+      store.updateUI({ sidebarWidth: 812 })
+      vi.advanceTimersByTime(1_000)
+      await expect(store.waitForPendingWrite()).rejects.toThrow('profile mount rejected write')
+      await expect(store.waitForPendingWrite()).rejects.toThrow('profile mount rejected write')
+
+      writeControl.failPrimaryOpen = false
+      store.updateUI({ sidebarWidth: 813 })
+      vi.advanceTimersByTime(1_000)
+      await store.waitForPendingWrite()
+
+      const persisted = JSON.parse(
+        readFileSync(join(testState.dir, 'orca-data.json'), 'utf-8')
+      ) as {
+        ui: { sidebarWidth: number }
+      }
+      expect(persisted.ui.sidebarWidth).toBe(813)
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('still runs flushOrThrow after a failed final async flush', async () => {
+    const store = await createStore()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      writeControl.failPrimaryOpen = true
+      store.updateUI({ sidebarWidth: 821 })
+      vi.advanceTimersByTime(1_000)
+      await expect(store.waitForPendingWrite()).rejects.toThrow('profile mount rejected write')
+
+      await expect(store.flushAsync()).resolves.toBeUndefined()
+
+      writeControl.failPrimaryOpen = false
+      store.flushOrThrow()
+      const persisted = JSON.parse(
+        readFileSync(join(testState.dir, 'orca-data.json'), 'utf-8')
+      ) as {
+        ui: { sidebarWidth: number }
+      }
+      expect(persisted.ui.sidebarWidth).toBe(821)
+    } finally {
+      errors.mockRestore()
+    }
+  })
 })
