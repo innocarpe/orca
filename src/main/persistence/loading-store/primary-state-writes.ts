@@ -20,6 +20,7 @@ type PrimaryStateWriteOperationsRuntime = Pick<
   | 'firstPendingSaveAt'
   | 'inFlightAsyncTmpFile'
   | 'lastDurableWriteGeneration'
+  | 'lastWriteError'
   | 'lastWrittenStateHash'
   | 'pendingSnapshotFileWork'
   | 'pendingWrite'
@@ -51,7 +52,10 @@ export class PrimaryStateWriteOperations {
   }
 
   flushOrThrow(): void {
-    if (this[primaryStateWriteOperationsContext].runtime.quitFlushStarted) {
+    if (
+      this[primaryStateWriteOperationsContext].runtime.quitFlushStarted &&
+      this[primaryStateWriteOperationsContext].runtime.lastWriteError == null
+    ) {
       throw new Error('Cannot synchronously flush after final persistence has started')
     }
     if (this[primaryStateWriteOperationsContext].runtime.writeTimer) {
@@ -79,6 +83,7 @@ export class PrimaryStateWriteOperations {
       force: asyncWriteWasInFlight,
       skipBackupRotation: this[primaryStateWriteOperationsContext].runtime.backupRotationInFlight
     })
+    this[primaryStateWriteOperationsContext].runtime.lastWriteError = null
   }
 
   flushActiveViewPreferenceOrThrow(): void {
@@ -116,22 +121,34 @@ export class PrimaryStateWriteOperations {
 }
 
 export function enqueueWrite(owner: PrimaryStateWriteOperations): Promise<void> {
+  const runtime = owner[primaryStateWriteOperationsContext].runtime
+  const previousPending = runtime.pendingWrite
   const previousWrite = Promise.all([
-    owner[primaryStateWriteOperationsContext].runtime.pendingWrite ??
-      owner[primaryStateWriteOperationsContext].runtime.staleTempCleanup,
-    owner[primaryStateWriteOperationsContext].runtime.pendingSnapshotFileWork ?? Promise.resolve()
+    // Why: waiters still see the rejected pendingWrite; retries must not chain-fail on it.
+    previousPending
+      ? previousPending.then(
+          () => {},
+          () => {}
+        )
+      : runtime.staleTempCleanup,
+    runtime.pendingSnapshotFileWork ?? Promise.resolve()
   ]).then(() => {})
   const write = previousWrite.then(() => writeToDiskAsync(owner))
-  const trackedWrite = write
-    .catch((err) => {
+  const trackedWrite = write.finally(() => {
+    if (runtime.pendingWrite === trackedWrite) {
+      runtime.pendingWrite = null
+    }
+  })
+  runtime.pendingWrite = trackedWrite
+  void trackedWrite.then(
+    () => {
+      runtime.lastWriteError = null
+    },
+    (err) => {
+      runtime.lastWriteError = err
       console.error('[persistence] Failed to write state:', err)
-    })
-    .finally(() => {
-      if (owner[primaryStateWriteOperationsContext].runtime.pendingWrite === trackedWrite) {
-        owner[primaryStateWriteOperationsContext].runtime.pendingWrite = null
-      }
-    })
-  owner[primaryStateWriteOperationsContext].runtime.pendingWrite = trackedWrite
+    }
+  )
   return write
 }
 
