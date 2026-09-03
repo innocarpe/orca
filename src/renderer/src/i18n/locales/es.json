@@ -752,7 +752,7 @@
         "11992d0337": "If this was your phone or another Orca client, re-pair it from Settings → Mobile.",
         "6573cfe955": "Open Mobile Settings",
         "unresolvedTerminalWorktreeOwner": "Terminal creation is unavailable because the worktree owner could not be resolved",
-        "unrenderableTerminalWorktreeSurface": "Terminal creation is unavailable because this window has no surface for that worktree"
+        "unrenderableTerminalWorktreeSurface": "No se puede crear el terminal porque esta ventana no tiene superficie para ese worktree"
       },
       "useSettingsNavigationMetadata": {
         "4a728cd56b": "Nuevas funciones que aún están tomando forma. Pruébalas.",
