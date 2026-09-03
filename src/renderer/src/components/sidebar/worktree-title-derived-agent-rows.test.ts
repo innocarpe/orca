@@ -450,4 +450,30 @@ describe('buildTitleDerivedAgentRows', () => {
       ['tab-newest', makePaneKey('tab-newest', newestLeafId), 'claude', 'working']
     ])
   })
+
+  // Why: a rootless snapshot can bind split panes before the tree serializes;
+  // launchAgent must not stamp a spinner-only active sibling.
+  it('does not brand a spinner-only active pane with launchAgent when multiple rootless leaves are bound', () => {
+    const rows = buildWorktreeAgentRows({
+      tabs: [makeTab('tab-1', { launchAgent: 'claude' })],
+      entries: [],
+      retained: [],
+      runtimePaneTitlesByTabId: { 'tab-1': { 1: '⠼ demo-repo' } },
+      ptyIdsByTabId: { 'tab-1': ['pty-a', 'pty-b'] },
+      terminalLayoutsByTabId: {
+        'tab-1': {
+          root: null,
+          activeLeafId: LEAF_ID_1,
+          expandedLeafId: null,
+          ptyIdsByLeafId: {
+            [LEAF_ID_1]: 'pty-a',
+            [LEAF_ID_2]: 'pty-b'
+          }
+        }
+      },
+      now: 2000
+    })
+
+    expect(rows).toHaveLength(0)
+  })
 })
