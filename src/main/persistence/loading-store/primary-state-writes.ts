@@ -123,6 +123,7 @@ export class PrimaryStateWriteOperations {
 export function enqueueWrite(owner: PrimaryStateWriteOperations): Promise<void> {
   const runtime = owner[primaryStateWriteOperationsContext].runtime
   const previousPending = runtime.pendingWrite
+  const attemptGeneration = runtime.writeGeneration
   const previousWrite = Promise.all([
     // Why: waiters still see the rejected pendingWrite; retries must not chain-fail on it.
     previousPending
@@ -133,21 +134,32 @@ export function enqueueWrite(owner: PrimaryStateWriteOperations): Promise<void> 
       : runtime.staleTempCleanup,
     runtime.pendingSnapshotFileWork ?? Promise.resolve()
   ]).then(() => {})
-  const write = previousWrite.then(() => writeToDiskAsync(owner))
+  const write = previousWrite
+    .then(() => writeToDiskAsync(owner))
+    .then(
+      () => {
+        runtime.lastWriteError = null
+      },
+      (err) => {
+        // Why: flushOrThrow already persisted a newer generation; this failure is stale.
+        if (runtime.lastDurableWriteGeneration > attemptGeneration) {
+          return
+        }
+        runtime.lastWriteError = err
+        console.error('[persistence] Failed to write state:', err)
+        throw err
+      }
+    )
   const trackedWrite = write.finally(() => {
     if (runtime.pendingWrite === trackedWrite) {
       runtime.pendingWrite = null
     }
   })
   runtime.pendingWrite = trackedWrite
+  // Why: scheduleSave ignores enqueueWrite's rejection; this keeps pendingWrite from becoming unhandled.
   void trackedWrite.then(
-    () => {
-      runtime.lastWriteError = null
-    },
-    (err) => {
-      runtime.lastWriteError = err
-      console.error('[persistence] Failed to write state:', err)
-    }
+    () => {},
+    () => {}
   )
   return write
 }

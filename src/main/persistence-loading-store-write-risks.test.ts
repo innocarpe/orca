@@ -12,19 +12,31 @@ const testState = { dir: '' }
 const writeControl = vi.hoisted(() => {
   let releaseRename: (() => void) | null = null
   let markRenameStarted: (() => void) | null = null
+  let releaseOpen: (() => void) | null = null
+  let markOpenStarted: (() => void) | null = null
   return {
     blockPrimaryRename: false,
     failPrimaryOpen: false,
+    deferPrimaryOpenFailure: false,
     renameStarted: Promise.resolve(),
     renameRelease: Promise.resolve(),
+    openStarted: Promise.resolve(),
+    openRelease: Promise.resolve(),
     reset(): void {
       this.blockPrimaryRename = false
       this.failPrimaryOpen = false
+      this.deferPrimaryOpenFailure = false
       this.renameStarted = new Promise<void>((resolve) => {
         markRenameStarted = resolve
       })
       this.renameRelease = new Promise<void>((resolve) => {
         releaseRename = resolve
+      })
+      this.openStarted = new Promise<void>((resolve) => {
+        markOpenStarted = resolve
+      })
+      this.openRelease = new Promise<void>((resolve) => {
+        releaseOpen = resolve
       })
     },
     markRenameStarted(): void {
@@ -32,6 +44,12 @@ const writeControl = vi.hoisted(() => {
     },
     releaseRename(): void {
       releaseRename?.()
+    },
+    markOpenStarted(): void {
+      markOpenStarted?.()
+    },
+    releaseOpen(): void {
+      releaseOpen?.()
     }
   }
 })
@@ -47,6 +65,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         target.includes('orca-data.json.') &&
         target.endsWith('.tmp')
       ) {
+        if (writeControl.deferPrimaryOpenFailure) {
+          writeControl.markOpenStarted()
+          await writeControl.openRelease
+        }
         throw Object.assign(new Error('profile mount rejected write'), { code: 'EIO' })
       }
       return actual.open(...args)
@@ -183,6 +205,38 @@ describe('loading Store write-risk characterization', () => {
       }
       expect(persisted.ui.sidebarWidth).toBe(821)
     } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('ignores an async write failure released after flushOrThrow already persisted', async () => {
+    const store = await createStore()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      writeControl.failPrimaryOpen = true
+      writeControl.deferPrimaryOpenFailure = true
+      store.updateUI({ sidebarWidth: 831 })
+      vi.advanceTimersByTime(1_000)
+      await writeControl.openStarted
+
+      store.flushOrThrow()
+      const pending = store.waitForPendingWrite()
+      writeControl.releaseOpen()
+      await expect(pending).resolves.toBeUndefined()
+      await expect(store.waitForPendingWrite()).resolves.toBeUndefined()
+
+      const persisted = JSON.parse(
+        readFileSync(join(testState.dir, 'orca-data.json'), 'utf-8')
+      ) as {
+        ui: { sidebarWidth: number }
+      }
+      expect(persisted.ui.sidebarWidth).toBe(831)
+      expect(errors).not.toHaveBeenCalledWith(
+        '[persistence] Failed to write state:',
+        expect.anything()
+      )
+    } finally {
+      writeControl.releaseOpen()
       errors.mockRestore()
     }
   })
