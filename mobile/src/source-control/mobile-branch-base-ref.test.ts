@@ -51,6 +51,23 @@ describe('resolveMobileBranchCompareBaseRef', () => {
     )
   })
 
+  it('prefers git-resolved origin/master over a bare local worktree pin when the repo has no pin', async () => {
+    const { client, calls } = clientWith([
+      ok({ worktree: { baseRef: 'master' } }),
+      ok({ repos: [{ id: 'repo-1' }] }),
+      ok({ defaultBaseRef: 'origin/master' })
+    ])
+
+    await expect(resolveMobileBranchCompareBaseRef(client, 'repo-1::/tmp/wt')).resolves.toBe(
+      'origin/master'
+    )
+    expect(calls.map((call) => call.method)).toEqual([
+      'worktree.show',
+      'repo.list',
+      'repo.baseRefDefault'
+    ])
+  })
+
   it('falls back to repo worktreeBaseRef when the worktree has no pinned base', async () => {
     const { client } = clientWith([
       ok({ worktree: { baseRef: null } }),

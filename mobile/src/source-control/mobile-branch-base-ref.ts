@@ -74,17 +74,23 @@ export async function resolveMobileBranchCompareBaseRef(
     ? readRepoSummaries(repoResponse.result).find((candidate) => candidate.id === repoId)
     : undefined
   const repoBaseRef = repo?.worktreeBaseRef?.trim() || null
-  const pinnedBaseRef = preferRemoteTrackingCompareBase(worktreeBaseRef, repoBaseRef)
-  if (pinnedBaseRef) {
-    return pinnedBaseRef
+  let defaultBaseRef: string | null = null
+  if (!repoBaseRef) {
+    const defaultResponse = await client.sendRequest('repo.baseRefDefault', {
+      repo: `id:${repoId}`
+    })
+    if (!defaultResponse.ok) {
+      if (
+        !isMobileGitUnavailable(defaultResponse.error?.code, defaultResponse.error?.message) &&
+        !worktreeBaseRef
+      ) {
+        throw new Error(defaultResponse.error?.message || 'Unable to resolve branch base')
+      }
+    } else {
+      defaultBaseRef = readDefaultBaseRef(defaultResponse.result)
+    }
   }
 
-  const defaultResponse = await client.sendRequest('repo.baseRefDefault', { repo: `id:${repoId}` })
-  if (!defaultResponse.ok) {
-    if (isMobileGitUnavailable(defaultResponse.error?.code, defaultResponse.error?.message)) {
-      return null
-    }
-    throw new Error(defaultResponse.error?.message || 'Unable to resolve branch base')
-  }
-  return readDefaultBaseRef(defaultResponse.result)
+  const repoOrDefault = repoBaseRef || defaultBaseRef
+  return preferRemoteTrackingCompareBase(worktreeBaseRef, repoOrDefault)
 }
