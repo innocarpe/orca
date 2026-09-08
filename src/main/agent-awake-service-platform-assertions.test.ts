@@ -63,11 +63,33 @@ function createPlatformAssertion() {
   }
 }
 
+type PowerMonitorEvent = 'resume' | 'on-battery' | 'on-ac'
+
+function createPowerMonitor() {
+  const listeners = new Map<PowerMonitorEvent, Set<() => void>>()
+  return {
+    on: vi.fn((event: PowerMonitorEvent, listener: () => void) => {
+      const eventListeners = listeners.get(event) ?? new Set<() => void>()
+      eventListeners.add(listener)
+      listeners.set(event, eventListeners)
+    }),
+    off: vi.fn((event: PowerMonitorEvent, listener: () => void) => {
+      listeners.get(event)?.delete(listener)
+    }),
+    emit: (event: PowerMonitorEvent) => {
+      for (const listener of listeners.get(event) ?? []) {
+        listener()
+      }
+    }
+  }
+}
+
 function createService(
   blocker = createBlocker(),
   macosAssertion = createPlatformAssertion(),
   linuxAssertion = createPlatformAssertion(),
-  platform: NodeJS.Platform = 'linux'
+  platform: NodeJS.Platform = 'linux',
+  powerMonitor: ReturnType<typeof createPowerMonitor> | null = null
 ): AgentAwakeService {
   return new AgentAwakeService({
     blocker,
@@ -75,7 +97,7 @@ function createService(
     macosAssertion,
     now: () => 1_000,
     platform,
-    powerMonitor: null,
+    powerMonitor,
     logger: {
       debug: vi.fn(),
       warn: vi.fn()
@@ -113,6 +135,31 @@ describe('AgentAwakeService platform assertions', () => {
     expect(macosAssertion.start).toHaveBeenCalledTimes(1)
     expect(blocker.start).toHaveBeenCalledTimes(1)
     expect(blocker.start).toHaveBeenCalledWith('prevent-display-sleep')
+  })
+
+  it('refreshes the display blocker when macOS changes power source during an active run', () => {
+    const blocker = createBlocker()
+    const macosAssertion = createPlatformAssertion()
+    const monitor = createPowerMonitor()
+    const service = createService(
+      blocker,
+      macosAssertion,
+      createPlatformAssertion(),
+      'darwin',
+      monitor
+    )
+
+    service.setEnabled(true)
+    service.setStatuses([workingStatus()])
+    isOnBatteryPowerMock.mockReturnValue(true)
+    monitor.emit('on-battery')
+
+    expect(blocker.start).toHaveBeenCalledWith('prevent-display-sleep')
+
+    isOnBatteryPowerMock.mockReturnValue(false)
+    monitor.emit('on-ac')
+
+    expect(blocker.stop).toHaveBeenCalledWith(1)
   })
 
   it('does not start the display blocker on battery while keep-awake is idle', () => {
@@ -170,6 +217,24 @@ describe('AgentAwakeService platform assertions', () => {
 
     expect(macosAssertion.start).toHaveBeenCalledTimes(1)
     expect(blocker.start).not.toHaveBeenCalled()
+  })
+
+  it('removes macOS power-source listeners on dispose', () => {
+    const monitor = createPowerMonitor()
+    const service = createService(
+      createBlocker(),
+      createPlatformAssertion(),
+      createPlatformAssertion(),
+      'darwin',
+      monitor
+    )
+
+    service.dispose()
+
+    expect(monitor.on).toHaveBeenCalledWith('on-battery', expect.any(Function))
+    expect(monitor.on).toHaveBeenCalledWith('on-ac', expect.any(Function))
+    expect(monitor.off).toHaveBeenCalledWith('on-battery', expect.any(Function))
+    expect(monitor.off).toHaveBeenCalledWith('on-ac', expect.any(Function))
   })
 
   it('keeps Electron blocker active when macOS assertion start fails', () => {
