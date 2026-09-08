@@ -181,6 +181,13 @@ export async function getIssueProjectRef(
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<ProjectRef | null> {
+  const originPromise = getProjectRefForRemote(
+    repoPath,
+    'origin',
+    knownHosts,
+    connectionId,
+    localGitOptions
+  )
   if (await shouldProbeGitRemote(repoPath, 'upstream', connectionId, localGitOptions)) {
     const upstream = await getProjectRefForRemote(
       repoPath,
@@ -193,7 +200,7 @@ export async function getIssueProjectRef(
       return upstream
     }
   }
-  return getProjectRefForRemote(repoPath, 'origin', knownHosts, connectionId, localGitOptions)
+  return originPromise
 }
 
 export type ResolvedIssueSource = {

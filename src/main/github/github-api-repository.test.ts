@@ -357,6 +357,33 @@ describe('origin repository cache', () => {
 })
 
 describe('skip missing upstream remote probes', () => {
+  it('starts the issue origin probe before checking whether upstream exists', async () => {
+    let releaseRemoteProbe: (value: boolean) => void = () => undefined
+    shouldProbeGitRemoteMock.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        releaseRemoteProbe = resolve
+      })
+    )
+    let originStarted = false
+    getOwnerRepoForRemoteMock.mockImplementation(async (_path, remote) => {
+      if (remote === 'origin') {
+        originStarted = true
+        return { owner: 'fork', repo: 'orca' }
+      }
+      return { owner: 'stablyai', repo: 'orca' }
+    })
+
+    const resultPromise = getIssueGitHubApiRepository('/repo')
+    expect(originStarted).toBe(true)
+
+    releaseRemoteProbe(true)
+    await expect(resultPromise).resolves.toEqual({
+      owner: 'stablyai',
+      repo: 'orca',
+      host: 'github.com'
+    })
+  })
+
   it('does not probe upstream for issue identity when that remote is absent', async () => {
     shouldProbeGitRemoteMock.mockResolvedValue(false)
     getOwnerRepoForRemoteMock.mockImplementation(async (_path, remote) =>

@@ -13,6 +13,7 @@ export async function getOwnerRepo(
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<OwnerRepo | null> {
   // Why: on a fork checkout PRs live on the upstream parent, not origin (#7331).
+  const originPromise = getOwnerRepoForRemote(repoPath, 'origin', connectionId, localGitOptions)
   if (await shouldProbeGitRemote(repoPath, 'upstream', connectionId, localGitOptions)) {
     const upstream = await getOwnerRepoForRemote(
       repoPath,
@@ -24,7 +25,7 @@ export async function getOwnerRepo(
       return upstream
     }
   }
-  return getOwnerRepoForRemote(repoPath, 'origin', connectionId, localGitOptions)
+  return originPromise
 }
 
 export const getIssueOwnerRepo = getOwnerRepo
@@ -39,6 +40,7 @@ export async function resolvePRRepositoryCandidates(
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<PRRepositoryCandidates> {
+  const originPromise = getOwnerRepoForRemote(repoPath, 'origin', connectionId, localGitOptions)
   const probeUpstream = await shouldProbeGitRemote(
     repoPath,
     'upstream',
@@ -49,7 +51,7 @@ export async function resolvePRRepositoryCandidates(
     probeUpstream
       ? getOwnerRepoForRemote(repoPath, 'upstream', connectionId, localGitOptions)
       : null,
-    getOwnerRepoForRemote(repoPath, 'origin', connectionId, localGitOptions)
+    originPromise
   ])
   const seen = new Set<string>()
   const candidates: OwnerRepo[] = []

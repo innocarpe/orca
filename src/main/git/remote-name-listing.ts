@@ -103,14 +103,18 @@ export async function listCachedRemoteNames(
   }
 
   return runCoalescedProbe(remoteNameListingInFlight, cacheKey, async (ownsKey) => {
+    const configContext = listingGitConfigContext(repoPath, connectionId, localGitOptions)
+    const configSignatureBefore = await readLocalGitConfigSignature(configContext)
     const remotes = await listUncachedRemoteNames(repoPath, connectionId, localGitOptions)
     if (remotes === null) {
       return null
     }
     if (ownsKey()) {
-      const configSignature = await readLocalGitConfigSignature(
-        listingGitConfigContext(repoPath, connectionId, localGitOptions)
-      )
+      const configSignatureAfter = await readLocalGitConfigSignature(configContext)
+      const configSignature =
+        configSignatureBefore !== undefined && configSignatureBefore === configSignatureAfter
+          ? configSignatureAfter
+          : undefined
       remoteNameListingCache.set(cacheKey, {
         remotes,
         expiresAt:

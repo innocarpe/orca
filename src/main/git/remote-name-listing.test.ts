@@ -85,6 +85,26 @@ describe('cached git remote name listing', () => {
     expect(remoteListCalls()).toHaveLength(2)
   })
 
+  it('uses the short TTL when config changes during remote listing', async () => {
+    vi.useFakeTimers()
+    try {
+      readLocalGitConfigSignatureMock
+        .mockResolvedValueOnce('sig-1')
+        .mockResolvedValueOnce('sig-2')
+        .mockResolvedValue('sig-2')
+      gitExecFileAsyncMock
+        .mockResolvedValueOnce({ stdout: 'origin\n' })
+        .mockResolvedValueOnce({ stdout: 'origin\nupstream\n' })
+
+      await expect(shouldProbeGitRemote('/repo', 'upstream')).resolves.toBe(false)
+      await vi.advanceTimersByTimeAsync(30_001)
+      await expect(shouldProbeGitRemote('/repo', 'upstream')).resolves.toBe(true)
+      expect(remoteListCalls()).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('expires an unsigned listing after the short TTL', async () => {
     vi.useFakeTimers()
     try {
