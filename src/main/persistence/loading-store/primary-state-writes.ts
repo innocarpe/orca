@@ -124,6 +124,7 @@ export function enqueueWrite(owner: PrimaryStateWriteOperations): Promise<void> 
   const runtime = owner[primaryStateWriteOperationsContext].runtime
   const previousPending = runtime.pendingWrite
   const attemptGeneration = runtime.writeGeneration
+  let serializedGeneration: number | null = null
   const previousWrite = Promise.all([
     // Why: waiters still see the rejected pendingWrite; retries must not chain-fail on it.
     previousPending
@@ -135,14 +136,18 @@ export function enqueueWrite(owner: PrimaryStateWriteOperations): Promise<void> 
     runtime.pendingSnapshotFileWork ?? Promise.resolve()
   ]).then(() => {})
   const write = previousWrite
-    .then(() => writeToDiskAsync(owner))
+    .then(() => {
+      // Why: queued writes must compare failures with the generation they serialize, not the one captured before waiting.
+      serializedGeneration = runtime.writeGeneration
+      return writeToDiskAsync(owner)
+    })
     .then(
       () => {
         runtime.lastWriteError = null
       },
       (err) => {
         // Why: flushOrThrow already persisted a newer generation; this failure is stale.
-        if (runtime.lastDurableWriteGeneration > attemptGeneration) {
+        if (runtime.lastDurableWriteGeneration > (serializedGeneration ?? attemptGeneration)) {
           return
         }
         runtime.lastWriteError = err

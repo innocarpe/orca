@@ -240,4 +240,30 @@ describe('loading Store write-risk characterization', () => {
       errors.mockRestore()
     }
   })
+
+  it('keeps a queued failure dirty when a later generation is not durable', async () => {
+    const store = await createStore()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      writeControl.blockPrimaryRename = true
+      store.updateUI({ sidebarWidth: 841 })
+      vi.advanceTimersByTime(1_000)
+      await writeControl.renameStarted
+
+      store.updateUI({ sidebarWidth: 842 })
+      vi.advanceTimersByTime(1_000)
+
+      store.flushOrThrow()
+      writeControl.failPrimaryOpen = true
+      store.updateUI({ sidebarWidth: 843 })
+      writeControl.blockPrimaryRename = false
+      writeControl.releaseRename()
+
+      await expect(store.waitForPendingWrite()).rejects.toThrow('profile mount rejected write')
+      expect(errors).toHaveBeenCalledWith('[persistence] Failed to write state:', expect.anything())
+    } finally {
+      writeControl.releaseRename()
+      errors.mockRestore()
+    }
+  })
 })
