@@ -82,6 +82,9 @@ export async function resolveGitHubApiRepositoryCandidates(
     {
       requireVerifiedSshProbe: true
     }
+  ).then(
+    (value) => ({ status: 'fulfilled' as const, value }),
+    (reason: unknown) => ({ status: 'rejected' as const, reason })
   )
   const probeUpstream = await shouldProbeGitRemote(
     repoPath,
@@ -89,7 +92,7 @@ export async function resolveGitHubApiRepositoryCandidates(
     connectionId,
     localGitOptions
   )
-  const [upstream, origin] = await Promise.all([
+  const [upstream, originResult] = await Promise.all([
     probeUpstream
       ? getGitHubApiRepositoryForRemote(repoPath, 'upstream', connectionId, localGitOptions, {
           requireVerifiedSshProbe: true
@@ -97,6 +100,10 @@ export async function resolveGitHubApiRepositoryCandidates(
       : null,
     originPromise
   ])
+  if (originResult.status === 'rejected') {
+    throw originResult.reason
+  }
+  const origin = originResult.value
   const seen = new Set<string>()
   const candidates: GitHubApiRepository[] = []
   for (const candidate of [upstream, origin]) {

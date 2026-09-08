@@ -450,6 +450,36 @@ describe('skip missing upstream remote probes', () => {
     expect(getOwnerRepoForRemoteMock.mock.calls.map(([, remote]) => remote)).toEqual(['origin'])
   })
 
+  it('observes and propagates a verified origin probe failure while listing remotes', async () => {
+    let releaseRemoteProbe: (value: boolean) => void = () => undefined
+    shouldProbeGitRemoteMock.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        releaseRemoteProbe = resolve
+      })
+    )
+    const originError = new Error('origin probe failed')
+    getOwnerRepoForRemoteMock.mockImplementation(async (_path, remote) => {
+      if (remote === 'origin') {
+        throw originError
+      }
+      return { owner: 'stablyai', repo: 'orca' }
+    })
+
+    const resultPromise = resolveGitHubApiRepositoryCandidates('/repo')
+    await vi.waitFor(() =>
+      expect(getOwnerRepoForRemoteMock).toHaveBeenCalledWith(
+        '/repo',
+        'origin',
+        undefined,
+        {},
+        { requireVerifiedSshProbe: true }
+      )
+    )
+    releaseRemoteProbe(true)
+
+    await expect(resultPromise).rejects.toBe(originError)
+  })
+
   it('still probes upstream for PR candidates when that remote is present', async () => {
     getOwnerRepoForRemoteMock.mockImplementation(async (_path, remote) =>
       remote === 'upstream' ? { owner: 'Acme', repo: 'Orca' } : { owner: 'acme', repo: 'orca' }
