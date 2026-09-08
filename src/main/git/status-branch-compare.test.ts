@@ -324,9 +324,9 @@ describe('getBranchCompare', () => {
   it('compares against origin/master when the configured base is a stale local master', async () => {
     mockBranchCompareGit({
       branch: 'feature\n',
-      probe: { 'refs/remotes/origin/master^{commit}': 'origin-master-oid\n' },
+      probe: { 'refs/remotes/origin/master^{commit}': 'origin-master-peeled-oid\n' },
       headOid: 'head-oid\n',
-      baseOid: 'origin-master-oid\n',
+      baseOid: 'origin-master-raw-oid\n',
       mergeBase: 'origin-master-oid\n',
       nameStatus: 'A\tfeature-1.ts\nA\tfeature-2.ts\n',
       numstat: '1\t0\tfeature-1.ts\n1\t0\tfeature-2.ts\n',
@@ -337,7 +337,7 @@ describe('getBranchCompare', () => {
 
     expect(result.summary).toMatchObject({
       baseRef: 'master',
-      baseOid: 'origin-master-oid',
+      baseOid: 'origin-master-raw-oid',
       commitsAhead: 2,
       changedFiles: 2,
       status: 'ready'
