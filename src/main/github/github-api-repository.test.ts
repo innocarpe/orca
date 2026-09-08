@@ -411,6 +411,34 @@ describe('skip missing upstream remote probes', () => {
     expect(getOwnerRepoForRemoteMock).toHaveBeenCalledWith('/repo', 'upstream', undefined, {})
   })
 
+  it('observes a rejected origin probe when upstream resolves the issue repository', async () => {
+    const originError = new Error('origin probe failed')
+    getOwnerRepoForRemoteMock.mockImplementation(async (_path, remote) => {
+      if (remote === 'origin') {
+        throw originError
+      }
+      return { owner: 'stablyai', repo: 'orca' }
+    })
+
+    await expect(getIssueGitHubApiRepository('/repo')).resolves.toEqual({
+      owner: 'stablyai',
+      repo: 'orca',
+      host: 'github.com'
+    })
+  })
+
+  it('preserves a rejected origin probe when upstream cannot resolve the issue repository', async () => {
+    const originError = new Error('origin probe failed')
+    getOwnerRepoForRemoteMock.mockImplementation(async (_path, remote) => {
+      if (remote === 'origin') {
+        throw originError
+      }
+      return null
+    })
+
+    await expect(getIssueGitHubApiRepository('/repo')).rejects.toBe(originError)
+  })
+
   it('does not probe upstream for PR candidates when that remote is absent', async () => {
     shouldProbeGitRemoteMock.mockResolvedValue(false)
     getOwnerRepoForRemoteMock.mockResolvedValue({ owner: 'fork', repo: 'orca' })
