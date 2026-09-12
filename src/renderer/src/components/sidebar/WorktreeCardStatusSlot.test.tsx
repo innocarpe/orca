@@ -2,14 +2,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorktreeCardStatusSlot } from './WorktreeCardStatusSlot'
+import type { WorktreeCardPrDisplay } from './worktree-card-pr-display'
 
 const mocks = vi.hoisted(() => ({
   status: 'active'
 }))
 
 vi.mock('@/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Tooltip: ({ children }: { children: ReactNode }) => <span data-tooltip-root="">{children}</span>,
+  TooltipContent: ({ children }: { children: ReactNode }) => (
+    <span data-tooltip-content="">{children}</span>
+  ),
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>
 }))
 
@@ -21,6 +24,21 @@ describe('WorktreeCardStatusSlot', () => {
   beforeEach(() => {
     mocks.status = 'active'
   })
+
+  const review: WorktreeCardPrDisplay = {
+    provider: 'github',
+    number: 123,
+    title: 'Review me',
+    state: 'open',
+    status: 'failure'
+  }
+  const gitlabReview: WorktreeCardPrDisplay = {
+    provider: 'gitlab',
+    number: 456,
+    title: 'Review me',
+    state: 'open',
+    status: 'pending'
+  }
 
   it('lets the unread bell replace the visual status dot by default', () => {
     const markup = renderToStaticMarkup(
@@ -111,7 +129,7 @@ describe('WorktreeCardStatusSlot', () => {
 
     expect(markup).toContain('Needs permission · Unread')
     expect(markup).toContain('lucide-message-circle-question-mark')
-    expect(markup).toContain('text-amber-500')
+    expect(markup).toContain('text-agent-question')
     expect(markup).not.toContain('data-worktree-status-lane-unread=""')
     expect(markup).not.toContain('data-worktree-unread-alert=""')
     expect(markup).not.toContain('aria-label="Mark as read"')
@@ -155,9 +173,10 @@ describe('WorktreeCardStatusSlot', () => {
 
     expect(markup).toContain('Active · Mark as unread')
     expect(markup).toContain('bg-emerald-500')
+    expect(markup.match(/data-tooltip-root/g)).toHaveLength(1)
   })
 
-  it('keeps the emerald activity dot ahead of branch identity when new card style is on', () => {
+  it('keeps the quiet active dot ahead of PR status by default', () => {
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
         worktreeId="wt-1"
@@ -167,17 +186,61 @@ describe('WorktreeCardStatusSlot', () => {
         unreadTooltip="Mark as unread"
         onPointerDown={vi.fn()}
         onToggleUnread={vi.fn()}
-        newCardStyle
-        hasBranchIdentity
+        prDisplay={review}
       />
     )
 
     expect(markup).toContain('Active')
     expect(markup).toContain('bg-emerald-500')
-    expect(markup).not.toContain('lucide-git-branch')
+    expect(markup).not.toContain('PR checks: Failed')
   })
 
-  it('shows done activity in new card style', () => {
+  it('uses PR status instead of the quiet active dot when new card style is on', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCardStatusSlot
+        worktreeId="wt-1"
+        showStatus
+        showUnreadAction={false}
+        isUnread={false}
+        unreadTooltip="Mark as unread"
+        onPointerDown={vi.fn()}
+        onToggleUnread={vi.fn()}
+        prDisplay={review}
+        newCardStyle
+      />
+    )
+
+    expect(markup).toContain('PR checks: Failed')
+    expect(markup).toContain('inline-flex size-5 items-center justify-center')
+    expect(markup).toContain('size-[13px] translate-x-px')
+    expect(markup).toContain('text-rose-500/85')
+    expect(markup).not.toContain('bg-emerald-500')
+    expect(markup).not.toContain('data-tooltip-root')
+  })
+
+  it('uses the unified compact review glyph for GitLab MR status', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCardStatusSlot
+        worktreeId="wt-1"
+        showStatus
+        showUnreadAction={false}
+        isUnread={false}
+        unreadTooltip="Mark as unread"
+        onPointerDown={vi.fn()}
+        onToggleUnread={vi.fn()}
+        prDisplay={gitlabReview}
+        newCardStyle
+      />
+    )
+
+    expect(markup).toContain('MR checks: Pending')
+    expect(markup).toContain('viewBox="0 0 16 16"')
+    expect(markup).toContain('size-[13px] translate-x-px')
+    expect(markup).toContain('text-amber-500/85')
+    expect(markup).not.toContain('lucide-git-merge')
+  })
+
+  it('uses PR status instead of the quiet done dot when new card style is on', () => {
     mocks.status = 'done'
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
@@ -188,16 +251,37 @@ describe('WorktreeCardStatusSlot', () => {
         unreadTooltip="Mark as unread"
         onPointerDown={vi.fn()}
         onToggleUnread={vi.fn()}
+        prDisplay={review}
         newCardStyle
       />
     )
 
-    expect(markup).toContain('Done')
-    expect(markup).toContain('bg-emerald-500')
+    expect(markup).toContain('PR checks: Failed')
+    expect(markup).not.toContain('bg-emerald-500')
   })
 
-  it('uses a branch icon with branch-only tooltip copy on quiet rows', () => {
+  it('uses PR status instead of the inactive dot when new card style is on', () => {
     mocks.status = 'inactive'
+    const markup = renderToStaticMarkup(
+      <WorktreeCardStatusSlot
+        worktreeId="wt-1"
+        showStatus
+        showUnreadAction={false}
+        isUnread={false}
+        unreadTooltip="Mark as unread"
+        onPointerDown={vi.fn()}
+        onToggleUnread={vi.fn()}
+        prDisplay={review}
+        newCardStyle
+      />
+    )
+
+    expect(markup).toContain('PR checks: Failed')
+    expect(markup).toContain('text-rose-500/85')
+    expect(markup).not.toContain('bg-neutral-500/40')
+  })
+
+  it('uses a branch icon with branch-only accessible copy by default', () => {
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
         worktreeId="wt-1"
@@ -218,10 +302,10 @@ describe('WorktreeCardStatusSlot', () => {
     expect(markup).toContain('size-[13px] translate-x-px text-muted-foreground/70')
     expect(markup).toContain('text-muted-foreground/70')
     expect(markup).not.toContain('bg-emerald-500')
+    expect(markup).not.toContain('data-tooltip-root')
   })
 
-  it('uses context-aware branch or folder path tooltip copy', () => {
-    mocks.status = 'inactive'
+  it('uses context-aware branch or folder path accessible copy', () => {
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
         worktreeId="wt-1"
@@ -239,6 +323,7 @@ describe('WorktreeCardStatusSlot', () => {
 
     expect(markup).toContain('Branch or folder path')
     expect(markup).toContain('lucide-git-branch')
+    expect(markup).not.toContain('data-tooltip-root')
   })
 
   it('keeps the quiet dot when the row has no branch identity', () => {
@@ -259,9 +344,10 @@ describe('WorktreeCardStatusSlot', () => {
     expect(markup).toContain('Active')
     expect(markup).toContain('bg-emerald-500')
     expect(markup).not.toContain('lucide-git-branch')
+    expect(markup).not.toContain('data-tooltip-root')
   })
 
-  it('shows working activity in new card style', () => {
+  it('keeps working activity ahead of PR status in new card style', () => {
     mocks.status = 'working'
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
@@ -272,6 +358,7 @@ describe('WorktreeCardStatusSlot', () => {
         unreadTooltip="Mark as unread"
         onPointerDown={vi.fn()}
         onToggleUnread={vi.fn()}
+        prDisplay={review}
         newCardStyle
       />
     )
@@ -279,9 +366,12 @@ describe('WorktreeCardStatusSlot', () => {
     expect(markup).toContain('Working')
     expect(markup).toContain('inline-flex size-5 items-center justify-center')
     expect(markup).toContain('border-yellow-500')
+    expect(markup).toContain('data-tooltip-root')
+    expect(markup).toContain('data-tooltip-content="">Working')
+    expect(markup).not.toContain('PR checks: Failed')
   })
 
-  it('shows permission activity in new card style', () => {
+  it('keeps permission activity ahead of PR status in new card style', () => {
     mocks.status = 'permission'
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
@@ -292,17 +382,72 @@ describe('WorktreeCardStatusSlot', () => {
         unreadTooltip="Mark as unread"
         onPointerDown={vi.fn()}
         onToggleUnread={vi.fn()}
+        prDisplay={review}
         newCardStyle
       />
     )
 
     expect(markup).toContain('Needs permission')
     expect(markup).toContain('lucide-message-circle-question-mark')
+    expect(markup).toContain('text-agent-question')
+    expect(markup).toContain('data-tooltip-root')
+    expect(markup).toContain('data-tooltip-content="">Needs permission')
+    expect(markup).not.toContain('PR checks: Failed')
+  })
+
+  it('keeps unread ahead of PR status by default', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCardStatusSlot
+        worktreeId="wt-1"
+        showStatus
+        showUnreadAction
+        isUnread
+        unreadTooltip="Mark as read"
+        onPointerDown={vi.fn()}
+        onToggleUnread={vi.fn()}
+        prDisplay={review}
+      />
+    )
+
+    expect(markup).toContain('aria-label="Mark as read"')
+    expect(markup).toContain('Mark as read')
+    expect(markup).not.toContain('Active · Mark as read')
+    expect(markup).not.toContain('PR checks: Failed')
+    expect(markup).not.toContain('bg-emerald-500')
     expect(markup).toContain('text-amber-500')
   })
 
+  it('overlays an unread badge on PR status when new card style is on', () => {
+    const markup = renderToStaticMarkup(
+      <WorktreeCardStatusSlot
+        worktreeId="wt-1"
+        showStatus
+        showUnreadAction
+        isUnread
+        unreadTooltip="Mark as read"
+        onPointerDown={vi.fn()}
+        onToggleUnread={vi.fn()}
+        prDisplay={review}
+        newCardStyle
+      />
+    )
+
+    expect(markup).not.toContain('aria-label="Mark as read"')
+    expect(markup).not.toContain('Mark as read')
+    expect(markup).toContain('PR checks: Failed · Unread')
+    expect(markup).toContain('data-worktree-status-lane-unread=""')
+    expect(markup).toContain('data-worktree-unread-alert=""')
+    expect(markup).not.toContain('group/unread')
+    expect(markup).not.toContain('cursor-pointer')
+    expect(markup).toContain('text-rose-500/85')
+    expect(markup).toContain('bg-amber-500')
+    expect(markup).not.toContain('lucide-bell')
+    expect(markup).not.toContain('text-amber-500')
+    expect(markup).not.toContain('bg-emerald-500')
+    expect(markup).not.toContain('data-tooltip-root')
+  })
+
   it('overlays an unread badge on the branch icon in new card style', () => {
-    mocks.status = 'inactive'
     const markup = renderToStaticMarkup(
       <WorktreeCardStatusSlot
         worktreeId="wt-1"
@@ -328,5 +473,6 @@ describe('WorktreeCardStatusSlot', () => {
     expect(markup).not.toContain('lucide-bell')
     expect(markup).not.toContain('text-amber-500')
     expect(markup).not.toContain('bg-emerald-500')
+    expect(markup).not.toContain('data-tooltip-root')
   })
 })

@@ -1,25 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildLocalNotificationData, getNotificationNavigationTarget } from './notification-routing'
+import {
+  getNotificationNavigationTarget,
+  notificationCredentialRecoveryRoute
+} from './notification-routing'
 
 describe('notification routing', () => {
-  it('includes the host id in locally scheduled notification data', () => {
-    expect(
-      buildLocalNotificationData(
-        {
-          source: 'agent-task-complete',
-          worktreeId: 'repo::/Users/me/orca/workspaces/feature',
-          notificationId: 'agent:one'
-        },
-        'host-1'
-      )
-    ).toEqual({
-      source: 'agent-task-complete',
-      hostId: 'host-1',
-      worktreeId: 'repo::/Users/me/orca/workspaces/feature',
-      notificationId: 'agent:one'
-    })
-  })
-
   // Identities stay raw: the target is dispatched as navigator params, not a URL.
   it('routes notification taps to the worktree terminal screen', () => {
     expect(
@@ -55,4 +40,40 @@ describe('notification routing', () => {
       )
     ).toBeNull()
   })
+
+  it.each([
+    ['missing', 're-pair'],
+    ['temporarily-unavailable', 'retry']
+  ] as const)('routes %s host credentials to %s recovery', (status, recovery) => {
+    const target = getNotificationNavigationTarget(
+      { hostId: 'host-1', worktreeId: 'repo::/tmp/worktree' },
+      {
+        knownHostIds: new Set(['host-1']),
+        credentialStatusByHostId: new Map([['host-1', status]])
+      }
+    )
+
+    expect(target).toMatchObject({ hostId: 'host-1', credentialRecovery: recovery })
+    expect(notificationCredentialRecoveryRoute(target!)).toBe(
+      status === 'missing' ? '/pair-scan' : '/'
+    )
+  })
+
+  it('keeps ready hosts on the requested notification destination', () => {
+    const target = getNotificationNavigationTarget(
+      { hostId: 'host-1', worktreeId: 'repo::/tmp/worktree' },
+      { credentialStatusByHostId: new Map([['host-1', 'ready']]) }
+    )
+
+    expect(target?.sessionTarget).not.toBeNull()
+    expect(notificationCredentialRecoveryRoute(target!)).toBeNull()
+  })
+})
+
+it('preserves the originating pane in the workspace route', () => {
+  const paneKey = 'tab-b:11111111-1111-4111-8111-111111111111'
+  expect(
+    getNotificationNavigationTarget({ hostId: 'host', worktreeId: 'folder:/work', paneKey })
+      ?.sessionTarget?.params
+  ).toEqual({ hostId: 'host', worktreeId: 'folder:/work', paneKey })
 })
