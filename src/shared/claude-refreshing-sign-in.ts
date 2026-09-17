@@ -17,9 +17,7 @@ export function isClaudeRefreshingFailureKind(
   kind: UsageRateLimitFailureKind | undefined
 ): kind is ClaudeRefreshingFailureKind {
   return (
-    kind === 'stale-token' ||
-    kind === 'refreshable-credentials-without-token' ||
-    kind === 'delegated-refresh-required'
+    kind != null && CLAUDE_REFRESHING_FAILURE_KINDS.includes(kind as ClaudeRefreshingFailureKind)
   )
 }
 
