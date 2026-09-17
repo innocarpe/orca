@@ -28,7 +28,9 @@ export async function resolveMobileBranchCompareBaseRef(
   const worktreeBaseRef = worktreeSummary?.accepted
     ? worktreeSummary.value?.baseRef?.trim() || null
     : null
-  const repo = repos?.accepted ? repos.value.find((candidate) => candidate.id === repoId) : undefined
+  const repo = repos?.accepted
+    ? repos.value.find((candidate) => candidate.id === repoId)
+    : undefined
   const repoBaseRef = repo?.worktreeBaseRef?.trim() || null
   let remoteCandidate = repoBaseRef
   if (!repoBaseRef) {
