@@ -116,4 +116,10 @@ export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
       dispatchWorkspaceTabCommand({ type: 'switch', direction, scope: 'terminal' })
     })
   )
+  const moveActiveTabSubscription = window.api.ui.onMoveActiveTab?.((direction) => {
+    dispatchWorkspaceTabCommand({ type: 'move-active', direction })
+  })
+  if (moveActiveTabSubscription) {
+    unsubs.push(moveActiveTabSubscription)
+  }
 }
