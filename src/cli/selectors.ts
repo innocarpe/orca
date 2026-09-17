@@ -13,6 +13,7 @@ import { parseWslUncPath } from '../shared/wsl-paths'
 import type { RuntimeClient } from './runtime-client'
 import { RuntimeClientError } from './runtime/types'
 import { getOptionalStringFlag, getRequiredStringFlag } from './flags'
+import { normalizeExecutionHostId, ORCA_CLI_EXECUTION_HOST_ID_ENV } from '../shared/execution-host'
 
 export type BrowserCliTarget = {
   worktree?: string
@@ -108,12 +109,16 @@ export async function resolveCurrentWorktreeSelector(
   assertLocalCwdWorktreeSelector('current', client)
 
   const currentPath = resolvePath(cwd)
+  const executionHostId = normalizeExecutionHostId(process.env[ORCA_CLI_EXECUTION_HOST_ID_ENV])
   const worktrees = await client.call<RuntimeWorktreeListResult>('worktree.list', {
     limit: 10_000
   })
   let enclosingWorktree: RuntimeWorktreeRecord | undefined
   let enclosingPathLength = -1
   for (const worktree of worktrees.result.worktrees) {
+    if (executionHostId !== null && normalizeExecutionHostId(worktree.hostId) !== executionHostId) {
+      continue
+    }
     const worktreePath = resolvePath(worktree.path)
     if (
       !isPathInsideOrEqual(worktreePath, currentPath) ||
@@ -126,9 +131,10 @@ export async function resolveCurrentWorktreeSelector(
   }
 
   if (!enclosingWorktree) {
+    const hostDescription = executionHostId ? ` on execution host ${executionHostId}` : ''
     throw new RuntimeClientError(
       'selector_not_found',
-      `No Orca-managed worktree contains the current directory: ${currentPath}`
+      `No Orca-managed worktree${hostDescription} contains the current directory: ${currentPath}`
     )
   }
 
@@ -194,7 +200,12 @@ export async function getBrowserWorktreeSelector(
   // Default: auto-resolve from cwd
   try {
     return await resolveCurrentWorktreeSelector(cwd, client)
-  } catch {
+  } catch (error) {
+    // Why: a relay-provided host scope must fail closed instead of silently
+    // dropping the worktree filter and targeting a same-path worktree elsewhere.
+    if (process.env[ORCA_CLI_EXECUTION_HOST_ID_ENV]) {
+      throw error
+    }
     // Not inside a managed worktree — no filter
     return undefined
   }
@@ -309,7 +320,12 @@ export async function getEmulatorWorktreeSelector(
   }
   try {
     return await resolveCurrentWorktreeSelector(cwd, client)
-  } catch {
+  } catch (error) {
+    // Why: a relay-provided host scope must fail closed instead of silently
+    // dropping the worktree filter and targeting a same-path worktree elsewhere.
+    if (process.env[ORCA_CLI_EXECUTION_HOST_ID_ENV]) {
+      throw error
+    }
     return undefined
   }
 }

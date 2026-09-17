@@ -44,6 +44,7 @@ vi.mock('child_process', async () => {
 import { buildCurrentWorktreeSelector, main, normalizeWorktreeSelector } from './index'
 import { buildWorktree, okFixture, queueFixtures, worktreeListFixture } from './test-fixtures'
 import { useWorktreeAwarenessEnvironment } from './index-test-harness'
+import { toSshExecutionHostId } from '../shared/execution-host'
 
 describe('orca cli worktree awareness', () => {
   useWorktreeAwarenessEnvironment({
@@ -95,6 +96,32 @@ describe('orca cli worktree awareness', () => {
     })
     expect(callMock).toHaveBeenNthCalledWith(2, 'worktree.show', {
       worktree: 'id:repo::/tmp/repo/feature'
+    })
+    expect(logSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('scopes the implicit current worktree to the SSH execution host', async () => {
+    process.env.ORCA_CLI_EXECUTION_HOST_ID = toSshExecutionHostId('host-b')
+    const path = '/tmp/repo/feature'
+    const hostAWorktree = {
+      ...buildWorktree(path, 'feature/host-a', 'host-a-head', 'repo-host-a'),
+      hostId: toSshExecutionHostId('host-a')
+    }
+    const hostBWorktree = {
+      ...buildWorktree(path, 'feature/host-b', 'host-b-head', 'repo-host-b'),
+      hostId: toSshExecutionHostId('host-b')
+    }
+    queueFixtures(
+      callMock,
+      worktreeListFixture([hostAWorktree, hostBWorktree]),
+      okFixture('req_1', { worktree: hostBWorktree })
+    )
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['worktree', 'current', '--json'], `${path}/src`)
+
+    expect(callMock).toHaveBeenNthCalledWith(2, 'worktree.show', {
+      worktree: `id:${hostBWorktree.id}`
     })
     expect(logSpy).toHaveBeenCalledTimes(1)
   })
