@@ -39,9 +39,11 @@ export {
   hasWorkspaceDragData,
   readWorkspaceDragData,
   readWorkspaceDragDataIds,
+  readWorkspaceDragDataTargets,
   WORKSPACE_STATUS_DRAG_ID_MAX_COUNT,
   WORKSPACE_STATUS_DRAG_IDS_TYPE,
   WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES,
+  WORKSPACE_STATUS_DRAG_TARGETS_TYPE,
   WORKSPACE_STATUS_DRAG_TYPE,
   writeWorkspaceDragData
 } from './workspace-status-drag-data'

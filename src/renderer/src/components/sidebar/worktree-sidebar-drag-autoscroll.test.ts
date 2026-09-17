@@ -19,6 +19,7 @@ const SESSION: WorktreeSidebarDragSession = {
   draggingWorktreeId: 'b',
   sourceGroupKey: 'repo:one',
   draggedIds: ['b'],
+  pinTargets: [{ worktreeId: 'b', executionHostId: 'local' }],
   reorderDraggedIds: ['b'],
   reorderUnitDraggedIds: ['b'],
   rects: [{ worktreeId: 'b', groupIndex: 1, top: 48, bottom: 88 }],
@@ -153,8 +154,19 @@ describe('refreshWorktreeSidebarDragSession', () => {
             key: 'repo:one',
             worktreeIds: ['a', 'b'],
             units: [
-              { worktreeId: 'a', worktreeIds: ['a'] },
-              { worktreeId: 'b', worktreeIds: ['b', 'child'] }
+              {
+                worktreeId: 'a',
+                worktreeIds: ['a'],
+                pinTargets: [{ worktreeId: 'a', executionHostId: 'local' }]
+              },
+              {
+                worktreeId: 'b',
+                worktreeIds: ['b', 'child'],
+                pinTargets: [
+                  { worktreeId: 'b', executionHostId: 'local' },
+                  { worktreeId: 'child', executionHostId: 'local' }
+                ]
+              }
             ]
           }
         ],
@@ -228,8 +240,19 @@ describe('refreshWorktreeSidebarDragSession', () => {
             key: 'repo:one',
             worktreeIds: ['parent', 'sibling'],
             units: [
-              { worktreeId: 'parent', worktreeIds: ['parent', 'child'] },
-              { worktreeId: 'sibling', worktreeIds: ['sibling'] }
+              {
+                worktreeId: 'parent',
+                worktreeIds: ['parent', 'child'],
+                pinTargets: [
+                  { worktreeId: 'parent', executionHostId: 'local' },
+                  { worktreeId: 'child', executionHostId: 'local' }
+                ]
+              },
+              {
+                worktreeId: 'sibling',
+                worktreeIds: ['sibling'],
+                pinTargets: [{ worktreeId: 'sibling', executionHostId: 'local' }]
+              }
             ]
           }
         ],

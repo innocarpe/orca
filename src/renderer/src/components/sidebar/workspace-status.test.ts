@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { WorkspacePinTarget } from '../../store/slices/worktree-helpers'
 import {
   WORKSPACE_STATUS_DRAG_ID_MAX_COUNT,
   WORKSPACE_STATUS_DRAG_IDS_TYPE,
   WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES,
+  WORKSPACE_STATUS_DRAG_TARGETS_TYPE,
   WORKSPACE_STATUS_DRAG_TYPE,
   hasWorkspaceDragData,
   readWorkspaceDragData,
   readWorkspaceDragDataIds,
+  readWorkspaceDragDataTargets,
   writeWorkspaceDragData
 } from './workspace-status'
 
@@ -47,6 +50,19 @@ describe('workspace status drag data', () => {
     expect(dataTransfer.getData(WORKSPACE_STATUS_DRAG_IDS_TYPE)).toBe('["wt-1","wt-2"]')
     expect(readWorkspaceDragDataIds(dataTransfer)).toEqual(['wt-1', 'wt-2'])
     expect(hasWorkspaceDragData(dataTransfer)).toBe(true)
+  })
+
+  it('round-trips host-qualified pin targets for twin workspaces', () => {
+    const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
+    const targets: WorkspacePinTarget[] = [
+      { worktreeId: 'shared', executionHostId: 'local' },
+      { worktreeId: 'shared', executionHostId: 'ssh:host-b' }
+    ]
+
+    writeWorkspaceDragData(dataTransfer, ['shared', 'shared'], targets)
+
+    expect(dataTransfer.getData(WORKSPACE_STATUS_DRAG_TARGETS_TYPE)).toBe(JSON.stringify(targets))
+    expect(readWorkspaceDragDataTargets(dataTransfer)).toEqual(targets)
   })
 
   it('falls back to the single worktree payload for older drag sources', () => {

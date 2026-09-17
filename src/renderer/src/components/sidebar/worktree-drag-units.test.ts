@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import {
   getFullDropIndexForWorktreeDragUnit,
   getWorktreeDragUnitGroups
@@ -11,13 +12,23 @@ function header(key: string): { type: 'header'; key: string } {
 function item(
   id: string,
   depth = 0,
-  sectionKey = 'all'
-): { type: 'item'; worktree: { id: string }; depth: number; sectionKey: string } {
-  return { type: 'item', worktree: { id }, depth, sectionKey }
+  sectionKey = 'all',
+  hostId?: ExecutionHostId
+): {
+  type: 'item'
+  worktree: { id: string; hostId?: ExecutionHostId }
+  depth: number
+  sectionKey: string
+} {
+  return { type: 'item', worktree: { id, hostId }, depth, sectionKey }
 }
 
 function importedCard(): { type: 'imported-worktrees-card' } {
   return { type: 'imported-worktrees-card' }
+}
+
+function target(worktreeId: string, executionHostId = 'local') {
+  return { worktreeId, executionHostId }
 }
 
 describe('getWorktreeDragUnitGroups', () => {
@@ -35,8 +46,12 @@ describe('getWorktreeDragUnitGroups', () => {
         key: 'all',
         worktreeIds: ['parent', 'sibling'],
         units: [
-          { worktreeId: 'parent', worktreeIds: ['parent', 'child', 'grandchild'] },
-          { worktreeId: 'sibling', worktreeIds: ['sibling'] }
+          {
+            worktreeId: 'parent',
+            worktreeIds: ['parent', 'child', 'grandchild'],
+            pinTargets: [target('parent'), target('child'), target('grandchild')]
+          },
+          { worktreeId: 'sibling', worktreeIds: ['sibling'], pinTargets: [target('sibling')] }
         ]
       }
     ])
@@ -58,14 +73,14 @@ describe('getWorktreeDragUnitGroups', () => {
         key: 'repo:one',
         worktreeIds: ['main', 'feature'],
         units: [
-          { worktreeId: 'main', worktreeIds: ['main'] },
-          { worktreeId: 'feature', worktreeIds: ['feature'] }
+          { worktreeId: 'main', worktreeIds: ['main'], pinTargets: [target('main')] },
+          { worktreeId: 'feature', worktreeIds: ['feature'], pinTargets: [target('feature')] }
         ]
       },
       {
         key: 'repo:two',
         worktreeIds: ['other'],
-        units: [{ worktreeId: 'other', worktreeIds: ['other'] }]
+        units: [{ worktreeId: 'other', worktreeIds: ['other'], pinTargets: [target('other')] }]
       }
     ])
   })
@@ -82,8 +97,16 @@ describe('getWorktreeDragUnitGroups', () => {
         key: 'pinned',
         worktreeIds: ['pinned-copy', 'other-pinned'],
         units: [
-          { worktreeId: 'pinned-copy', worktreeIds: ['pinned-copy'] },
-          { worktreeId: 'other-pinned', worktreeIds: ['other-pinned'] }
+          {
+            worktreeId: 'pinned-copy',
+            worktreeIds: ['pinned-copy'],
+            pinTargets: [target('pinned-copy')]
+          },
+          {
+            worktreeId: 'other-pinned',
+            worktreeIds: ['other-pinned'],
+            pinTargets: [target('other-pinned')]
+          }
         ]
       }
     ])
@@ -103,10 +126,25 @@ describe('getWorktreeDragUnitGroups', () => {
         key: 'all',
         worktreeIds: ['pinned-copy', 'other'],
         units: [
-          { worktreeId: 'pinned-copy', worktreeIds: ['pinned-copy'] },
-          { worktreeId: 'other', worktreeIds: ['other'] }
+          {
+            worktreeId: 'pinned-copy',
+            worktreeIds: ['pinned-copy'],
+            pinTargets: [target('pinned-copy')]
+          },
+          { worktreeId: 'other', worktreeIds: ['other'], pinTargets: [target('other')] }
         ]
       }
+    ])
+  })
+
+  it('preserves the host for rows with the same workspace id', () => {
+    const groups = getWorktreeDragUnitGroups([
+      header('ssh:host-b'),
+      item('shared', 0, 'all', 'ssh:host-b')
+    ])
+
+    expect(groups[0]?.units[0]?.pinTargets).toEqual([
+      { worktreeId: 'shared', executionHostId: 'ssh:host-b' }
     ])
   })
 })

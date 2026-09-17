@@ -3,6 +3,7 @@ import type React from 'react'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorkspaceStatus, Worktree } from '../../../../shared/worktree/types'
 import type { WorktreeCardPrDisplay } from './worktree-card-pr-display'
+import type { WorkspacePinTarget } from '../../store/slices/worktree-helpers'
 
 export type WorktreeRenameRequest = {
   worktreeId: string
@@ -46,7 +47,8 @@ export type WorktreeCardProps = {
   onCardDragStart?: (
     event: React.DragEvent<HTMLDivElement>,
     worktreeId: string,
-    draggedIds: readonly string[]
+    draggedIds: readonly string[],
+    pinTargets: readonly WorkspacePinTarget[]
   ) => void
   onCardDragEnd?: (event: React.DragEvent<HTMLDivElement>) => void
   nativeDragEnabled?: boolean

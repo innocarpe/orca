@@ -1,15 +1,36 @@
 import type { WorktreeDragGroup } from './worktree-manual-order'
 import { ALL_GROUP_KEY, PINNED_GROUP_KEY } from './worktree-list/grouping/group-keys'
 import { getNaturalWorktreeIds } from './natural-worktree-ids'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
+import type { Worktree } from '../../../../shared/worktree/types'
+import type { WorkspacePinTarget } from '../../store/slices/worktree-helpers'
 
 export type WorktreeDragUnitGroup = WorktreeDragGroup & {
-  units: { worktreeId: string; worktreeIds: string[] }[]
+  units: {
+    worktreeId: string
+    worktreeIds: string[]
+    pinTargets: WorkspacePinTarget[]
+  }[]
+}
+
+export function getWorktreePinTarget(
+  worktree: Pick<Worktree, 'id' | 'hostId'>
+): WorkspacePinTarget {
+  return {
+    worktreeId: worktree.id,
+    executionHostId: worktree.hostId ?? LOCAL_EXECUTION_HOST_ID
+  }
 }
 
 type WorktreeDragUnitRow =
   | { type: 'host-header' }
   | { type: 'header'; key: string }
-  | { type: 'item'; worktree: { id: string }; depth: number; sectionKey: string }
+  | {
+      type: 'item'
+      worktree: Pick<Worktree, 'id' | 'hostId'>
+      depth: number
+      sectionKey: string
+    }
   | { type: 'imported-worktrees-card' }
   | { type: 'new-external-worktrees-inbox' }
   | { type: 'pending-creation' }
@@ -54,9 +75,14 @@ export function getWorktreeDragUnitGroups(
     }
     if (row.depth > 0 && current.units.length > 0) {
       current.units.at(-1)!.worktreeIds.push(row.worktree.id)
+      current.units.at(-1)!.pinTargets.push(getWorktreePinTarget(row.worktree))
       continue
     }
-    current.units.push({ worktreeId: row.worktree.id, worktreeIds: [row.worktree.id] })
+    current.units.push({
+      worktreeId: row.worktree.id,
+      worktreeIds: [row.worktree.id],
+      pinTargets: [getWorktreePinTarget(row.worktree)]
+    })
   }
 
   return groups

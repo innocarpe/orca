@@ -182,6 +182,7 @@ describe('worktree sidebar drag geometry under mid-drag card growth', () => {
         draggingWorktreeId: 'a',
         sourceGroupKey: 'repo:one',
         draggedIds: ['a'],
+        pinTargets: [{ worktreeId: 'a', executionHostId: 'local' }],
         reorderDraggedIds: ['a'],
         reorderUnitDraggedIds: ['a'],
         rects: COLLAPSED,
@@ -193,7 +194,11 @@ describe('worktree sidebar drag geometry under mid-drag card growth', () => {
         {
           key: 'repo:one',
           worktreeIds: GROUP_IDS,
-          units: GROUP_IDS.map((worktreeId) => ({ worktreeId, worktreeIds: [worktreeId] }))
+          units: GROUP_IDS.map((worktreeId) => ({
+            worktreeId,
+            worktreeIds: [worktreeId],
+            pinTargets: [{ worktreeId, executionHostId: 'local' }]
+          }))
         }
       ],
       rects: grown
