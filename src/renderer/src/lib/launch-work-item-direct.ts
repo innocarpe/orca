@@ -40,6 +40,7 @@ import {
   planAgentSessionLaunch,
   type AgentSessionLaunchPlan
 } from '@/lib/agent-session-launch-plan'
+import { assignUnassignedGitHubIssueOnStart } from '@/lib/assign-unassigned-github-issue-on-start'
 
 /**
  * "Use" flow: create the workspace, activate it, launch the default agent,
@@ -198,6 +199,11 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     )
     worktreeId = result.worktree.id
     worktreePath = result.worktree.path
+    await assignUnassignedGitHubIssueOnStart({
+      enabled: settings.assignUnassignedGitHubIssuesOnStart === true,
+      item: { ...item, type: itemType, number: itemNumber },
+      repoId
+    })
 
     const latestStore = useAppStore.getState()
     const launchPreparation = await prepareDirectWorkItemAgentLaunch({

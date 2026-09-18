@@ -45,6 +45,7 @@ describe('TaskPage workspace creation source boundaries', () => {
     expect(section).toContain('prefilledName: getGitHubWorkItemWorkspaceSeed(item)')
     expect(section).toContain('initialRepoId: item.repoId')
     expect(section).toContain('initialGitHubWorkItem: item')
+    expect(section).toContain('assignees: item.assignees ?? []')
     expect(section).toContain("enableIssueAutomation: item.type === 'issue'")
     expect(section).toContain("telemetrySource: 'sidebar'")
   })
@@ -118,6 +119,15 @@ describe('TaskPage workspace creation source boundaries', () => {
     const actions = readFileSync(join(__dirname, 'task-page/github/Rows.tsx'), 'utf8')
     expect(detail.match(/onUse=\{\(item\) => \{/g)).toHaveLength(2)
     expect(actions.match(/onSelect=\{\(\) => handleUseWorkItem\(item\)\}/g)).toHaveLength(2)
+  })
+
+  it('assigns unassigned GitHub issues after a successful composer Start', () => {
+    const fullCreate = readFileSync(
+      join(__dirname, '../hooks/composer-state/full-creation-execution.ts'),
+      'utf8'
+    )
+    expect(fullCreate).toContain('assignUnassignedGitHubIssueOnStart({')
+    expect(fullCreate).toContain('item: submitLinkedWorkItem')
   })
 
   it('keeps project-view GitHub actions on the direct start-work path for issue #4756', () => {

@@ -42,6 +42,7 @@ import { beginFullCreationStructuredLaunch } from './full-creation-structured-la
 import { finalizeFullCreation } from './full-creation-finalization'
 import { buildFullCreationIssueCommand } from './full-creation-issue-command'
 import { buildFullCreationStartup } from './full-creation-startup'
+import { assignUnassignedGitHubIssueOnStart } from '@/lib/assign-unassigned-github-issue-on-start'
 
 export function useFullCreationExecution(input: FullCreationExecutionInput) {
   const {
@@ -189,6 +190,12 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
       )
 
       const worktree = result.worktree
+      await assignUnassignedGitHubIssueOnStart({
+        enabled: useAppStore.getState().settings?.assignUnassignedGitHubIssuesOnStart === true,
+        item: submitLinkedWorkItem,
+        repoId,
+        sourceContext: taskSourceContext
+      })
       const issueCommand = buildFullCreationIssueCommand({
         shouldRun: submitShouldRunIssueAutomation && issueCommandTrustDecision === 'run',
         template: confirmedIssueCommandTemplate,
