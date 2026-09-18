@@ -80,7 +80,7 @@ export const ORCHESTRATION_WORKER_LIST_METHOD = defineMethod({
       runId: params.run,
       terminalState: params.terminalState,
       snapshot,
-      after: cursor?.after,
+      after: cursor?.version === 4 ? cursor.after : undefined,
       limit:
         !cursor && params.terminalState
           ? ORCHESTRATION_WORKER_LIST_SNAPSHOT_MAX_ROWS + 1

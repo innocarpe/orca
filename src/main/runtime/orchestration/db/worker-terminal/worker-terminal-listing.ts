@@ -25,12 +25,12 @@ export {
   markWorkerTerminalUserOwned
 }
 
-/** `databaseId` is the real order key; timestamp fields remain so a v4 cursor can resolve its
- *  anchor when the optional rowid is omitted. v1/v2 were minted under ascending order. */
+/** `databaseId` is the real order key. v4 always carries a rowid; `dispatchId` still
+ *  identifies the anchor. v1/v2 were minted under ascending order. */
 export type WorkerTerminalOrderingKey = {
   createdAt: string
   dispatchId: string
-  databaseId?: number
+  databaseId: number
 }
 export type WorkerTerminalListingSnapshot =
   | { databaseId: number }
@@ -58,15 +58,11 @@ function resolveAnchorRowId(
   after: WorkerTerminalOrderingKey,
   runId: string | undefined
 ): number {
-  const conditions = ['id = ?']
-  const values: (string | number)[] = [after.dispatchId]
+  const conditions = ['id = ?', 'rowid = ?']
+  const values: (string | number)[] = [after.dispatchId, after.databaseId]
   if (runId) {
     conditions.push('run_id = ?')
     values.push(runId)
-  }
-  if (after.databaseId !== undefined) {
-    conditions.push('rowid = ?')
-    values.push(after.databaseId)
   }
   const anchor = this.db
     .prepare(`SELECT rowid AS rowid FROM dispatch_contexts WHERE ${conditions.join(' AND ')}`)
@@ -256,30 +252,11 @@ export function getWorkerTerminalListingSnapshot(
     .get(...(runId ? [runId] : [])) as { database_id: number | null }
   return row.database_id === null ? null : { databaseId: row.database_id }
 }
-export function getWorkerTerminalOrderingKey(
-  this: OrchestrationDb,
-  dispatchId: string
-): WorkerTerminalOrderingKey | null {
-  const row = this.db
-    .prepare(
-      `SELECT d.id AS dispatch_id, d.rowid AS database_id,
-              COALESCE(w.created_at, d.created_at) AS created_at
-         FROM dispatch_contexts d
-         LEFT JOIN worker_dispatches w ON w.dispatch_id = d.id
-        WHERE d.id = ?`
-    )
-    .get(dispatchId) as { dispatch_id: string; created_at: string; database_id: number } | undefined
-  return row
-    ? { createdAt: row.created_at, dispatchId: row.dispatch_id, databaseId: row.database_id }
-    : null
-}
-
 export type WorkerTerminalListingMethods = {
   markWorkerTerminalUserOwned: typeof markWorkerTerminalUserOwned
   listWorkerTerminalReleaseBacklog: typeof listWorkerTerminalReleaseBacklog
   listWorkerTerminalResources: typeof listWorkerTerminalResources
   getWorkerTerminalListingSnapshot: typeof getWorkerTerminalListingSnapshot
-  getWorkerTerminalOrderingKey: typeof getWorkerTerminalOrderingKey
   countWorkerTerminalInventory: typeof countWorkerTerminalInventory
   getWorkerAttentionFacts: typeof getWorkerAttentionFacts
   getWorkerAttentionFactsForDispatches: typeof getWorkerAttentionFactsForDispatches
@@ -291,7 +268,6 @@ export function attachWorkerTerminalListing(ctor: { prototype: object }): void {
     listWorkerTerminalReleaseBacklog,
     listWorkerTerminalResources,
     getWorkerTerminalListingSnapshot,
-    getWorkerTerminalOrderingKey,
     countWorkerTerminalInventory,
     getWorkerAttentionFacts,
     getWorkerAttentionFactsForDispatches

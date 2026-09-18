@@ -639,14 +639,12 @@ describe('orchestration worker-list pagination', () => {
       const { runA } = twoRuns()
       const runtime = new OrcaRuntimeService()
       runtime.setOrchestrationDb(db!)
-      const foreign = Buffer.from(
-        JSON.stringify({
-          version: 4,
-          snapshot: { databaseId: 4 },
-          after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'b-1' }
-        }),
-        'utf8'
-      ).toString('base64url')
+      // b-1's rowid so decode succeeds; resolveAnchorRowId still rejects the out-of-run anchor.
+      const foreign = encodeWorkerListCursor({
+        version: 4,
+        snapshot: { databaseId: 4 },
+        after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'b-1', databaseId: 3 }
+      })
 
       await expect(
         callWorkerList(runtime, { run: runA, limit: 10, cursor: foreign })
