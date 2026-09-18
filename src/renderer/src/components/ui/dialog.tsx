@@ -5,11 +5,20 @@ import { XIcon } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
+import { useGatedOverlayOpen } from '@/lib/overlay-allowed-context'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+function Dialog({ open, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  // Why: keep-mounted Tasks portals to body; OverlayAllowedContext closes them without dropping draft state.
+  const gatedOpen = useGatedOverlayOpen(open)
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      {...props}
+      {...(gatedOpen === undefined ? {} : { open: gatedOpen })}
+    />
+  )
 }
 
 function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {

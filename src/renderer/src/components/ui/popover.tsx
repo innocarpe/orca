@@ -4,12 +4,21 @@ import * as React from 'react'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
+import { useGatedOverlayOpen } from '@/lib/overlay-allowed-context'
 
 // React delegates wheel passively, so native defaultPrevented may not reflect synthetic cancellation.
 const consumerPreventedWheelEvents = new WeakSet<WheelEvent>()
 
-function Popover(props: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+function Popover({ open, ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
+  // Why: keep-mounted Tasks popovers portal to body; OverlayAllowedContext closes them with the parent view.
+  const gatedOpen = useGatedOverlayOpen(open)
+  return (
+    <PopoverPrimitive.Root
+      data-slot="popover"
+      {...props}
+      {...(gatedOpen === undefined ? {} : { open: gatedOpen })}
+    />
+  )
 }
 
 function PopoverTrigger(props: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
