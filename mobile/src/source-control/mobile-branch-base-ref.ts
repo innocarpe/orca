@@ -38,7 +38,7 @@ export async function resolveMobileBranchCompareBaseRef(
     // Why the raw refusal: a host that does not offer git to mobile is a capability gap to degrade
     // on, not an error to surface, and no acceptance policy carries the code and message through.
     if (isMobileGitUnavailableReply(defaultReply)) {
-      return null
+      return preferRemoteTrackingCompareBase(worktreeBaseRef, null)
     }
     try {
       remoteCandidate = repoDefaultBaseRefRead.interpret(defaultReply)
