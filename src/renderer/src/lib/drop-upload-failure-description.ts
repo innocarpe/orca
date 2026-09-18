@@ -70,9 +70,8 @@ export function formatDropUploadFailureDescription(failed: readonly DropUploadFa
   const hiddenCount = failed.length - visible.length
   if (hiddenCount > 0) {
     visible.push(
-      translate('auto.lib.dropUploadFailure.more', '+{{value0}} more failure{{value1}}', {
-        value0: hiddenCount,
-        value1: hiddenCount === 1 ? '' : 's'
+      translate('auto.lib.dropUploadFailure.more', '+{{count}} more failures', {
+        count: hiddenCount
       })
     )
   }

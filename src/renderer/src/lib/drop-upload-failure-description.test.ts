@@ -20,6 +20,17 @@ describe('formatDropUploadFailureDescription', () => {
     ).toBe('one.txt: Not enough storage.\ntwo.txt: Permission denied.\n+1 more failure')
   })
 
+  it('uses the plural form for multiple hidden failures', () => {
+    expect(
+      formatDropUploadFailureDescription([
+        { sourcePath: '/tmp/one.txt', reason: 'disk full' },
+        { sourcePath: '/tmp/two.txt', reason: 'permission denied' },
+        { sourcePath: '/tmp/three.txt', reason: 'timed out' },
+        { sourcePath: '/tmp/four.txt', reason: 'unsupported' }
+      ])
+    ).toBe('one.txt: Not enough storage.\ntwo.txt: Permission denied.\n+2 more failures')
+  })
+
   it('maps known reasons and hides unknown technical details', () => {
     expect(
       formatDropUploadFailureDescription([
