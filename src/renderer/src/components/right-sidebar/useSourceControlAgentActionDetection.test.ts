@@ -65,7 +65,9 @@ describe('useSourceControlAgentActionDetection', () => {
     })
     expect(result.current.detecting).toBe(true)
 
-    rerender({ connectionId: 'ssh-1' })
+    await act(async () => {
+      rerender({ connectionId: 'ssh-1' })
+    })
 
     let secondRefresh!: Promise<TuiAgent[]>
     await act(async () => {
@@ -85,5 +87,37 @@ describe('useSourceControlAgentActionDetection', () => {
     })
     expect(result.current.detectedAgents).toEqual(['codex'])
     expect(result.current.detecting).toBe(false)
+  })
+
+  it('ignores a probe that finishes after the target changes and before the next refresh', async () => {
+    const first = deferred<TuiAgent[]>()
+    ensureSourceControlDetectedAgents.mockReturnValueOnce(first.promise)
+
+    const { result, rerender } = renderHook(
+      (props: { connectionId: string | null }) =>
+        useSourceControlAgentActionDetection({
+          worktreeId: 'wt-1',
+          connectionId: props.connectionId
+        }),
+      { initialProps: { connectionId: null as string | null } }
+    )
+
+    let firstRefresh!: Promise<TuiAgent[]>
+    await act(async () => {
+      firstRefresh = result.current.refreshDetectedAgents()
+    })
+
+    await act(async () => {
+      rerender({ connectionId: 'ssh-1' })
+    })
+
+    await act(async () => {
+      first.resolve(['claude'])
+      await firstRefresh
+    })
+
+    expect(result.current.detectedAgents).toEqual([])
+    expect(result.current.detecting).toBe(false)
+    expect(ensureSourceControlDetectedAgents).toHaveBeenCalledOnce()
   })
 })

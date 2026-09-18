@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ensureSourceControlDetectedAgents,
   resolveSourceControlAgentDetectionTarget
@@ -34,6 +34,12 @@ export function useSourceControlAgentActionDetection(args: {
   // Why: a slower probe can finish after the target changes or a newer refresh starts.
   const detectionGenerationRef = useRef(0)
   const connectionUnavailable = detectionTarget.kind === 'unavailable'
+
+  useEffect(() => {
+    detectionGenerationRef.current += 1
+    setDetectedAgents([])
+    setDetecting(false)
+  }, [detectionTarget])
 
   const refreshDetectedAgents = useCallback(async (): Promise<TuiAgent[]> => {
     const generation = ++detectionGenerationRef.current
