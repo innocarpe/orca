@@ -19,44 +19,48 @@ afterEach(() => {
 })
 
 describe('captureNewlyParkedTerminalTabs', () => {
-  it('serializes a newly parked remote tab once per park episode', () => {
+  it('serializes a newly parked remote tab once per park episode', async () => {
     const capture = vi.fn()
     shutdownBufferCaptures.set('tab-1', capture)
     const ledger = new Set<string>()
 
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
 
     expect(capture).toHaveBeenCalledTimes(1)
     // Why localOnly: the per-tab park is the every-hide cadence, so its bytes must stay off the upload.
-    expect(capture).toHaveBeenCalledWith({ includeLocalBuffers: false, localOnly: true })
+    expect(capture).toHaveBeenCalledWith({
+      includeLocalBuffers: false,
+      localOnly: true,
+      yieldBetweenPanes: true
+    })
     expect(ledger).toEqual(new Set(['tab-1']))
   })
 
-  it('re-captures after a reveal, because the replay releases the stored copy', () => {
+  it('re-captures after a reveal, because the replay releases the stored copy', async () => {
     const capture = vi.fn()
     shutdownBufferCaptures.set('tab-1', capture)
     const ledger = new Set<string>()
 
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(), ledger)
     expect(ledger.size).toBe(0)
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1']), ledger)
 
     expect(capture).toHaveBeenCalledTimes(2)
   })
 
-  it('retries a tab whose pane had no registered capture and captures the rest', () => {
+  it('retries a tab whose pane had no registered capture and captures the rest', async () => {
     const capture = vi.fn()
     shutdownBufferCaptures.set('tab-1', capture)
     const ledger = new Set<string>()
 
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1', 'tab-remounting']), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1', 'tab-remounting']), ledger)
     expect(ledger).toEqual(new Set(['tab-1']))
 
     const lateCapture = vi.fn()
     shutdownBufferCaptures.set('tab-remounting', lateCapture)
-    captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1', 'tab-remounting']), ledger)
+    await captureNewlyParkedTerminalTabs(WORKTREE_ID, new Set(['tab-1', 'tab-remounting']), ledger)
 
     expect(capture).toHaveBeenCalledTimes(1)
     expect(lateCapture).toHaveBeenCalledTimes(1)
