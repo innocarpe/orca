@@ -432,6 +432,35 @@ describe('createEditorSlice file search seed state', () => {
   })
 })
 
+describe('createEditorSlice openFileCompare', () => {
+  it('opens a file-compare tab and reuses A↔B / B↔A as one id', () => {
+    const store = createEditorStore()
+
+    store.getState().openFileCompare(
+      'wt-1',
+      { filePath: '/repo/b.ts', relativePath: 'b.ts' },
+      { filePath: '/repo/a.ts', relativePath: 'a.ts' },
+      'typescript'
+    )
+    store.getState().openFileCompare(
+      'wt-1',
+      { filePath: '/repo/a.ts', relativePath: 'a.ts' },
+      { filePath: '/repo/b.ts', relativePath: 'b.ts' },
+      'typescript'
+    )
+
+    expect(store.getState().openFiles).toHaveLength(1)
+    expect(store.getState().openFiles[0]).toEqual(
+      expect.objectContaining({
+        mode: 'diff',
+        diffSource: 'file-compare',
+        relativePath: 'a.ts',
+        compareTarget: expect.objectContaining({ relativePath: 'b.ts' })
+      })
+    )
+  })
+})
+
 describe('createEditorSlice openDiff', () => {
   it('keeps staged and unstaged diffs in separate tabs', () => {
     const store = createEditorStore()
@@ -1232,7 +1261,13 @@ describe('createEditorSlice untitled cleanup routing', () => {
       expect(runtimeEnvironmentCallMock).toHaveBeenCalledWith({
         selector: 'env-1',
         method: 'files.delete',
-        params: { worktree: 'id:wt-1', relativePath: 'untitled.md', recursive: undefined },
+        params: {
+          worktree: 'id:wt-1',
+          relativePath: 'untitled.md',
+          recursive: undefined,
+          expectedExecutionHostId: 'local'
+        },
+        expectedEnvironmentPairingRevision: undefined,
         timeoutMs: 15_000
       })
     })
@@ -1257,14 +1292,20 @@ describe('createEditorSlice untitled cleanup routing', () => {
       expect(runtimeEnvironmentCallMock).toHaveBeenCalledWith({
         selector: 'env-1',
         method: 'files.delete',
-        params: { worktree: 'id:wt-1', relativePath: 'untitled.md', recursive: undefined },
+        params: {
+          worktree: 'id:wt-1',
+          relativePath: 'untitled.md',
+          recursive: undefined,
+          expectedExecutionHostId: 'local'
+        },
+        expectedEnvironmentPairingRevision: undefined,
         timeoutMs: 15_000
       })
     })
     expect(localDeletePathMock).not.toHaveBeenCalled()
   })
 
-  it('closeFile uses relative remote delete when worktree metadata is missing', async () => {
+  it('closeFile does not delete when worktree ownership metadata is missing', async () => {
     const store = createEditorStore()
     store.setState({
       settings: { activeRuntimeEnvironmentId: 'env-1' } as never,
@@ -1282,14 +1323,9 @@ describe('createEditorSlice untitled cleanup routing', () => {
 
     store.getState().closeFile('/remote/wt/untitled.md')
 
-    await vi.waitFor(() => {
-      expect(runtimeEnvironmentCallMock).toHaveBeenCalledWith({
-        selector: 'env-1',
-        method: 'files.delete',
-        params: { worktree: 'id:wt-1', relativePath: 'untitled.md', recursive: undefined },
-        timeoutMs: 15_000
-      })
-    })
+    await flushAsyncRemoteRefresh()
+
+    expect(runtimeEnvironmentCallMock).not.toHaveBeenCalled()
     expect(localDeletePathMock).not.toHaveBeenCalled()
   })
 
@@ -1312,7 +1348,13 @@ describe('createEditorSlice untitled cleanup routing', () => {
       expect(runtimeEnvironmentCallMock).toHaveBeenCalledWith({
         selector: 'env-1',
         method: 'files.delete',
-        params: { worktree: 'id:wt-1', relativePath: 'untitled.md', recursive: undefined },
+        params: {
+          worktree: 'id:wt-1',
+          relativePath: 'untitled.md',
+          recursive: undefined,
+          expectedExecutionHostId: 'local'
+        },
+        expectedEnvironmentPairingRevision: undefined,
         timeoutMs: 15_000
       })
     })
@@ -1338,7 +1380,13 @@ describe('createEditorSlice untitled cleanup routing', () => {
       expect(runtimeEnvironmentCallMock).toHaveBeenCalledWith({
         selector: 'env-1',
         method: 'files.delete',
-        params: { worktree: 'id:wt-1', relativePath: 'untitled.md', recursive: undefined },
+        params: {
+          worktree: 'id:wt-1',
+          relativePath: 'untitled.md',
+          recursive: undefined,
+          expectedExecutionHostId: 'local'
+        },
+        expectedEnvironmentPairingRevision: undefined,
         timeoutMs: 15_000
       })
     })
