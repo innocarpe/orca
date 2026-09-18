@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { TuiAgent } from '../../../shared/tui-agent'
 import {
   ensureSourceControlDetectedAgents,
-  resolveSourceControlAgentDetectionTarget
+  resolveSourceControlAgentDetectionTarget,
+  type SourceControlAgentDetectionStore
 } from './source-control-agent-detection-target'
 
-function createDetectionStore() {
+function createDetectionStore(): SourceControlAgentDetectionStore {
   return {
-    ensureDetectedAgents: vi.fn(async () => ['claude']),
-    ensureRemoteDetectedAgents: vi.fn(async () => ['codex']),
-    ensureRuntimeDetectedAgents: vi.fn(async () => ['opencode'])
+    ensureDetectedAgents: vi.fn(async (): Promise<TuiAgent[]> => ['claude']),
+    ensureRemoteDetectedAgents: vi.fn(async (): Promise<TuiAgent[]> => ['codex']),
+    ensureRuntimeDetectedAgents: vi.fn(async (): Promise<TuiAgent[]> => ['opencode'])
   }
 }
 
