@@ -80,12 +80,12 @@ export function LinkActionPopover<TRequest extends LinkActionRequest>({
   const copyLabel =
     copyStatus === 'copied'
       ? translate('auto.components.terminal.pane.TerminalLinkActionPopover.copied', 'Copied')
-      : translate(
-          isFilePath
-            ? 'auto.components.terminal.pane.TerminalLinkActionPopover.copyFilePath'
-            : 'auto.components.terminal.pane.TerminalLinkActionPopover.copyLink',
-          isFilePath ? 'Copy file path' : 'Copy link'
-        )
+      : isFilePath
+        ? translate(
+            'auto.components.terminal.pane.TerminalLinkActionPopover.copyFilePath',
+            'Copy file path'
+          )
+        : translate('auto.components.terminal.pane.TerminalLinkActionPopover.copyLink', 'Copy link')
 
   const copiedMessage = isFilePath
     ? translate(

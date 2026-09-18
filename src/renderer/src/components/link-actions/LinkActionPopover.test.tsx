@@ -221,6 +221,28 @@ describe('LinkActionPopover', () => {
     await waitFor(() => expect(mocks.writeClipboardText).toHaveBeenCalledTimes(2))
   })
 
+  it('shows a file-specific failure toast and keeps the popover open', async () => {
+    vi.stubGlobal('navigator', { userAgent: 'Macintosh' })
+    Object.assign(window, { api: { ui: { writeClipboardText: mocks.writeClipboardText } } })
+    mocks.writeClipboardText.mockRejectedValue(new Error('denied'))
+    const onClose = vi.fn()
+    const request: LinkActionRequest = {
+      anchorX: 100,
+      anchorY: 200,
+      destination: '/repo/src/main.ts',
+      kind: 'file',
+      primary: { label: 'Open file', run: vi.fn() },
+      restoreFocus: vi.fn()
+    }
+
+    render(<LinkActionPopover request={request} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Copy file path' }))
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith('Failed to copy file path'))
+    expect(screen.getByRole('button', { name: 'Copy file path' })).toBeTruthy()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('does not offer copy actions for non-copyable destinations', () => {
     vi.stubGlobal('navigator', { userAgent: 'Macintosh' })
     const request: LinkActionRequest = {
