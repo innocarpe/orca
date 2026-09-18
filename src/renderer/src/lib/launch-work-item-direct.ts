@@ -201,7 +201,7 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     worktreePath = result.worktree.path
     // Why: assignment is best-effort and can wait on gh; do not delay reveal.
     void assignUnassignedGitHubIssueOnStart({
-      enabled: settings.assignUnassignedGitHubIssuesOnStart === true,
+      enabled: settings?.assignUnassignedGitHubIssuesOnStart === true,
       item: { ...item, type: itemType, number: itemNumber },
       repoId,
       sourceContext: args.sourceContext
