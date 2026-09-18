@@ -116,13 +116,19 @@ function mapProxyPrefixedStaticPathname(pathname: string): string {
   if (pathname === '/web-index.html' || pathname.endsWith('/web-index.html')) {
     return '/web-index.html'
   }
+  // Why: `/assets/cmaps/…` contains both `/assets/` and `/cmaps/`; keep the
+  // rightmost allow-listed prefix so the lookup uses the copied pdf.js dir.
+  let deepestIndex = -1
   for (const prefix of STATIC_WEB_ALLOWED_PREFIXES) {
     const prefixIndex = pathname.indexOf(prefix)
-    if (prefixIndex !== -1) {
-      // Why: reverse proxies may forward the external path prefix through to
-      // Orca. Only the bundled static subtrees are served after the prefix.
-      return pathname.slice(prefixIndex)
+    if (prefixIndex > deepestIndex) {
+      deepestIndex = prefixIndex
     }
+  }
+  if (deepestIndex !== -1) {
+    // Why: reverse proxies may forward the external path prefix through to
+    // Orca. Only the bundled static subtrees are served after the prefix.
+    return pathname.slice(deepestIndex)
   }
   return pathname
 }

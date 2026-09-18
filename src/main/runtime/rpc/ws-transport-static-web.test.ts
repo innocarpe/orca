@@ -101,6 +101,21 @@ describe('WebSocketTransport static web client', () => {
     await expect(response.text()).resolves.toBe('cmap')
   })
 
+  it('serves /cmaps when a path also contains /assets/', async () => {
+    const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
+    mkdirSync(join(staticRoot, 'cmaps'))
+    writeFileSync(join(staticRoot, 'cmaps', 'Adobe-Japan1-UCS2.bcmap'), 'cmap')
+    const transport = createStaticTransport(staticRoot)
+
+    await transport.start()
+
+    const response = await fetch(
+      `http://127.0.0.1:${transport.resolvedPort}/assets/cmaps/Adobe-Japan1-UCS2.bcmap`
+    )
+    expect(response.status).toBe(200)
+    await expect(response.text()).resolves.toBe('cmap')
+  })
+
   it('does not expose arbitrary files from the static root', async () => {
     const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
     writeFileSync(join(staticRoot, 'package.json'), '{}')
