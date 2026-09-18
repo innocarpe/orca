@@ -7,10 +7,12 @@ function makeTerminal(selection: string) {
   return { element, getSelection: () => selection }
 }
 
-function dispatchCopy(element: HTMLElement) {
+function dispatchCopy(element: HTMLElement, withClipboardData = true) {
   const event = new Event('copy', { bubbles: true, cancelable: true })
+  const clipboardData = withClipboardData ? { setData: vi.fn() } : undefined
+  Object.defineProperty(event, 'clipboardData', { value: clipboardData })
   element.dispatchEvent(event)
-  return event
+  return { event, clipboardData }
 }
 
 describe('installTerminalSelectionCopyHandler', () => {
@@ -21,10 +23,11 @@ describe('installTerminalSelectionCopyHandler', () => {
     installTerminalSelectionCopyHandler(terminal, writeClipboardText)
     terminal.element.addEventListener('copy', downstream)
 
-    const event = dispatchCopy(terminal.element)
+    const { event, clipboardData } = dispatchCopy(terminal.element)
     await Promise.resolve()
 
     expect(event.defaultPrevented).toBe(true)
+    expect(clipboardData?.setData).toHaveBeenCalledWith('text/plain', 'remote answer')
     expect(writeClipboardText).toHaveBeenCalledWith('remote answer')
     expect(downstream).not.toHaveBeenCalled()
   })
@@ -33,7 +36,18 @@ describe('installTerminalSelectionCopyHandler', () => {
     const terminal = makeTerminal('')
     const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue()
 
-    const event = dispatchCopy(terminal.element)
+    const { event } = dispatchCopy(terminal.element)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(writeClipboardText).not.toHaveBeenCalled()
+  })
+
+  it('leaves events without clipboardData to the native copy path', () => {
+    const terminal = makeTerminal('remote answer')
+    const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue()
+
+    installTerminalSelectionCopyHandler(terminal, writeClipboardText)
+    const { event } = dispatchCopy(terminal.element, false)
 
     expect(event.defaultPrevented).toBe(false)
     expect(writeClipboardText).not.toHaveBeenCalled()
@@ -46,13 +60,23 @@ describe('installTerminalSelectionCopyHandler', () => {
       .mockRejectedValue(new Error('clipboard unavailable'))
     const disposable = installTerminalSelectionCopyHandler(terminal, writeClipboardText)
 
-    dispatchCopy(terminal.element)
+    const { clipboardData } = dispatchCopy(terminal.element)
     await Promise.resolve()
+    expect(clipboardData?.setData).toHaveBeenCalledWith('text/plain', 'remote answer')
     expect(writeClipboardText).toHaveBeenCalledOnce()
 
     disposable.dispose()
-    const nextEvent = dispatchCopy(terminal.element)
+    const { event: nextEvent } = dispatchCopy(terminal.element)
     expect(nextEvent.defaultPrevented).toBe(false)
     expect(writeClipboardText).toHaveBeenCalledOnce()
+  })
+
+  it('is inert before xterm has opened an element', () => {
+    expect(() =>
+      installTerminalSelectionCopyHandler(
+        { getSelection: () => 'remote answer' },
+        vi.fn()
+      ).dispose()
+    ).not.toThrow()
   })
 })

@@ -16,9 +16,10 @@ export function installTerminalSelectionCopyHandler(
 
   const onCopy = (event: ClipboardEvent): void => {
     const selection = readTerminalClipboardSelection(terminal)
-    if (!selection) {
+    if (!selection || !event.clipboardData) {
       return
     }
+    event.clipboardData.setData('text/plain', selection)
     event.preventDefault()
     event.stopImmediatePropagation()
     void writeClipboardText(selection).catch(() => {})
