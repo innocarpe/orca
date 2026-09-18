@@ -153,7 +153,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
           ? {
               lineage: recordedLineage.lineage,
               workspaceLineage: recordedLineage.workspaceLineage,
-              warnings: recordedLineage.warnings
+              warnings: [...(result.warnings ?? []), ...recordedLineage.warnings]
             }
           : {})
       }
