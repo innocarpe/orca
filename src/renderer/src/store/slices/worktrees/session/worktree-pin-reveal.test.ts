@@ -119,8 +119,9 @@ describe('setWorktreesPinnedAndReveal', () => {
         createdAt: 1
       }
     )
-    const { state, get } = sliceState([localParent, remoteParent, localChild, remoteChild], {
+    const { state, get } = sliceState([localParent, remoteParent, remoteChild, localChild], {
       activeWorktreeId: localChild.id,
+      activeWorkspaceExecutionHostId: 'local',
       settings: { showPinnedWorktreesInGroups: false }
     })
 
