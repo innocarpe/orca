@@ -189,6 +189,54 @@ describe('orchestration worker-list pagination', () => {
     })
   })
 
+  it('expires a non-JSON bare dispatch-id cursor instead of paging older rows', async () => {
+    db = new OrchestrationDb(':memory:')
+    const runtime = new OrcaRuntimeService()
+    runtime.setOrchestrationDb(db)
+    const run = db.createRun({
+      objective: 'Bare dispatch cursor',
+      coordinatorHandle: 'term-coordinator',
+      coordinatorPaneKey: 'tab-coordinator:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    })
+    insertDispatch(db, run.id, 'dispatch-oldest')
+    insertDispatch(db, run.id, 'dispatch-middle')
+    insertDispatch(db, run.id, 'dispatch-newest')
+
+    await expect(
+      callWorkerList(runtime, { run: run.id, limit: 2, cursor: 'dispatch-newest' })
+    ).rejects.toMatchObject({
+      code: 'worker_list_cursor_expired',
+      message: WORKER_LIST_CURSOR_EXPIRED_MESSAGE
+    })
+  })
+
+  it('expires a v4 cursor that omits after.databaseId', async () => {
+    db = new OrchestrationDb(':memory:')
+    const runtime = new OrcaRuntimeService()
+    runtime.setOrchestrationDb(db)
+    const run = db.createRun({
+      objective: 'v4 without rowid',
+      coordinatorHandle: 'term-coordinator',
+      coordinatorPaneKey: 'tab-coordinator:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    })
+    insertDispatch(db, run.id, 'dispatch-oldest')
+    insertDispatch(db, run.id, 'dispatch-middle')
+    insertDispatch(db, run.id, 'dispatch-newest')
+    const cursor = Buffer.from(
+      JSON.stringify({
+        version: 4,
+        snapshot: { databaseId: 3 },
+        after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'dispatch-newest' }
+      }),
+      'utf8'
+    ).toString('base64url')
+
+    await expect(callWorkerList(runtime, { run: run.id, limit: 2, cursor })).rejects.toMatchObject({
+      code: 'worker_list_cursor_expired',
+      message: WORKER_LIST_CURSOR_EXPIRED_MESSAGE
+    })
+  })
+
   it('expires a pre-rowid cursor whose anchor row a reset deleted', async () => {
     db = new OrchestrationDb(':memory:')
     const runtime = new OrcaRuntimeService()
@@ -204,7 +252,7 @@ describe('orchestration worker-list pagination', () => {
     const cursor = encodeWorkerListCursor({
       version: 4,
       snapshot: { databaseId: 3 },
-      after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'dispatch-z' }
+      after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'dispatch-z', databaseId: 3 }
     })
     const ok = await callWorkerList(runtime, { run: run.id, limit: 10, cursor })
     expect(ok.workers.map((worker) => worker.dispatchId)).toEqual(['dispatch-m', 'dispatch-a'])
@@ -591,11 +639,14 @@ describe('orchestration worker-list pagination', () => {
       const { runA } = twoRuns()
       const runtime = new OrcaRuntimeService()
       runtime.setOrchestrationDb(db!)
-      const foreign = encodeWorkerListCursor({
-        version: 4,
-        snapshot: { databaseId: 4 },
-        after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'b-1' }
-      })
+      const foreign = Buffer.from(
+        JSON.stringify({
+          version: 4,
+          snapshot: { databaseId: 4 },
+          after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'b-1' }
+        }),
+        'utf8'
+      ).toString('base64url')
 
       await expect(
         callWorkerList(runtime, { run: runA, limit: 10, cursor: foreign })

@@ -1,6 +1,5 @@
-/** `databaseId` is the real order key. `createdAt`/`dispatchId` stay required so a v4 cursor
- *  can still resolve its anchor when the optional rowid is omitted. v1/v2 were minted under
- *  ascending order and must be decoded so callers can expire them instead of reinterpreting. */
+/** v4 requires `after.databaseId` so a replaced Dispatch cannot be re-resolved by id.
+ *  v1/v2 stay decodable so callers can expire them instead of reinterpreting ascending cursors. */
 type WorkerListCursorAfter = { createdAt: string; dispatchId: string; databaseId?: number }
 
 type WorkerListCursorV1 = {
@@ -24,7 +23,7 @@ type WorkerListCursorV3 = {
 type WorkerListCursorV4 = {
   version: 4
   snapshot: { databaseId: number }
-  after: WorkerListCursorAfter
+  after: { createdAt: string; dispatchId: string; databaseId: number }
 }
 
 type WorkerListCursor =
@@ -73,6 +72,7 @@ export function decodeWorkerListCursor(value: string): WorkerListCursor | null {
       return parsed as WorkerListCursorV1
     }
     const databaseId = (parsed.snapshot as Partial<WorkerListCursorV2['snapshot']>).databaseId
+    const afterDatabaseId = parsed.after.databaseId
     if (
       parsed.version === 2 &&
       Number.isSafeInteger(databaseId) &&
@@ -86,13 +86,19 @@ export function decodeWorkerListCursor(value: string): WorkerListCursor | null {
       parsed.version === 4 &&
       Number.isSafeInteger(databaseId) &&
       Number(databaseId) > 0 &&
+      Number.isSafeInteger(afterDatabaseId) &&
+      Number(afterDatabaseId) > 0 &&
       typeof parsed.after.createdAt === 'string' &&
       typeof parsed.after.dispatchId === 'string'
     ) {
       return {
         version: 4,
         snapshot: { databaseId: Number(databaseId) },
-        after: parsed.after
+        after: {
+          createdAt: parsed.after.createdAt,
+          dispatchId: parsed.after.dispatchId,
+          databaseId: Number(afterDatabaseId)
+        }
       }
     }
     return null

@@ -56,26 +56,8 @@ export const ORCHESTRATION_WORKER_LIST_METHOD = defineMethod({
     let cursor: WorkerListCursor | null = params.cursor
       ? decodeWorkerListCursor(params.cursor)
       : null
-    if (cursor?.version === 1 || cursor?.version === 2) {
+    if (cursor?.version === 1 || cursor?.version === 2 || (params.cursor && !cursor)) {
       throw new OrchestrationError('worker_list_cursor_expired', WORKER_LIST_CURSOR_EXPIRED_MESSAGE)
-    }
-    if (params.cursor && !cursor) {
-      const legacyKey = db.getWorkerTerminalOrderingKey(params.cursor)
-      if (!legacyKey) {
-        throw new OrchestrationError(
-          'invalid_argument',
-          `Unknown worker-list cursor ${params.cursor}.`
-        )
-      }
-      const snapshot = db.getWorkerTerminalListingSnapshot(params.run)
-      if (!snapshot) {
-        return {
-          workers: [],
-          counts: {},
-          page: { limit, total: 0, hasMore: false, nextCursor: null }
-        }
-      }
-      cursor = { version: 4, snapshot, after: legacyKey }
     }
     if (cursor?.version === 3) {
       return projectWorkerListPage({
