@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { reportTerminalDropUploadSkipsAndFailures } from './terminal-drop-upload-report'
 
 const mocks = vi.hoisted(() => ({
-  translate: vi.fn((key: string, fallback: string) => `${key}:${fallback}`)
+  translate: vi.fn((_key: string, fallback: string) => fallback)
 }))
 
 vi.mock('sonner', () => ({

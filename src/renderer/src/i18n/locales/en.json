@@ -567,6 +567,17 @@
       }
     },
     "lib": {
+      "dropUploadFailure": {
+        "fileTooLarge": "File is too large",
+        "missing": "File not found.",
+        "permissionDenied": "Permission denied.",
+        "storageFull": "Not enough storage.",
+        "unsupported": "Unsupported file type.",
+        "connectionChanged": "Remote connection changed; retry the import.",
+        "pairingChanged": "Remote pairing changed; retry the import.",
+        "generic": "Upload failed.",
+        "more": "+{{value0}} more failure{{value1}}"
+      },
       "agent": {
         "catalog": {
           "5dff448636": "OpenClaw",

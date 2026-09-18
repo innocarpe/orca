@@ -17,6 +17,15 @@ describe('formatDropUploadFailureDescription', () => {
         { sourcePath: '/tmp/two.txt', reason: 'permission denied' },
         { sourcePath: '/tmp/three.txt', reason: 'timed out' }
       ])
-    ).toBe('one.txt: disk full\ntwo.txt: permission denied\n+1 more failure')
+    ).toBe('one.txt: Not enough storage.\ntwo.txt: Permission denied.\n+1 more failure')
+  })
+
+  it('maps known reasons and hides unknown technical details', () => {
+    expect(
+      formatDropUploadFailureDescription([
+        { sourcePath: '/tmp/large.txt', reason: 'File is too large' },
+        { sourcePath: '/tmp/private.txt', reason: 'EACCES /Users/me/private.txt token=secret' }
+      ])
+    ).toBe('large.txt: File is too large\nprivate.txt: Upload failed.')
   })
 })
