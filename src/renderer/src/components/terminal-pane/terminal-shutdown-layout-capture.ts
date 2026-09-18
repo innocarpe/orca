@@ -109,7 +109,7 @@ function serializeShutdownPaneScrollback(pane: ShutdownPane): string | undefined
     // Why: non-focused panes may have renderer-throttled PTY bytes queued;
     // push them into xterm before taking the shutdown scrollback snapshot.
     flushTerminalOutput(pane.terminal)
-    let scrollback = pane.terminal.options.scrollback ?? 10_000
+    let scrollback = pane.terminal.options?.scrollback ?? 10_000
     // Why serializeWithAbsoluteCursor: these buffers replay into fresh
     // xterms on session restore, and SerializeAddon's relative cursor
     // restore lands one column short after a wrap-pending final row.
