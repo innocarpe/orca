@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -63,6 +63,9 @@ export function BrowserPageAnnotationTray({
   const [editComment, setEditComment] = useState('')
   const [editIntent, setEditIntent] = useState<BrowserAnnotationIntent>('change')
   const [collapsed, setCollapsed] = useState(false)
+  const trayId = useId()
+  const actionsId = `${trayId}-actions`
+  const listId = `${trayId}-list`
   const collapseLabel = collapsed
     ? translate(
         'auto.components.browser.pane.annotate.browser.page.annotation.tray.9f209891a7',
@@ -126,7 +129,7 @@ export function BrowserPageAnnotationTray({
                 { value0: browserAnnotations.length }
               )}
         </div>
-        <div className="flex items-center gap-2" hidden={collapsed}>
+        <div id={actionsId} className="flex items-center gap-2" hidden={collapsed}>
           <DropdownMenu
             modal={false}
             open={annotationTraySendOpen}
@@ -207,9 +210,10 @@ export function BrowserPageAnnotationTray({
               variant="ghost"
               onClick={handleToggleCollapsed}
               aria-expanded={!collapsed}
+              aria-controls={`${actionsId} ${listId}`}
               aria-label={collapseLabel}
             >
-              {collapsed ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+              {!collapsed ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={6}>
@@ -218,7 +222,11 @@ export function BrowserPageAnnotationTray({
         </Tooltip>
       </div>
       {/* Why: keep the list mounted so an in-progress edit survives collapse. */}
-      <div className="scrollbar-sleek min-h-0 flex-1 overflow-auto p-1.5" hidden={collapsed}>
+      <div
+        id={listId}
+        className="scrollbar-sleek min-h-0 flex-1 overflow-auto p-1.5"
+        hidden={collapsed}
+      >
         {browserAnnotations.map((annotation, index) => {
           const isEditing = annotation.id === editingAnnotationId
           return (
