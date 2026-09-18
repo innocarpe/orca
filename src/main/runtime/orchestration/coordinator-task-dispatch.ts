@@ -19,11 +19,7 @@ async function resolveDispatchWorktreePath(
   if (!worktree || !runtime.showManagedWorktree) {
     return undefined
   }
-  try {
-    return (await runtime.showManagedWorktree(worktree)).path
-  } catch {
-    return undefined
-  }
+  return (await runtime.showManagedWorktree(worktree)).path
 }
 
 // Warn only: automatically failing a slow but healthy worker is worse than retaining a hung slot.
@@ -112,6 +108,9 @@ export async function dispatchTaskToWorker(params: {
     return 'stale-base-refused'
   }
 
+  // Why: resolve the selector before creating a dispatch context so a missing or stale selector
+  // cannot send a worker back to an unspecified checkout with a misleading preamble.
+  const worktreePath = await resolveDispatchWorktreePath(runtime, params.worktree)
   const dispatchAuthority = runtime.getOrchestrationDispatchAuthority?.(targetHandle)
   const assigneePaneKey =
     dispatchAuthority?.paneKey ?? runtime.getTerminalPaneKey?.(targetHandle) ?? undefined
@@ -129,8 +128,6 @@ export async function dispatchTaskToWorker(params: {
     creator: { kind: 'system' },
     maxDepth: params.nestedWorkerMaxDepth
   })
-  const worktreePath = await resolveDispatchWorktreePath(runtime, params.worktree)
-
   // Dev workers need orca-dev to reach the dev socket.
   const preamble = buildDispatchPreamble({
     taskId: task.id,
