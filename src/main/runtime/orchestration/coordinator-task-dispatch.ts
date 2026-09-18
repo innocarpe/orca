@@ -12,6 +12,20 @@ import { isAgentPromptStalledError } from '../agent-prompt-submission-verificati
 /** `dispatched-unobserved`: the preamble landed but the worker's turn start was never observed. */
 export type TaskDispatchResult = 'dispatched' | 'dispatched-unobserved' | 'stale-base-refused'
 
+async function resolveDispatchWorktreePath(
+  runtime: CoordinatorRuntime,
+  worktree: string | undefined
+): Promise<string | undefined> {
+  if (!worktree || !runtime.showManagedWorktree) {
+    return undefined
+  }
+  try {
+    return (await runtime.showManagedWorktree(worktree)).path
+  } catch {
+    return undefined
+  }
+}
+
 // Why: 10 min = documented heartbeat cadence (5 min) × 2, so one missed heartbeat is the earliest a dispatch can look stale.
 const HUNG_THRESHOLD_MS = 10 * 60 * 1000
 
@@ -109,6 +123,7 @@ export async function dispatchTaskToWorker(params: {
     creator: { kind: 'system' },
     maxDepth: params.nestedWorkerMaxDepth
   })
+  const worktreePath = await resolveDispatchWorktreePath(runtime, params.worktree)
 
   // Why: dispatched agents use orca-dev in dev mode to reach the dev runtime's socket, not production (Section 6.4).
   const preamble = buildDispatchPreamble({
@@ -119,6 +134,7 @@ export async function dispatchTaskToWorker(params: {
     taskSpec: strippedSpec,
     coordinatorHandle: params.coordinatorHandle,
     workerHandle: targetHandle,
+    ...(worktreePath ? { worktreePath } : {}),
     devMode: process.env.ORCA_USER_DATA_PATH?.includes('orca-dev'),
     ...(runtime.getTerminalOrchestrationCliCommand
       ? { cliCommand: runtime.getTerminalOrchestrationCliCommand(targetHandle) }
