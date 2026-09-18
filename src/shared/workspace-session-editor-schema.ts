@@ -1,9 +1,11 @@
 /* Why: the editor slice of the persisted workspace session. Split out of
  * workspace-session-schema.ts to keep that file inside its line budget, the
- * same way the browser slice already is; the schema itself is unchanged. */
+ * same way the browser slice already is. */
 import { z } from 'zod'
 
 export const persistedOpenFileSchema = z.object({
+  // Why: additive; `.catch` keeps a corrupt id from salvaging the whole file.
+  id: z.string().min(1).optional().catch(undefined),
   filePath: z.string(),
   relativePath: z.string(),
   worktreeId: z.string(),
