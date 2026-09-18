@@ -42,6 +42,8 @@ vi.mock('child_process', async () => {
 })
 
 import { buildCurrentWorktreeSelector, main, normalizeWorktreeSelector } from './index'
+import { getBrowserWorktreeSelector } from './selectors'
+import { getEmulatorWorktreeSelector } from './emulator-target-selector'
 import { buildWorktree, okFixture, queueFixtures, worktreeListFixture } from './test-fixtures'
 import { useWorktreeAwarenessEnvironment } from './index-test-harness'
 import { toSshExecutionHostId } from '../shared/execution-host'
@@ -124,6 +126,40 @@ describe('orca cli worktree awareness', () => {
       worktree: `id:${hostBWorktree.id}`
     })
     expect(logSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves implicit browser and emulator fallback outside managed worktrees', async () => {
+    process.env.ORCA_CLI_EXECUTION_HOST_ID = toSshExecutionHostId('host-b')
+    const client = {
+      isRemote: false,
+      call: vi.fn().mockResolvedValue(worktreeListFixture([]))
+    }
+
+    await expect(
+      getBrowserWorktreeSelector(new Map(), '/tmp/unmanaged', client as never)
+    ).resolves.toBeUndefined()
+    await expect(
+      getEmulatorWorktreeSelector(new Map(), '/tmp/unmanaged', client as never)
+    ).resolves.toBeUndefined()
+  })
+
+  it('fails closed when implicit targeting finds the cwd on another SSH host', async () => {
+    process.env.ORCA_CLI_EXECUTION_HOST_ID = toSshExecutionHostId('host-b')
+    const otherHostWorktree = {
+      ...buildWorktree('/tmp/repo/feature', 'feature/host-a'),
+      hostId: toSshExecutionHostId('host-a')
+    }
+    const client = {
+      isRemote: false,
+      call: vi.fn().mockResolvedValue(worktreeListFixture([otherHostWorktree]))
+    }
+
+    await expect(
+      getBrowserWorktreeSelector(new Map(), '/tmp/repo/feature/src', client as never)
+    ).rejects.toMatchObject({ code: 'selector_host_mismatch' })
+    await expect(
+      getEmulatorWorktreeSelector(new Map(), '/tmp/repo/feature/src', client as never)
+    ).rejects.toMatchObject({ code: 'selector_host_mismatch' })
   })
 
   it('resolves the invocation cwd from ORCA_CLI_CWD when no cwd is passed', async () => {

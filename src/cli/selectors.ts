@@ -90,7 +90,7 @@ export async function normalizeWorktreeSelectorForCaller(
   )
 }
 
-function assertLocalCwdWorktreeSelector(selector: string, client: RuntimeClient): void {
+export function assertLocalCwdWorktreeSelector(selector: string, client: RuntimeClient): void {
   if (!client.isRemote) {
     return
   }
@@ -131,6 +131,22 @@ export async function resolveCurrentWorktreeSelector(
   }
 
   if (!enclosingWorktree) {
+    const enclosingWorktreeOnAnotherHost =
+      executionHostId === null
+        ? undefined
+        : worktrees.result.worktrees.find((worktree) => {
+            if (normalizeExecutionHostId(worktree.hostId) === executionHostId) {
+              return false
+            }
+            const worktreePath = resolvePath(worktree.path)
+            return isPathInsideOrEqual(worktreePath, currentPath)
+          })
+    if (enclosingWorktreeOnAnotherHost) {
+      throw new RuntimeClientError(
+        'selector_host_mismatch',
+        `The current directory belongs to an Orca-managed worktree on another execution host, but the CLI is scoped to ${executionHostId}: ${currentPath}`
+      )
+    }
     const hostDescription = executionHostId ? ` on execution host ${executionHostId}` : ''
     throw new RuntimeClientError(
       'selector_not_found',
@@ -201,9 +217,9 @@ export async function getBrowserWorktreeSelector(
   try {
     return await resolveCurrentWorktreeSelector(cwd, client)
   } catch (error) {
-    // Why: a relay-provided host scope must fail closed instead of silently
-    // dropping the worktree filter and targeting a same-path worktree elsewhere.
-    if (process.env[ORCA_CLI_EXECUTION_HOST_ID_ENV]) {
+    // Why: a same-path worktree on another relay host must not be replaced with
+    // an unscoped request, while an unmanaged cwd preserves server-side focus.
+    if (!(error instanceof RuntimeClientError) || error.code !== 'selector_not_found') {
       throw error
     }
     // Not inside a managed worktree — no filter
@@ -282,64 +298,4 @@ export async function getComputerCommandTarget(
     app,
     worktree: await getBrowserWorktreeSelector(flags, cwd, client)
   }
-}
-
-// Match browser targeting: workspace by default, explicit device/emulator/worktree overrides.
-export type EmulatorCliTarget = {
-  worktree?: string
-  device?: string
-  emulator?: string // Orca id from list
-}
-
-export async function getEmulatorWorktreeSelector(
-  flags: Map<string, string | boolean>,
-  cwd: string,
-  client: RuntimeClient
-): Promise<string | undefined> {
-  const explicit = getOptionalStringFlag(flags, 'worktree')
-  if (explicit === 'all') {
-    return undefined
-  }
-  if (explicit) {
-    if (explicit === 'active' || explicit === 'current') {
-      assertLocalCwdWorktreeSelector(explicit, client)
-      return resolveCurrentWorktreeSelector(cwd, client)
-    }
-    return explicit
-  }
-  if (client.isRemote) {
-    return undefined
-  }
-  const terminalWorktreeId = process.env.ORCA_WORKTREE_ID
-  if (terminalWorktreeId?.trim()) {
-    return terminalWorktreeId
-  }
-  const folderWorkspaceId = process.env.ORCA_WORKSPACE_ID?.trim()
-  if (folderWorkspaceId?.startsWith('folder:')) {
-    return folderWorkspaceId
-  }
-  try {
-    return await resolveCurrentWorktreeSelector(cwd, client)
-  } catch (error) {
-    // Why: a relay-provided host scope must fail closed instead of silently
-    // dropping the worktree filter and targeting a same-path worktree elsewhere.
-    if (process.env[ORCA_CLI_EXECUTION_HOST_ID_ENV]) {
-      throw error
-    }
-    return undefined
-  }
-}
-
-export async function getEmulatorCommandTarget(
-  flags: Map<string, string | boolean>,
-  cwd: string,
-  client: RuntimeClient
-): Promise<EmulatorCliTarget> {
-  const device = getOptionalStringFlag(flags, 'device')
-  const emulator = getOptionalStringFlag(flags, 'emulator')
-  const worktree = await getEmulatorWorktreeSelector(flags, cwd, client)
-  if (device || emulator) {
-    return { device: device || undefined, emulator: emulator || undefined, worktree }
-  }
-  return { worktree }
 }
