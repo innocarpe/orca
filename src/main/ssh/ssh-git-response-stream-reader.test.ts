@@ -115,4 +115,82 @@ describe('requestGitStreamable stream identity', () => {
     ).rejects.toThrow('Git response stream identity was not installed')
     expect(listeners.size).toBe(0)
   })
+
+  it('does not mix frames from a concurrent reader while awaiting its own sentinel', async () => {
+    const transport = createFeedableTransport()
+    const mux = new SshChannelMultiplexer(transport)
+    const encodedA = Buffer.from(JSON.stringify({ from: 'a' }))
+    const encodedB = Buffer.from(JSON.stringify({ from: 'b' }))
+    const promiseA = requestGitStreamable(mux, 'git.exec', { cwd: '/a' })
+    const promiseB = requestGitStreamable(mux, 'git.exec', { cwd: '/b' })
+
+    transport.dataCallbacks[0]!(
+      Buffer.concat([
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            id: 2,
+            result: {
+              __orcaGitResponseStream: {
+                streamId: 20,
+                totalBytes: encodedB.length,
+                chunkCount: 1
+              }
+            }
+          },
+          1
+        ),
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            method: 'git.responseChunk',
+            params: { streamId: 20, seq: 0, data: encodedB.toString('base64') }
+          },
+          2
+        ),
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            method: 'git.responseEnd',
+            params: { streamId: 20 }
+          },
+          3
+        ),
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              __orcaGitResponseStream: {
+                streamId: 10,
+                totalBytes: encodedA.length,
+                chunkCount: 1
+              }
+            }
+          },
+          4
+        ),
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            method: 'git.responseChunk',
+            params: { streamId: 10, seq: 0, data: encodedA.toString('base64') }
+          },
+          5
+        ),
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            method: 'git.responseEnd',
+            params: { streamId: 10 }
+          },
+          6
+        )
+      ])
+    )
+
+    await expect(promiseA).resolves.toEqual({ from: 'a' })
+    await expect(promiseB).resolves.toEqual({ from: 'b' })
+    mux.dispose()
+  })
 })
