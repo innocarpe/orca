@@ -5,7 +5,8 @@ import type { WorkspacePinTarget } from '../../store/slices/worktree-helpers'
 import {
   hasWorkspaceDragData,
   readWorkspaceDragDataIds,
-  readWorkspaceDragDataTargets
+  readWorkspaceDragDataTargets,
+  WORKSPACE_STATUS_DRAG_TARGETS_TYPE
 } from './workspace-status'
 
 const WORKSPACE_STATUS_DROP_TARGET = '[data-workspace-status-drop-target]'
@@ -44,6 +45,9 @@ export function commitWorkspaceStatusDocumentDrop(params: {
 
   if (isPinDrop) {
     const targets = pinTargets ?? worktreeIds
+    if (targets.length === 0) {
+      return
+    }
     if (onPinWorktrees) {
       onPinWorktrees(targets)
       return
@@ -110,6 +114,9 @@ export function useWorkspaceStatusDocumentDrop<T extends HTMLElement>(
       }
 
       const pinTargets = readWorkspaceDragDataTargets(dataTransfer)
+      const hasPinTargetPayload = Array.from(dataTransfer.types).includes(
+        WORKSPACE_STATUS_DRAG_TARGETS_TYPE
+      )
       const worktreeIds = readWorkspaceDragDataIds(dataTransfer)
       const pinTargetIds = pinTargets?.map((target) =>
         typeof target === 'string' ? target : target.worktreeId
@@ -125,7 +132,12 @@ export function useWorkspaceStatusDocumentDrop<T extends HTMLElement>(
       event.stopPropagation()
       commitWorkspaceStatusDocumentDrop({
         worktreeIds: effectiveWorktreeIds,
-        pinTargets: dropTarget === pinTarget ? (pinTargets ?? undefined) : undefined,
+        pinTargets:
+          dropTarget === pinTarget
+            ? hasPinTargetPayload
+              ? (pinTargets ?? [])
+              : undefined
+            : undefined,
         status: dropTarget.dataset.workspaceStatus ?? null,
         isPinDrop: dropTarget === pinTarget,
         onMoveWorktreeToStatus,

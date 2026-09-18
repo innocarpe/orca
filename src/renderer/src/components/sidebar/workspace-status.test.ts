@@ -61,8 +61,47 @@ describe('workspace status drag data', () => {
 
     writeWorkspaceDragData(dataTransfer, ['shared', 'shared'], targets)
 
-    expect(dataTransfer.getData(WORKSPACE_STATUS_DRAG_TARGETS_TYPE)).toBe(JSON.stringify(targets))
+    expect(dataTransfer.getData(WORKSPACE_STATUS_DRAG_TARGETS_TYPE)).toBe(
+      '[["shared","local"],["shared","ssh:host-b"]]'
+    )
     expect(readWorkspaceDragDataTargets(dataTransfer)).toEqual(targets)
+  })
+
+  it('keeps a near-limit qualified target batch within the accepted payload size', () => {
+    const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
+    const targets: WorkspacePinTarget[] = Array.from({ length: 300 }, (_value, index) => ({
+      worktreeId: `worktree-${index.toString().padStart(3, '0')}-${'x'.repeat(24)}`,
+      executionHostId: 'local'
+    }))
+
+    expect(
+      writeWorkspaceDragData(
+        dataTransfer,
+        targets.map((target) => (typeof target === 'string' ? target : target.worktreeId)),
+        targets
+      )
+    ).toBe(true)
+    expect(dataTransfer.getData(WORKSPACE_STATUS_DRAG_TARGETS_TYPE).length).toBeLessThanOrEqual(
+      WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES
+    )
+    expect(readWorkspaceDragDataTargets(dataTransfer)).toEqual(targets)
+  })
+
+  it('refuses an oversized qualified target batch instead of writing an unsafe fallback', () => {
+    const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
+    const targets: WorkspacePinTarget[] = Array.from({ length: 512 }, (_value, index) => ({
+      worktreeId: `worktree-${index.toString().padStart(3, '0')}-${'x'.repeat(36)}`,
+      executionHostId: 'ssh:host-with-a-long-name'
+    }))
+
+    expect(
+      writeWorkspaceDragData(
+        dataTransfer,
+        targets.map((target) => (typeof target === 'string' ? target : target.worktreeId)),
+        targets
+      )
+    ).toBe(false)
+    expect(dataTransfer.types).toEqual([])
   })
 
   it('falls back to the single worktree payload for older drag sources', () => {

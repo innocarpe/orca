@@ -156,16 +156,11 @@ describe('refreshWorktreeSidebarDragSession', () => {
             units: [
               {
                 worktreeId: 'a',
-                worktreeIds: ['a'],
-                pinTargets: [{ worktreeId: 'a', executionHostId: 'local' }]
+                worktreeIds: ['a']
               },
               {
                 worktreeId: 'b',
-                worktreeIds: ['b', 'child'],
-                pinTargets: [
-                  { worktreeId: 'b', executionHostId: 'local' },
-                  { worktreeId: 'child', executionHostId: 'local' }
-                ]
+                worktreeIds: ['b', 'child']
               }
             ]
           }
@@ -242,16 +237,11 @@ describe('refreshWorktreeSidebarDragSession', () => {
             units: [
               {
                 worktreeId: 'parent',
-                worktreeIds: ['parent', 'child'],
-                pinTargets: [
-                  { worktreeId: 'parent', executionHostId: 'local' },
-                  { worktreeId: 'child', executionHostId: 'local' }
-                ]
+                worktreeIds: ['parent', 'child']
               },
               {
                 worktreeId: 'sibling',
-                worktreeIds: ['sibling'],
-                pinTargets: [{ worktreeId: 'sibling', executionHostId: 'local' }]
+                worktreeIds: ['sibling']
               }
             ]
           }

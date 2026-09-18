@@ -58,4 +58,20 @@ describe('workspace status document drop', () => {
 
     expect(pinMany).toHaveBeenCalledWith(targets)
   })
+
+  it('does not fall back to bare ids when qualified pin targets are unavailable', () => {
+    const pinMany = vi.fn()
+
+    commitWorkspaceStatusDocumentDrop({
+      worktreeIds: ['shared'],
+      pinTargets: [],
+      status: null,
+      isPinDrop: true,
+      onMoveWorktreeToStatus: vi.fn(),
+      onPinWorktree: vi.fn(),
+      onPinWorktrees: pinMany
+    })
+
+    expect(pinMany).not.toHaveBeenCalled()
+  })
 })

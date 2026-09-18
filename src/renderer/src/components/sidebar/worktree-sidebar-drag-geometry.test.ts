@@ -196,8 +196,7 @@ describe('worktree sidebar drag geometry under mid-drag card growth', () => {
           worktreeIds: GROUP_IDS,
           units: GROUP_IDS.map((worktreeId) => ({
             worktreeId,
-            worktreeIds: [worktreeId],
-            pinTargets: [{ worktreeId, executionHostId: 'local' }]
+            worktreeIds: [worktreeId]
           }))
         }
       ],

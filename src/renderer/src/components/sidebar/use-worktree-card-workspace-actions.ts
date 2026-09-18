@@ -140,7 +140,10 @@ export function useWorktreeCardWorkspaceActions({
           : [worktree]
       const dragIds = draggedWorktrees.map((item) => item.id)
       const pinTargets = draggedWorktrees.map(getWorktreePinTarget)
-      writeWorkspaceDragData(event.dataTransfer, dragIds, pinTargets)
+      if (!writeWorkspaceDragData(event.dataTransfer, dragIds, pinTargets)) {
+        event.preventDefault()
+        return
+      }
       onCardDragStart?.(event, worktree.id, dragIds, pinTargets)
     },
     [isDeleting, isMultiSelected, onCardDragStart, selectedWorktrees, worktree]

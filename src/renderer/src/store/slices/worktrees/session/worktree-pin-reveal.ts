@@ -1,5 +1,5 @@
 import type { WorktreeMetaBatchUpdate, WorktreeSlice } from '../../worktree-helpers'
-import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
+import type { AppState } from '../../../types'
 import {
   getActiveSidebarWorkspaceId,
   parseWorkspaceKey
@@ -12,7 +12,23 @@ import type { WorktreeLineage } from '../../../../../../shared/worktree/lineage-
 import type { Worktree } from '../../../../../../shared/worktree/types'
 
 type WorktreeWithEmbeddedLineage = Worktree & { lineage?: WorktreeLineage | null }
-function getProjectedLineage(get: WorktreeSliceGet, worktree: Worktree): WorktreeLineage | null {
+type WorktreePinRevealState = {
+  activeWorkspaceKey: AppState['activeWorkspaceKey']
+  activeWorktreeId: AppState['activeWorktreeId']
+  activeWorkspaceExecutionHostId: AppState['activeWorkspaceExecutionHostId']
+  worktreeLineageById: AppState['worktreeLineageById']
+  settings: Pick<NonNullable<AppState['settings']>, 'showPinnedWorktreesInGroups'> | null
+  getKnownWorktreeById: AppState['getKnownWorktreeById']
+  updateWorktreeMeta: AppState['updateWorktreeMeta']
+  updateWorktreesMeta: AppState['updateWorktreesMeta']
+  revealWorktreeInSidebar: AppState['revealWorktreeInSidebar']
+}
+type WorktreePinRevealGet = () => WorktreePinRevealState
+
+function getProjectedLineage(
+  get: WorktreePinRevealGet,
+  worktree: Worktree
+): WorktreeLineage | null {
   if (Object.hasOwn(get().worktreeLineageById, worktree.id)) {
     return get().worktreeLineageById[worktree.id] ?? null
   }
@@ -20,7 +36,7 @@ function getProjectedLineage(get: WorktreeSliceGet, worktree: Worktree): Worktre
 }
 
 function hasChangedLineageAncestor(
-  get: WorktreeSliceGet,
+  get: WorktreePinRevealGet,
   worktreeId: string,
   changedWorktreeIds: ReadonlySet<string>
 ): boolean {
@@ -54,8 +70,7 @@ function hasChangedLineageAncestor(
 }
 
 export function createSetWorktreesPinnedAndReveal(
-  _set: WorktreeSliceSet,
-  get: WorktreeSliceGet
+  get: WorktreePinRevealGet
 ): WorktreeSlice['setWorktreesPinnedAndReveal'] {
   return (targets, isPinned) => {
     // Only follow a toggled row with the viewport when it's the focused worktree, not an unfocused card.

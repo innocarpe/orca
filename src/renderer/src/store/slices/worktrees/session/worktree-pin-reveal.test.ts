@@ -1,18 +1,28 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Worktree } from '../../../../../../shared/worktree/types'
-import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
 import { createSetWorktreesPinnedAndReveal } from './worktree-pin-reveal'
 
 function worktree(overrides: Partial<Worktree> = {}): Worktree {
   return {
     id: 'repo::/feature',
     repoId: 'repo',
+    displayName: 'Feature',
+    comment: '',
+    linkedIssue: null,
+    linkedPR: null,
+    linkedLinearIssue: null,
+    isArchived: false,
+    isUnread: false,
     path: '/feature',
+    head: 'head',
     branch: 'feature',
+    isBare: false,
     isMainWorktree: false,
     isPinned: false,
+    sortOrder: 0,
+    lastActivityAt: 0,
     ...overrides
-  } as Worktree
+  }
 }
 
 function sliceState(worktrees: Worktree[]) {
@@ -20,6 +30,7 @@ function sliceState(worktrees: Worktree[]) {
     activeWorktreeId: null,
     activeWorkspaceExecutionHostId: null,
     activeWorkspaceKey: null,
+    worktreeLineageById: {},
     settings: { showPinnedWorktreesInGroups: true },
     updateWorktreeMeta: vi.fn(),
     updateWorktreesMeta: vi.fn(),
@@ -31,7 +42,7 @@ function sliceState(worktrees: Worktree[]) {
           (executionHostId === undefined || (candidate.hostId ?? 'local') === executionHostId)
       )
   }
-  return { state, get: (() => state) as unknown as WorktreeSliceGet }
+  return { state, get: () => state }
 }
 
 describe('setWorktreesPinnedAndReveal', () => {
@@ -40,7 +51,7 @@ describe('setWorktreesPinnedAndReveal', () => {
     const remote = worktree({ hostId: 'ssh:build' })
     const { state, get } = sliceState([local, remote])
 
-    createSetWorktreesPinnedAndReveal(vi.fn() as unknown as WorktreeSliceSet, get)(
+    createSetWorktreesPinnedAndReveal(get)(
       [{ worktreeId: remote.id, executionHostId: 'ssh:build' }],
       true
     )

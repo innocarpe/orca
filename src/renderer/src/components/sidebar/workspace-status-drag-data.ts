@@ -12,21 +12,30 @@ export function writeWorkspaceDragData(
   dataTransfer: DataTransfer,
   worktreeIdOrIds: string | readonly string[],
   pinTargets?: readonly WorkspacePinTarget[]
-): void {
+): boolean {
   const worktreeIds = Array.isArray(worktreeIdOrIds) ? worktreeIdOrIds : [worktreeIdOrIds]
   const [firstWorktreeId] = worktreeIds
-  if (!firstWorktreeId) {
-    return
+  const idsPayload = JSON.stringify(worktreeIds)
+  const targetPayload =
+    pinTargets && pinTargets.length > 0 ? encodeWorkspacePinTargets(pinTargets) : null
+  if (
+    !firstWorktreeId ||
+    worktreeIds.length > WORKSPACE_STATUS_DRAG_ID_MAX_COUNT ||
+    !isWorkspaceStatusDragPayloadWithinLimit(idsPayload) ||
+    (pinTargets && pinTargets.length > 0 && !targetPayload)
+  ) {
+    return false
   }
   dataTransfer.effectAllowed = 'move'
   // Why: keep the original single-id payload for older drop targets while
   // board-to-board drags can move the whole selected batch.
   dataTransfer.setData(WORKSPACE_STATUS_DRAG_TYPE, firstWorktreeId)
-  dataTransfer.setData(WORKSPACE_STATUS_DRAG_IDS_TYPE, JSON.stringify(worktreeIds))
-  if (pinTargets && pinTargets.length > 0) {
-    dataTransfer.setData(WORKSPACE_STATUS_DRAG_TARGETS_TYPE, JSON.stringify(pinTargets))
+  dataTransfer.setData(WORKSPACE_STATUS_DRAG_IDS_TYPE, idsPayload)
+  if (targetPayload) {
+    dataTransfer.setData(WORKSPACE_STATUS_DRAG_TARGETS_TYPE, targetPayload)
   }
   dataTransfer.setData('text/plain', firstWorktreeId)
+  return true
 }
 
 export function readWorkspaceDragData(dataTransfer: DataTransfer): string | null {
@@ -116,23 +125,22 @@ function collectWorkspacePinTargets(values: readonly unknown[]): WorkspacePinTar
         return null
       }
       targets.push(value)
-    } else if (typeof value === 'object' && value !== null) {
-      const candidate = value as { worktreeId?: unknown; executionHostId?: unknown }
-      const executionHostId =
-        typeof candidate.executionHostId === 'string'
-          ? parseExecutionHostId(candidate.executionHostId)?.id
-          : undefined
-      if (
-        typeof candidate.worktreeId !== 'string' ||
-        candidate.worktreeId.length === 0 ||
-        !executionHostId
-      ) {
+    } else if (Array.isArray(value)) {
+      const [worktreeId, executionHostId] = value
+      const target = parseQualifiedWorkspacePinTarget(worktreeId, executionHostId)
+      if (!target) {
         return null
       }
-      targets.push({
-        worktreeId: candidate.worktreeId,
-        executionHostId
-      })
+      targets.push(target)
+    } else if (typeof value === 'object' && value !== null) {
+      const target = parseQualifiedWorkspacePinTarget(
+        'worktreeId' in value ? value.worktreeId : undefined,
+        'executionHostId' in value ? value.executionHostId : undefined
+      )
+      if (!target) {
+        return null
+      }
+      targets.push(target)
     } else {
       return null
     }
@@ -153,15 +161,41 @@ function readWorkspaceStatusDragPayload(
   if (!value) {
     return { status: 'empty' }
   }
-  if (
-    value.length > WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES ||
-    measureClipboardTextByteLength(value, {
-      stopAfterBytes: WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES
-    }).exceededLimit
-  ) {
+  if (!isWorkspaceStatusDragPayloadWithinLimit(value)) {
     return { status: 'too-large' }
   }
   return { status: 'ok', value }
+}
+
+function isWorkspaceStatusDragPayloadWithinLimit(value: string): boolean {
+  return (
+    value.length <= WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES &&
+    !measureClipboardTextByteLength(value, {
+      stopAfterBytes: WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES
+    }).exceededLimit
+  )
+}
+
+function encodeWorkspacePinTargets(targets: readonly WorkspacePinTarget[]): string | null {
+  const encoded = targets.map((target) =>
+    typeof target === 'string' ? target : [target.worktreeId, target.executionHostId]
+  )
+  const payload = JSON.stringify(encoded)
+  return isWorkspaceStatusDragPayloadWithinLimit(payload) ? payload : null
+}
+
+function parseQualifiedWorkspacePinTarget(
+  worktreeId: unknown,
+  rawExecutionHostId: unknown
+): WorkspacePinTarget | null {
+  const executionHostId =
+    typeof rawExecutionHostId === 'string'
+      ? parseExecutionHostId(rawExecutionHostId)?.id
+      : undefined
+  if (typeof worktreeId !== 'string' || worktreeId.length === 0 || !executionHostId) {
+    return null
+  }
+  return { worktreeId, executionHostId }
 }
 
 function hasBoundedWorkspaceStatusDragPayload(

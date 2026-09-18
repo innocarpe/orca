@@ -9,7 +9,6 @@ export type WorktreeDragUnitGroup = WorktreeDragGroup & {
   units: {
     worktreeId: string
     worktreeIds: string[]
-    pinTargets: WorkspacePinTarget[]
   }[]
 }
 
@@ -27,7 +26,7 @@ type WorktreeDragUnitRow =
   | { type: 'header'; key: string }
   | {
       type: 'item'
-      worktree: Pick<Worktree, 'id' | 'hostId'>
+      worktree: Pick<Worktree, 'id'>
       depth: number
       sectionKey: string
     }
@@ -75,13 +74,11 @@ export function getWorktreeDragUnitGroups(
     }
     if (row.depth > 0 && current.units.length > 0) {
       current.units.at(-1)!.worktreeIds.push(row.worktree.id)
-      current.units.at(-1)!.pinTargets.push(getWorktreePinTarget(row.worktree))
       continue
     }
     current.units.push({
       worktreeId: row.worktree.id,
-      worktreeIds: [row.worktree.id],
-      pinTargets: [getWorktreePinTarget(row.worktree)]
+      worktreeIds: [row.worktree.id]
     })
   }
 
