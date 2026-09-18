@@ -158,9 +158,9 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
     }
     // Why: sync the listener's lead-turn record too, or a later child event re-emits the stale waiting state and resurrects the card.
     const restored = clearClaudeAnsweredQuestionWait(this.state, existing.paneKey)
-    const subagents = claudeRosterToSnapshots(
-      this.state.claudeSubagentRosterByPaneKey.get(existing.paneKey)
-    )
+    // Why: ingestRemote never seeds a roster, so relayed panes keep payload.subagents; an empty local roster still drops stale children.
+    const roster = this.state.claudeSubagentRosterByPaneKey.get(existing.paneKey)
+    const subagents = roster ? claudeRosterToSnapshots(roster) : payload.subagents
     const inferred = this.applyNormalizedStatus({
       paneKey: existing.paneKey,
       tabId: existing.tabId,
