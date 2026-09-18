@@ -40,7 +40,7 @@ export type CodexAccountAction =
   | `remove:${string}`
   | `select:${string}`
 
-export type ClaudeAccountAction = CodexAccountAction
+export type ClaudeAccountAction = CodexAccountAction | `rename:${string}`
 
 export type RemoveAccountTarget = {
   id: string
