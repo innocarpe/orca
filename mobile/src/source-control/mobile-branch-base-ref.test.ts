@@ -99,6 +99,18 @@ describe('resolveMobileBranchCompareBaseRef', () => {
     ])
   })
 
+  it('keeps the worktree base when mobile git is unavailable', async () => {
+    const { client } = clientWith([
+      ok({ worktree: { baseRef: 'origin/release' } }),
+      ok({ repos: [{ id: 'repo-1', worktreeBaseRef: null }] }),
+      fail('git is not available to mobile clients')
+    ])
+
+    await expect(resolveMobileBranchCompareBaseRef(client, 'repo-1::/tmp/wt')).resolves.toBe(
+      'origin/release'
+    )
+  })
+
   it('compares against the upstream but rebases from the default when nothing is pinned', async () => {
     const { client } = clientWith([
       ok({ worktree: { baseRef: null } }),
