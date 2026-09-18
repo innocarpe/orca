@@ -7,10 +7,19 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
+import { useGatedOverlayOpen } from '@/lib/overlay-allowed-context'
 import { translate } from '@/i18n/i18n'
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({ open, ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  // Why: keep-mounted Tasks sheets portal to body; OverlayAllowedContext closes them without dropping selection.
+  const gatedOpen = useGatedOverlayOpen(open)
+  return (
+    <SheetPrimitive.Root
+      data-slot="sheet"
+      {...props}
+      {...(gatedOpen === undefined ? {} : { open: gatedOpen })}
+    />
+  )
 }
 
 function SheetClose({ ...props }: React.ComponentProps<typeof SheetPrimitive.Close>) {
