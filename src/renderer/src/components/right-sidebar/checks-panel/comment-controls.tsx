@@ -34,10 +34,14 @@ export function CopyButton({
   title = translate(
     'auto.components.right.sidebar.checks.panel.content.copyComment',
     'Copy comment'
-  )
+  ),
+  ariaLabel,
+  disabled = false
 }: {
   text: string
   title?: string
+  ariaLabel?: string
+  disabled?: boolean
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const copiedResetTimerRef = useRef<number | null>(null)
@@ -81,14 +85,27 @@ export function CopyButton({
 
   return (
     <button
+      type="button"
       ref={setCopyButtonRef}
-      className="p-1 rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+      className="p-1 rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
+      aria-label={ariaLabel ?? title}
       title={title}
+      disabled={disabled}
       onClick={handleCopy}
     >
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
     </button>
   )
+}
+
+export function CopyAllButton({
+  text,
+  disabled
+}: {
+  text: string
+  disabled: boolean
+}): React.JSX.Element {
+  return <CopyButton text={text} title="Copy all" ariaLabel="Copy all" disabled={disabled} />
 }
 
 export function ResolveButton({
@@ -312,6 +329,24 @@ export function buildCopyText(comment: PRComment): string {
   const lineRange = formatLineRange(comment)
   const location = lineRange ? `${comment.path}:${lineRange}` : comment.path
   return `File: ${location}\n\n${comment.body}`
+}
+
+/** Build paste-ready context while preserving the current comment filter. */
+export function buildCopyAllCommentsText(comments: PRComment[]): string {
+  return comments
+    .map((comment) => {
+      const lineRange = formatLineRange(comment)
+      const location = comment.path
+        ? lineRange
+          ? `${comment.path}:${lineRange}`
+          : comment.path
+        : 'PR conversation'
+      const source = comment.url ? `Source: ${comment.url}` : null
+      return [`Author: ${comment.author}`, `Context: ${location}`, source, '', comment.body]
+        .filter((line): line is string => line !== null)
+        .join('\n')
+    })
+    .join('\n\n---\n\n')
 }
 
 export function QueueForAgentButton({
