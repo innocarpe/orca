@@ -193,4 +193,66 @@ describe('requestGitStreamable stream identity', () => {
     await expect(promiseB).resolves.toEqual({ from: 'b' })
     mux.dispose()
   })
+
+  it('does not drop its own seq-0 chunk when foreign frames exceed the removed pending cap', async () => {
+    const transport = createFeedableTransport()
+    const mux = new SshChannelMultiplexer(transport)
+    const encoded = Buffer.from(JSON.stringify({ from: 'a' }))
+    const promise = requestGitStreamable(mux, 'git.exec', { cwd: '/a' })
+
+    // Why: per-frame feeds stay sync so overflow can evict seq: 0 before the sentinel microtask; one concat yields at 64 decoder frames.
+    const PRE_PR_PENDING_CAP = 64
+    const frames = [
+      makeFrame(
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            __orcaGitResponseStream: {
+              streamId: 10,
+              totalBytes: encoded.length,
+              chunkCount: 1
+            }
+          }
+        },
+        1
+      ),
+      makeFrame(
+        {
+          jsonrpc: '2.0',
+          method: 'git.responseChunk',
+          params: { streamId: 10, seq: 0, data: encoded.toString('base64') }
+        },
+        2
+      ),
+      ...Array.from({ length: PRE_PR_PENDING_CAP + 1 }, (_, i) =>
+        makeFrame(
+          {
+            jsonrpc: '2.0',
+            method: 'git.responseChunk',
+            params: {
+              streamId: 999,
+              seq: i,
+              data: Buffer.from('x').toString('base64')
+            }
+          },
+          3 + i
+        )
+      ),
+      makeFrame(
+        {
+          jsonrpc: '2.0',
+          method: 'git.responseEnd',
+          params: { streamId: 10 }
+        },
+        3 + PRE_PR_PENDING_CAP + 1
+      )
+    ]
+    for (const frame of frames) {
+      transport.dataCallbacks[0]!(frame)
+    }
+
+    await expect(promise).resolves.toEqual({ from: 'a' })
+    mux.dispose()
+  })
 })
