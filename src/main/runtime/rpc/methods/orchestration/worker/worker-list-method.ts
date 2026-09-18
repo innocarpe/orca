@@ -56,6 +56,9 @@ export const ORCHESTRATION_WORKER_LIST_METHOD = defineMethod({
     let cursor: WorkerListCursor | null = params.cursor
       ? decodeWorkerListCursor(params.cursor)
       : null
+    if (cursor?.version === 1 || cursor?.version === 2) {
+      throw new OrchestrationError('worker_list_cursor_expired', WORKER_LIST_CURSOR_EXPIRED_MESSAGE)
+    }
     if (params.cursor && !cursor) {
       const legacyKey = db.getWorkerTerminalOrderingKey(params.cursor)
       if (!legacyKey) {
@@ -72,7 +75,7 @@ export const ORCHESTRATION_WORKER_LIST_METHOD = defineMethod({
           page: { limit, total: 0, hasMore: false, nextCursor: null }
         }
       }
-      cursor = { version: 2, snapshot, after: legacyKey }
+      cursor = { version: 4, snapshot, after: legacyKey }
     }
     if (cursor?.version === 3) {
       return projectWorkerListPage({
@@ -245,27 +248,17 @@ async function projectWorkerListPageWithFilteredSnapshot(
               ...snapshotCursor,
               offset: snapshotCursor.offset + pageRows.length
             })
-          : encodeWorkerListCursor(
-              args.snapshot && 'databaseId' in args.snapshot
-                ? {
-                    version: 2,
-                    snapshot: args.snapshot,
-                    after: {
-                      createdAt: nextRow.createdAt,
-                      dispatchId: nextRow.dispatchId,
-                      databaseId: nextRow.databaseId
-                    }
-                  }
-                : {
-                    version: 1,
-                    snapshot: args.snapshot!,
-                    after: {
-                      createdAt: nextRow.createdAt,
-                      dispatchId: nextRow.dispatchId,
-                      databaseId: nextRow.databaseId
-                    }
-                  }
-            )
+          : args.snapshot && 'databaseId' in args.snapshot
+            ? encodeWorkerListCursor({
+                version: 4,
+                snapshot: args.snapshot,
+                after: {
+                  createdAt: nextRow.createdAt,
+                  dispatchId: nextRow.dispatchId,
+                  databaseId: nextRow.databaseId
+                }
+              })
+            : null
         : null
   }
   const rowsByDispatchId = new Map(pageRows.map((row) => [row.dispatchId, row]))

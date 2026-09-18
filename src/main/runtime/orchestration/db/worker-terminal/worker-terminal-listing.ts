@@ -25,7 +25,8 @@ export {
   markWorkerTerminalUserOwned
 }
 
-/** `databaseId` is the real order key; the timestamp fields only satisfy pre-v3 cursors. */
+/** `databaseId` is the real order key; timestamp fields remain so a v4 cursor can resolve its
+ *  anchor when the optional rowid is omitted. v1/v2 were minted under ascending order. */
 export type WorkerTerminalOrderingKey = {
   createdAt: string
   dispatchId: string
@@ -129,10 +130,11 @@ export function listWorkerTerminalResources(
     }
   }
   if (params.after) {
-    // Newest-first pages walk toward older rowids. Order and fence share this key so a
-    // row created between pages cannot move across the cut. A pre-v3 cursor is resolved
-    // from its anchor; when a reset deleted that row `rowid < NULL` matched nothing
-    // and the page read as a finished, empty inventory.
+    // Newest-first (v4) pages walk toward older rowids. Order and fence share this key so a
+    // row created between pages cannot move across the cut. v1/v2 must not use this fence:
+    // they were minted ascending, and serving them here repeats already-seen older rows.
+    // A v4 cursor whose anchor a reset deleted must not match `rowid < NULL` and read as a
+    // finished, empty inventory.
     where.push('d.rowid < ?')
     values.push(resolveAnchorRowId.call(this, params.after, params.runId))
   }

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type Database from '../../../../../sqlite/sync-database'
 import { OrchestrationDb } from '../../../../orchestration/db'
+import { WORKER_LIST_CURSOR_EXPIRED_MESSAGE } from '../../../../orchestration/db/worker-terminal/worker-terminal-listing'
 import type { FederatedDispatchRow } from '../../../../orchestration/types'
 import { OrcaRuntimeService } from '../../../../orca-runtime'
-import { encodeWorkerListCursor } from './worker-list-cursor'
+import { decodeWorkerListCursor, encodeWorkerListCursor } from './worker-list-cursor'
 import { ORCHESTRATION_WORKER_LIST_METHOD } from './worker-list-method'
 
 type WorkerListResult = {
@@ -125,6 +126,7 @@ describe('orchestration worker-list pagination', () => {
       'dispatch-middle'
     ])
     expect(first.page).toMatchObject({ total: 3, hasMore: true })
+    expect(decodeWorkerListCursor(first.page.nextCursor ?? '')?.version).toBe(4)
 
     insertDispatch(db, run.id, 'dispatch-after-snapshot')
 
@@ -137,7 +139,7 @@ describe('orchestration worker-list pagination', () => {
     expect(second.page).toEqual({ total: 3, limit: 2, hasMore: false, nextCursor: null })
   })
 
-  it('continues a version-one snapshot cursor from an older runtime', async () => {
+  it('expires a version-one snapshot cursor from an older runtime', async () => {
     db = new OrchestrationDb(':memory:')
     const runtime = new OrcaRuntimeService()
     runtime.setOrchestrationDb(db)
@@ -154,10 +156,37 @@ describe('orchestration worker-list pagination', () => {
       after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'dispatch-z' }
     })
 
-    const page = await callWorkerList(runtime, { run: run.id, limit: 1, cursor })
+    await expect(callWorkerList(runtime, { run: run.id, limit: 1, cursor })).rejects.toMatchObject({
+      code: 'worker_list_cursor_expired',
+      message: WORKER_LIST_CURSOR_EXPIRED_MESSAGE
+    })
+  })
 
-    expect(page.workers.map((worker) => worker.dispatchId)).toEqual(['dispatch-a'])
-    expect(page.page).toEqual({ total: 2, limit: 1, hasMore: false, nextCursor: null })
+  it('expires an old v2 cursor instead of returning already-seen older rows', async () => {
+    db = new OrchestrationDb(':memory:')
+    const runtime = new OrcaRuntimeService()
+    runtime.setOrchestrationDb(db)
+    const run = db.createRun({
+      objective: 'Ascending cursor',
+      coordinatorHandle: 'term-coordinator',
+      coordinatorPaneKey: 'tab-coordinator:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    })
+    insertDispatch(db, run.id, 'dispatch-oldest')
+    insertDispatch(db, run.id, 'dispatch-middle')
+    insertDispatch(db, run.id, 'dispatch-newest')
+    // An ascending-era first page of 2 was [oldest, middle] and minted after=middle.
+    // Reinterpreting that cursor as descending would return [oldest] (already seen)
+    // with hasMore: false, silently dropping newest.
+    const cursor = encodeWorkerListCursor({
+      version: 2,
+      snapshot: { databaseId: 3 },
+      after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'dispatch-middle' }
+    })
+
+    await expect(callWorkerList(runtime, { run: run.id, limit: 2, cursor })).rejects.toMatchObject({
+      code: 'worker_list_cursor_expired',
+      message: WORKER_LIST_CURSOR_EXPIRED_MESSAGE
+    })
   })
 
   it('expires a pre-rowid cursor whose anchor row a reset deleted', async () => {
@@ -172,9 +201,8 @@ describe('orchestration worker-list pagination', () => {
     insertDispatch(db, run.id, 'dispatch-a')
     insertDispatch(db, run.id, 'dispatch-m')
     insertDispatch(db, run.id, 'dispatch-z')
-    // Old binaries never wrote `databaseId`; this is the exact shape they mint.
     const cursor = encodeWorkerListCursor({
-      version: 2,
+      version: 4,
       snapshot: { databaseId: 3 },
       after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'dispatch-z' }
     })
@@ -559,12 +587,12 @@ describe('orchestration worker-list pagination', () => {
     }
 
     // Both shapes used to resolve to a rowid past Run A's rows and report a finished, empty page.
-    it('expires a v2 cursor that must be resolved from a foreign anchor', async () => {
+    it('expires a v4 cursor that must be resolved from a foreign anchor', async () => {
       const { runA } = twoRuns()
       const runtime = new OrcaRuntimeService()
       runtime.setOrchestrationDb(db!)
       const foreign = encodeWorkerListCursor({
-        version: 2,
+        version: 4,
         snapshot: { databaseId: 4 },
         after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'b-1' }
       })
@@ -574,12 +602,12 @@ describe('orchestration worker-list pagination', () => {
       ).rejects.toThrow(/changed destructively/u)
     })
 
-    it('expires a v2 cursor that carries a foreign rowid', async () => {
+    it('expires a v4 cursor that carries a foreign rowid', async () => {
       const { runA } = twoRuns()
       const runtime = new OrcaRuntimeService()
       runtime.setOrchestrationDb(db!)
       const foreign = encodeWorkerListCursor({
-        version: 2,
+        version: 4,
         snapshot: { databaseId: 4 },
         after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'b-1', databaseId: 3 }
       })
@@ -594,7 +622,7 @@ describe('orchestration worker-list pagination', () => {
       const runtime = new OrcaRuntimeService()
       runtime.setOrchestrationDb(db!)
       const own = encodeWorkerListCursor({
-        version: 2,
+        version: 4,
         snapshot: { databaseId: 4 },
         after: { createdAt: '2026-08-27 00:00:00', dispatchId: 'a-2', databaseId: 2 }
       })
