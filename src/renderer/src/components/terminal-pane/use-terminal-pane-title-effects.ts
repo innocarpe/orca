@@ -15,8 +15,14 @@ import {
   clearPaneTitleOverlayRects
 } from './pane-title-overlay-rects'
 import type { PaneTitleOverlayRect } from './TerminalPaneHeaderOverlay'
-import { shutdownBufferCaptures } from './shutdown-buffer-captures'
-import { captureTerminalShutdownLayout } from './terminal-shutdown-layout-capture'
+import {
+  shutdownBufferCaptures,
+  type ShutdownBufferCaptureOptions
+} from './shutdown-buffer-captures'
+import {
+  captureTerminalShutdownLayout,
+  captureTerminalShutdownLayoutYielding
+} from './terminal-shutdown-layout-capture'
 import { shouldPreserveTerminalScrollbackBuffers } from '../../../../shared/workspace-session-terminal-buffers'
 import type { TerminalPaneCloseController } from './use-terminal-pane-close-actions'
 
@@ -187,7 +193,7 @@ export function useTerminalPaneTitleEffects(controller: TerminalPaneCloseControl
   }, [paneCount])
 
   useEffect(() => {
-    const captureBuffers = (options?: { includeLocalBuffers?: boolean }): void => {
+    const captureBuffers = (options?: ShutdownBufferCaptureOptions): void | Promise<void> => {
       const manager = managerRef.current
       const container = containerRef.current
       if (!manager || !container) {
@@ -203,7 +209,7 @@ export function useTerminalPaneTitleEffects(controller: TerminalPaneCloseControl
       const shouldCaptureScrollbackBuffers = includeLocalBuffers
         ? true
         : shouldPreserveTerminalScrollbackBuffers(worktreeId, state.repos)
-      const layout = captureTerminalShutdownLayout({
+      const args = {
         manager,
         container,
         expandedPaneId: expandedPaneIdRef.current,
@@ -212,11 +218,17 @@ export function useTerminalPaneTitleEffects(controller: TerminalPaneCloseControl
         existingLayout: existing,
         captureBuffers: shouldCaptureScrollbackBuffers,
         clearedScrollbackLeafIds: clearedScrollbackLeafIdsRef.current
-      })
-      setTabLayout(tabId, layout)
-      for (const pane of panes) {
-        clearedScrollbackLeafIdsRef.current.delete(pane.leafId)
       }
+      const applyLayout = (layout: ReturnType<typeof captureTerminalShutdownLayout>): void => {
+        setTabLayout(tabId, layout)
+        for (const pane of panes) {
+          clearedScrollbackLeafIdsRef.current.delete(pane.leafId)
+        }
+      }
+      if (options?.yieldBetweenPanes) {
+        return captureTerminalShutdownLayoutYielding(args).then(applyLayout)
+      }
+      applyLayout(captureTerminalShutdownLayout(args))
     }
     shutdownBufferCaptures.set(tabId, captureBuffers)
     return () => {
