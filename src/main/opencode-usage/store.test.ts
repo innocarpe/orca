@@ -335,6 +335,16 @@ describe('OpenCodeUsageStore', () => {
     }
 
     expect(normalizePersistedState(staleState)).toEqual(getDefaultState())
+    expect(
+      normalizePersistedState({
+        ...staleState,
+        schemaVersion: 2,
+        scanState: { ...staleState.scanState, enabled: true }
+      })
+    ).toEqual({
+      ...getDefaultState(),
+      scanState: { ...getDefaultState().scanState, enabled: true }
+    })
     expect(normalizePersistedState({ ...staleState, schemaVersion: 2 })).toEqual(getDefaultState())
 
     expect(
