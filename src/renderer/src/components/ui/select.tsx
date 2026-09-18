@@ -5,9 +5,18 @@ import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 import { Select as SelectPrimitive } from 'radix-ui'
 
 import { cn } from '@/lib/utils'
+import { useGatedOverlayOpen } from '@/lib/overlay-allowed-context'
 
-function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+function Select({ open, ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  // Why: keep-mounted Tasks Jira-site selects portal to body; OverlayAllowedContext closes them with the parent view.
+  const gatedOpen = useGatedOverlayOpen(open)
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      {...props}
+      {...(gatedOpen === undefined ? {} : { open: gatedOpen })}
+    />
+  )
 }
 
 function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.Value>) {
