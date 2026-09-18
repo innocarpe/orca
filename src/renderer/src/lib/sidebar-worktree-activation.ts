@@ -6,10 +6,19 @@ import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import { useAppStore } from '@/store'
+import { findRepoForHost } from '@/store/slices/repo-host-identity'
+import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
+import { buildSidebarDefaultAgentStartup } from '@/lib/sidebar-default-agent-startup'
+
+type SidebarActivationOptions = {
+  launchDefaultAgent?: boolean
+}
 
 export async function activateWorktreeFromSidebar(
   worktreeId: string,
-  executionHostId?: ExecutionHostId
+  executionHostId?: ExecutionHostId,
+  options?: SidebarActivationOptions
 ): Promise<void> {
   const workspaceScope = parseWorkspaceKey(worktreeId)
   if (workspaceScope?.type === 'folder') {
@@ -23,8 +32,12 @@ export async function activateWorktreeFromSidebar(
     return
   }
   // Keep navigation independent from an optional runtime wake IPC.
+  const startup = options?.launchDefaultAgent
+    ? resolveSidebarDefaultAgentStartup(worktreeId, executionHostId)
+    : undefined
   activateAndRevealWorktree(worktreeId, {
     revealInSidebar: false,
+    ...(startup ? { startup } : {}),
     ...(executionHostId ? { executionHostId } : {})
   })
 
@@ -48,4 +61,21 @@ export async function activateWorktreeFromSidebar(
       )
     }
   }
+}
+
+function resolveSidebarDefaultAgentStartup(worktreeId: string, executionHostId?: ExecutionHostId) {
+  const state = useAppStore.getState()
+  const worktree = state.getKnownWorktreeById(worktreeId, executionHostId)
+  if (!worktree) {
+    return undefined
+  }
+  const repo = findRepoForHost(state.repos, worktree.repoId, {
+    hostId: worktree.hostId ?? executionHostId,
+    settings: state.settings
+  })
+  if (!repo) {
+    return undefined
+  }
+  const projectRuntime = getLocalProjectExecutionRuntimeContext(state, worktreeId)
+  return buildSidebarDefaultAgentStartup(state.settings, repo, projectRuntime)
 }
