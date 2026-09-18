@@ -66,4 +66,15 @@ describe('ProjectViewWrapper GitHub source context boundary', () => {
     expect(contextSection).toContain('repo: dialogRepo')
     expect(dialogSection).toContain('sourceContext={rowActions.dialogSourceContext}')
   })
+
+  it('threads the matched repo source context into direct start assignment', () => {
+    const actionSource = componentSource('useProjectRowActions.ts')
+    const wrapperSource = componentSource('ProjectViewWrapper.tsx')
+    const startSection = sourceBetween(actionSource, 'const startWork = useCallback(', 'return {')
+    const onUseSection = sourceBetween(wrapperSource, 'onUse={(item) => {', 'onClose=')
+
+    expect(startSection).toContain('sourceContext: buildTaskSourceContextFromRepo({')
+    expect(startSection).toContain('repo: resolution.repo')
+    expect(onUseSection).toContain('sourceContext: rowActions.dialogSourceContext')
+  })
 })

@@ -45,7 +45,8 @@ describe('TaskPage workspace creation source boundaries', () => {
     expect(section).toContain('prefilledName: getGitHubWorkItemWorkspaceSeed(item)')
     expect(section).toContain('initialRepoId: item.repoId')
     expect(section).toContain('initialGitHubWorkItem: item')
-    expect(section).toContain('assignees: item.assignees ?? []')
+    expect(section).toContain('assignees: item.assignees')
+    expect(section).not.toContain('item.assignees ?? []')
     expect(section).toContain("enableIssueAutomation: item.type === 'issue'")
     expect(section).toContain("telemetrySource: 'sidebar'")
   })
@@ -126,8 +127,10 @@ describe('TaskPage workspace creation source boundaries', () => {
       join(__dirname, '../hooks/composer-state/full-creation-execution.ts'),
       'utf8'
     )
-    expect(fullCreate).toContain('assignUnassignedGitHubIssueOnStart({')
+    expect(fullCreate).toContain('void assignUnassignedGitHubIssueOnStart({')
     expect(fullCreate).toContain('item: submitLinkedWorkItem')
+    expect(fullCreate).toContain('sourceContext: taskSourceContext')
+    expect(fullCreate).not.toContain('await assignUnassignedGitHubIssueOnStart')
   })
 
   it('keeps project-view GitHub actions on the direct start-work path for issue #4756', () => {
@@ -141,6 +144,7 @@ describe('TaskPage workspace creation source boundaries', () => {
 
     expect(section).toContain('void launchWorkItemDirect({')
     expect(section).toContain("launchSource: 'task_page'")
+    expect(section).toContain('sourceContext: rowActions.dialogSourceContext')
     expect(section).not.toContain('createGitHubWorkItemWorkspaceInBackground')
   })
 })

@@ -28,7 +28,7 @@ export function useTaskPageWorkspaceActions(model: TaskPageSearchActionsModel) {
               repoId: item.repoId
             }
           : {}),
-        ...(item.type === 'issue' ? { assignees: item.assignees ?? [] } : {})
+        ...(item.type === 'issue' ? { assignees: item.assignees } : {})
       }
       openModal('new-workspace-composer', {
         linkedWorkItem,

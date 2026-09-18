@@ -190,12 +190,13 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
       )
 
       const worktree = result.worktree
-      await assignUnassignedGitHubIssueOnStart({
+      // Why: assignment is best-effort and can wait on gh; do not delay reveal.
+      void assignUnassignedGitHubIssueOnStart({
         enabled: useAppStore.getState().settings?.assignUnassignedGitHubIssuesOnStart === true,
         item: submitLinkedWorkItem,
         repoId,
         sourceContext: taskSourceContext
-      })
+      }).catch(() => undefined)
       const issueCommand = buildFullCreationIssueCommand({
         shouldRun: submitShouldRunIssueAutomation && issueCommandTrustDecision === 'run',
         template: confirmedIssueCommandTemplate,
