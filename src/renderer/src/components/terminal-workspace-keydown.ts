@@ -227,6 +227,7 @@ export function handleTerminalWorkspaceKeyDown(
       direction: switchAllTypesDirection ?? switchSameTypeDirection ?? 1,
       scope: switchAllTypesDirection !== null ? 'all-types' : 'same-type'
     })
+    return
   }
   const moveTabDirection = matchShortcut('tab.moveLeft')
     ? -1
