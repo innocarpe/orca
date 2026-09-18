@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   getClaudeManagedAccountLabel,
@@ -59,5 +61,16 @@ describe('normalizeClaudeManagedAccountDisplayName', () => {
     expect(normalizeClaudeManagedAccountDisplayName('')).toBe(null)
     expect(normalizeClaudeManagedAccountDisplayName('   ')).toBe(null)
     expect(normalizeClaudeManagedAccountDisplayName(null)).toBe(null)
+  })
+})
+
+describe('mobile accounts Claude label import', () => {
+  it('reaches the repo-root helper from mobile/app/h/[hostId]', () => {
+    const accountsPath = resolve(process.cwd(), 'mobile/app/h/[hostId]/accounts.tsx')
+    const match = readFileSync(accountsPath, 'utf8').match(
+      /from '((?:\.\.\/)+src\/shared\/claude-managed-account-label)'/
+    )
+    expect(match?.[1]).toBe('../../../../src/shared/claude-managed-account-label')
+    expect(existsSync(resolve(dirname(accountsPath), `${match?.[1]}.ts`))).toBe(true)
   })
 })

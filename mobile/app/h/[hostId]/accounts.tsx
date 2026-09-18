@@ -34,7 +34,7 @@ import {
 } from '../../../src/components/codex-reset-credit'
 import { CodexResetCreditAction } from '../../../src/components/CodexResetCreditAction'
 import { useCodexResetCreditAction } from '../../../src/components/use-codex-reset-credit-action'
-import { getClaudeManagedAccountLabel } from '../../../src/shared/claude-managed-account-label'
+import { getClaudeManagedAccountLabel } from '../../../../src/shared/claude-managed-account-label'
 
 export default function AccountsScreen() {
   const router = useRouter()

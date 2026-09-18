@@ -117,9 +117,13 @@ export class ClaudeAccountSelection {
   }
 
   updateDisplayName(accountId: string, displayName: string | null): ClaudeRateLimitAccountsState {
-    this.requireAccount(accountId)
-    const settings = this.store.getSettings()
+    const account = this.requireAccount(accountId)
     const nextDisplayName = normalizeClaudeManagedAccountDisplayName(displayName)
+    // Skip no-op renames so snapshot() does not bump updatedAt and reorder the roster.
+    if ((account.displayName ?? null) === nextDisplayName) {
+      return this.snapshot()
+    }
+    const settings = this.store.getSettings()
     const now = Date.now()
     this.store.updateSettings({
       claudeManagedAccounts: settings.claudeManagedAccounts.map((entry) =>
