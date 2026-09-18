@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatPlanLabel,
+  formatRelativeTime,
   formatUsageUpdatedLabel,
   usageTextColorClass
 } from './usage-roster-formatting'
@@ -27,6 +28,20 @@ describe('formatPlanLabel', () => {
   })
 })
 
+describe('formatRelativeTime', () => {
+  const now = 1_000_000_000
+
+  it('uses 60s / 60m thresholds for just now, minutes, and hours', () => {
+    expect(formatRelativeTime(now, now)).toBe('just now')
+    expect(formatRelativeTime(now - 59_999, now)).toBe('just now')
+    expect(formatRelativeTime(now - 60_000, now)).toBe('1m ago')
+    expect(formatRelativeTime(now - 5 * 60_000, now)).toBe('5m ago')
+    expect(formatRelativeTime(now - 59 * 60_000, now)).toBe('59m ago')
+    expect(formatRelativeTime(now - 60 * 60_000, now)).toBe('1h ago')
+    expect(formatRelativeTime(now - 3 * 3_600_000, now)).toBe('3h ago')
+  })
+})
+
 describe('formatUsageUpdatedLabel', () => {
   const now = 1_000_000_000
 
@@ -35,9 +50,11 @@ describe('formatUsageUpdatedLabel', () => {
     expect(formatUsageUpdatedLabel(Number.NaN, now)).toBeNull()
   })
 
-  it('uses the same just-now / minutes / hours thresholds as the tooltip', () => {
+  it('prefixes the shared relative-time helper', () => {
     expect(formatUsageUpdatedLabel(now - 30_000, now)).toBe('Updated just now')
-    expect(formatUsageUpdatedLabel(now - 5 * 60_000, now)).toBe('Updated 5m ago')
+    expect(formatUsageUpdatedLabel(now - 5 * 60_000, now)).toBe(
+      `Updated ${formatRelativeTime(now - 5 * 60_000, now)}`
+    )
     expect(formatUsageUpdatedLabel(now - 3 * 3_600_000, now)).toBe('Updated 3h ago')
   })
 })
