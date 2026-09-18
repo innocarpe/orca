@@ -56,7 +56,7 @@ describe('useSourceControlAgentActionDetection', () => {
           worktreeId: 'wt-1',
           connectionId: props.connectionId
         }),
-      { initialProps: { connectionId: null } }
+      { initialProps: { connectionId: null as string | null } }
     )
 
     let firstRefresh!: Promise<TuiAgent[]>
