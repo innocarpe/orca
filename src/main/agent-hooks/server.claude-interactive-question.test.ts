@@ -18,6 +18,12 @@ function ingestClaudeStatus(
     toolName: string
     toolUseId: string
     interactivePrompt?: string
+    subagents?: {
+      id: string
+      state: 'working' | 'idle'
+      startedAt: number
+      agentType?: string
+    }[]
   }
 ): void {
   server.ingestRemote(
@@ -31,7 +37,8 @@ function ingestClaudeStatus(
         state: event.state,
         agentType: 'claude',
         toolName: event.toolName,
-        ...(event.interactivePrompt ? { interactivePrompt: event.interactivePrompt } : {})
+        ...(event.interactivePrompt ? { interactivePrompt: event.interactivePrompt } : {}),
+        ...(event.subagents ? { subagents: event.subagents } : {})
       }
     },
     'connection-1'
@@ -318,5 +325,40 @@ describe('inferQuestionAnswered', () => {
     expect(entry).toMatchObject({ paneKey: PANE_KEY, state: 'done', agentType: 'claude' })
     expect(entry.subagents?.some((child) => child.state === 'working')).toBeFalsy()
     expect(Date.now() - 1).toBeGreaterThan(CLAUDE_SUBAGENT_STALE_AFTER_MS)
+  })
+
+  it('keeps relayed working child snapshots when main has no roster', () => {
+    const server = new AgentHookServer()
+    const subagents = [
+      { id: 'a1', state: 'working' as const, startedAt: Date.now(), agentType: 'Explore' }
+    ]
+    ingestClaudeStatus(server, {
+      state: 'waiting',
+      hookEventName: 'PreToolUse',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-question',
+      subagents
+    })
+
+    expect(server._getStateForTests().claudeSubagentRosterByPaneKey.has(PANE_KEY)).toBe(false)
+    expect(server.inferQuestionAnswered(answeredRequestFromSnapshot(server))).toBe(true)
+    const [entry] = server.getStatusSnapshot()
+    expect(entry).toMatchObject({ paneKey: PANE_KEY, state: 'working', agentType: 'claude' })
+    expect(entry.subagents).toEqual([expect.objectContaining({ id: 'a1', state: 'working' })])
+  })
+
+  it('omits relayed child snapshots when the local roster is present but empty', () => {
+    const server = new AgentHookServer()
+    ingestClaudeStatus(server, {
+      state: 'waiting',
+      hookEventName: 'PreToolUse',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-question',
+      subagents: [{ id: 'a1', state: 'working', startedAt: Date.now(), agentType: 'Explore' }]
+    })
+    server._getStateForTests().claudeSubagentRosterByPaneKey.set(PANE_KEY, new Map())
+
+    expect(server.inferQuestionAnswered(answeredRequestFromSnapshot(server))).toBe(true)
+    expect(server.getStatusSnapshot()[0]?.subagents).toBeUndefined()
   })
 })
