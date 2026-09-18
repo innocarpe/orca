@@ -1,5 +1,6 @@
 import type { TaskPageJiraIssueCreationModel } from './use-task-page-jira-issue-creation'
 import { useEffect } from 'react'
+import { useAppStore } from '@/store'
 export function useTaskPageGlobalEffects(model: TaskPageJiraIssueCreationModel) {
   const {
     closeTaskPage,
@@ -41,7 +42,8 @@ export function useTaskPageGlobalEffects(model: TaskPageJiraIssueCreationModel) 
       return
     }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
+      // Why: keep-mounted Tasks still owned window Esc and would wipe the parked issue off-view.
+      if (event.key !== 'Escape' || useAppStore.getState().activeView !== 'tasks') {
         return
       }
       const target = event.target
