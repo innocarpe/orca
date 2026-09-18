@@ -202,7 +202,8 @@ export function getActiveTabNavOrder(
     | 'browserTabsByWorktree'
   >,
   worktreeId: string,
-  ids: ActiveTabNavOrderIds = {}
+  ids: ActiveTabNavOrderIds = {},
+  groupIdOverride?: string
 ): VisibleTabRef[] {
   const terminalIds = ids.terminalIds ?? (state.tabsByWorktree[worktreeId] ?? []).map((t) => t.id)
   const editorIds =
@@ -220,7 +221,7 @@ export function getActiveTabNavOrder(
       .filter((tab) => tab.contentType === 'agent-session')
       .map((tab) => tab.id)
 
-  const activeGroupId = state.activeGroupIdByWorktree[worktreeId]
+  const activeGroupId = groupIdOverride ?? state.activeGroupIdByWorktree[worktreeId]
   const group = activeGroupId
     ? (state.groupsByWorktree[worktreeId] ?? []).find((g) => g.id === activeGroupId)
     : undefined

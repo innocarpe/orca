@@ -632,15 +632,17 @@ describe('setupGuestShortcutForwarding', () => {
     const guest = makeGuest()
     setupGuestShortcutForwarding({ browserTabId, guest, resolveRenderer: () => makeRenderer() })
 
-    const preventDefault = triggerBeforeInput({
+    triggerBeforeInput({
       key: 'PageUp',
       meta: false,
       control: true,
       shift: true
     })
 
-    expect(preventDefault).toHaveBeenCalledOnce()
-    expect(rendererSendMock).toHaveBeenCalledWith('ui:moveActiveTab', -1)
+    expect(rendererSendMock).toHaveBeenCalledWith('ui:moveActiveTab', {
+      direction: -1,
+      sourceId: browserTabId
+    })
   })
 
   it('forwards workspace delete shortcuts from focused guest pages', () => {

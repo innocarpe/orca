@@ -698,7 +698,7 @@ describe('moveFloatingWorkspaceTab', () => {
 
   it('reorders the active tab within the floating group and mirrors the move', () => {
     const reorderUnifiedTabs = vi.fn()
-    const store = {
+    const store: Parameters<typeof moveFloatingWorkspaceTab>[0] = {
       activeGroupIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-group' },
       browserTabsByWorktree: {},
       groupsByWorktree: {
@@ -725,7 +725,7 @@ describe('moveFloatingWorkspaceTab', () => {
       }
     }
 
-    expect(moveFloatingWorkspaceTab(store as never, -1)).toBe(true)
+    expect(moveFloatingWorkspaceTab(store, -1)).toBe(true)
     expect(reorderUnifiedTabs).toHaveBeenCalledWith('floating-group', ['tab-2', 'tab-1', 'tab-3'])
     expect(mirrorWebRuntimeTabMoveMock).toHaveBeenCalledWith({
       kind: 'reorder',
