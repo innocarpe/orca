@@ -38,6 +38,8 @@ type CaptureTerminalShutdownLayoutArgs = {
   paneTransports: ReadonlyMap<number, Pick<PtyTransport, 'getPtyId'>>
   paneTitlesByPaneId: Record<number, string>
   existingLayout: TerminalLayoutSnapshot | undefined
+  /** Re-read after a yielding serialize so a concurrent layout write is the merge `prior`. */
+  readExistingLayout?: () => TerminalLayoutSnapshot | undefined
   captureBuffers?: boolean
   clearedScrollbackLeafIds?: ReadonlySet<string>
 }
@@ -224,7 +226,7 @@ function assembleTerminalShutdownLayout(
   const mergedBuffers = captureBuffers
     ? mergeCapturedLeafState({
         prior: omitClearedLeafState(existingLayout?.buffersByLeafId, clearedScrollbackLeafIds),
-        fresh: buffers,
+        fresh: omitClearedLeafState(buffers, clearedScrollbackLeafIds) ?? {},
         currentLeafIds
       })
     : {}
@@ -277,5 +279,11 @@ export async function captureTerminalShutdownLayoutYielding(
 ): Promise<TerminalLayoutSnapshot> {
   const buffers =
     args.captureBuffers === false ? {} : await captureMountedPaneBuffersYielding(args.manager)
-  return assembleTerminalShutdownLayout(args, buffers)
+  return assembleTerminalShutdownLayout(
+    {
+      ...args,
+      existingLayout: args.readExistingLayout?.() ?? args.existingLayout
+    },
+    buffers
+  )
 }

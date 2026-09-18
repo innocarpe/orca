@@ -1,5 +1,6 @@
 import { useAppStore } from '../../store'
 import {
+  beginParkedCapturePass,
   captureParkedTerminalBuffers,
   enqueueParkedTerminalCapture,
   whenParkedCaptureSettles
@@ -7,6 +8,29 @@ import {
 import { haveSameTerminalTabIds } from './use-terminal-park-verdict-pin'
 
 const capturedTabIdsByWorktree = new Map<string, Set<string>>()
+const captureEpisodeGenerationByWorktree = new Map<string, { current: number }>()
+const latestParkedTabIdsByWorktree = new Map<string, ReadonlySet<string>>()
+
+function captureEpisodeGeneration(worktreeId: string): { current: number } {
+  let generation = captureEpisodeGenerationByWorktree.get(worktreeId)
+  if (!generation) {
+    generation = { current: 0 }
+    captureEpisodeGenerationByWorktree.set(worktreeId, generation)
+  }
+  return generation
+}
+
+/** @internal */
+export function resetParkedTerminalTabCaptureEpisodesForTesting(): void {
+  capturedTabIdsByWorktree.clear()
+  captureEpisodeGenerationByWorktree.clear()
+  latestParkedTabIdsByWorktree.clear()
+}
+
+export type CaptureNewlyParkedTerminalTabsOptions = {
+  isTabStillParked?: (tabId: string) => boolean
+  isCurrent?: () => boolean
+}
 
 /** Serialize each newly parked tab's panes while they are still mounted, once per park episode.
  *  Why here rather than at unmount: a remote-runtime tab's xterm is the only client-side copy of
@@ -15,8 +39,10 @@ const capturedTabIdsByWorktree = new Map<string, Set<string>>()
 export function captureNewlyParkedTerminalTabs(
   worktreeId: string,
   parkedTabIds: ReadonlySet<string>,
-  capturedTabIds: Set<string>
+  capturedTabIds: Set<string>,
+  options?: CaptureNewlyParkedTerminalTabsOptions
 ): void | Promise<void> {
+  const isTabStillParked = options?.isTabStillParked ?? ((tabId) => parkedTabIds.has(tabId))
   for (const tabId of Array.from(capturedTabIds)) {
     if (!parkedTabIds.has(tabId)) {
       capturedTabIds.delete(tabId)
@@ -42,9 +68,15 @@ export function captureNewlyParkedTerminalTabs(
         repos
       }),
       () => {
+        // Why re-check: a reveal during the yield must not mark the tab captured, or the next
+        // park early-returns and skips the fresh serialize the replay just dropped.
+        if (!isTabStillParked(tabId)) {
+          return
+        }
         capturedTabIds.add(tabId)
       },
-      pending
+      pending,
+      options?.isCurrent
     )
   }
   if (pending.length === 0) {
@@ -64,13 +96,20 @@ export function scheduleNewlyParkedTerminalTabCapture(
     capturedTabIds = new Set()
     capturedTabIdsByWorktree.set(worktreeId, capturedTabIds)
   }
+  latestParkedTabIdsByWorktree.set(worktreeId, parkedTabIds)
+  const pass = beginParkedCapturePass(captureEpisodeGeneration(worktreeId))
   whenParkedCaptureSettles(
-    captureNewlyParkedTerminalTabs(worktreeId, parkedTabIds, capturedTabIds),
+    captureNewlyParkedTerminalTabs(worktreeId, parkedTabIds, capturedTabIds, {
+      isTabStillParked: (tabId) =>
+        latestParkedTabIdsByWorktree.get(worktreeId)?.has(tabId) === true,
+      isCurrent: pass.isCurrent
+    }),
     () => {
       if (!haveSameTerminalTabIds(parkedTabIdsRef.current, parkedTabIds)) {
         parkedTabIdsRef.current = parkedTabIds
         setParkedTabIds(parkedTabIds)
       }
-    }
+    },
+    pass.isCurrent
   )
 }
