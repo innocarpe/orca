@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { seedLegacyAgentStatusForTests } from '../../shared/agent-hook-listener/listener-state'
+import {
+  CLAUDE_SUBAGENT_STALE_AFTER_MS,
+  claudeRosterToSnapshots,
+  upsertWorkingClaudeSubagent
+} from '../../shared/claude-subagent-roster'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { AgentHookServer } from './server'
 
@@ -276,5 +282,41 @@ describe('inferQuestionAnswered', () => {
     expect(server.getStatusSnapshot()).toEqual([
       expect.objectContaining({ state: 'working', toolName: 'Read' })
     ])
+  })
+
+  it('does not emit a working child snapshot after roster expiry flips the pane to done', () => {
+    const server = new AgentHookServer()
+    ingestClaudeStatus(server, {
+      state: 'waiting',
+      hookEventName: 'PreToolUse',
+      toolName: 'AskUserQuestion',
+      toolUseId: 'tool-question'
+    })
+
+    const state = server._getStateForTests()
+    const roster = new Map()
+    upsertWorkingClaudeSubagent(roster, 'a1', { agentType: 'Explore' }, 1)
+    state.claudeSubagentRosterByPaneKey.set(PANE_KEY, roster)
+    state.claudeLeadStateByPaneKey.set(PANE_KEY, {
+      state: 'waiting',
+      stateBeforeWait: { state: 'done' }
+    })
+    const existing = state.lastStatusByPaneKey.get(PANE_KEY)
+    if (!existing) {
+      throw new Error('expected a waiting status row')
+    }
+    seedLegacyAgentStatusForTests(state, {
+      ...existing,
+      payload: {
+        ...existing.payload,
+        subagents: claudeRosterToSnapshots(roster)
+      }
+    })
+
+    expect(server.inferQuestionAnswered(answeredRequestFromSnapshot(server))).toBe(true)
+    const [entry] = server.getStatusSnapshot()
+    expect(entry).toMatchObject({ paneKey: PANE_KEY, state: 'done', agentType: 'claude' })
+    expect(entry.subagents?.some((child) => child.state === 'working')).toBeFalsy()
+    expect(Date.now() - 1).toBeGreaterThan(CLAUDE_SUBAGENT_STALE_AFTER_MS)
   })
 })
