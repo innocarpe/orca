@@ -19,11 +19,7 @@ async function resolveDispatchWorktreePath(
   if (!worktree || !runtime.showManagedWorktree) {
     return undefined
   }
-  try {
-    return (await runtime.showManagedWorktree(worktree)).path
-  } catch {
-    return undefined
-  }
+  return (await runtime.showManagedWorktree(worktree)).path
 }
 
 // Why: 10 min = documented heartbeat cadence (5 min) × 2, so one missed heartbeat is the earliest a dispatch can look stale.
@@ -105,6 +101,9 @@ export async function dispatchTaskToWorker(params: {
     return 'stale-base-refused'
   }
 
+  // Why: resolve the selector before creating a dispatch context so a missing or stale selector
+  // cannot send a worker back to an unspecified checkout with a misleading preamble.
+  const worktreePath = await resolveDispatchWorktreePath(runtime, params.worktree)
   const dispatchAuthority = runtime.getOrchestrationDispatchAuthority?.(targetHandle)
   const assigneePaneKey =
     dispatchAuthority?.paneKey ?? runtime.getTerminalPaneKey?.(targetHandle) ?? undefined
@@ -123,8 +122,6 @@ export async function dispatchTaskToWorker(params: {
     creator: { kind: 'system' },
     maxDepth: params.nestedWorkerMaxDepth
   })
-  const worktreePath = await resolveDispatchWorktreePath(runtime, params.worktree)
-
   // Why: dispatched agents use orca-dev in dev mode to reach the dev runtime's socket, not production (Section 6.4).
   const preamble = buildDispatchPreamble({
     taskId: task.id,
