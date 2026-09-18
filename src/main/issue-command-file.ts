@@ -2,6 +2,7 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadHooks } from './hooks'
+import { gitExecFileSync } from './git/runner'
 
 const ORCA_DIR = '.orca'
 const ISSUE_COMMAND_FILENAME = 'issue-command'
@@ -80,6 +81,14 @@ export function writeIssueCommand(repoPath: string, content: string): void {
 /** Ensure `.orca` is in `.gitignore` so the per-user directory is never committed. */
 function ensureOrcaDirIgnored(repoPath: string): void {
   const gitignorePath = join(repoPath, '.gitignore')
+  try {
+    // Why: a user's global excludesFile already provides the same protection;
+    // adding a repository-local rule would create an unnecessary diff.
+    gitExecFileSync(['check-ignore', '--quiet', '--', ORCA_DIR], { cwd: repoPath })
+    return
+  } catch {
+    // A non-zero check-ignore result means the path is not ignored locally yet.
+  }
   try {
     if (existsSync(gitignorePath)) {
       const content = readFileSync(gitignorePath, 'utf-8')

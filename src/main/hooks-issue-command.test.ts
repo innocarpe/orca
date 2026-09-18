@@ -86,6 +86,9 @@ describe('readIssueCommand', () => {
 
 describe('writeIssueCommand', () => {
   it('writes only the local override file and keeps .orca ignored locally', async () => {
+    gitExecFileSyncMock.mockImplementation(() => {
+      throw new Error('path is not ignored')
+    })
     const fs = await import('node:fs')
     vi.mocked(fs.existsSync).mockImplementation(
       (path) => path === TEST_GITIGNORE_PATH || path === join(TEST_REPO_PATH, '.orca')
@@ -103,6 +106,38 @@ describe('writeIssueCommand', () => {
     expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalledWith(
       TEST_GITIGNORE_PATH,
       'node_modules/\n.orca\n',
+      'utf-8'
+    )
+    expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalledWith(
+      TEST_ISSUE_COMMAND_PATH,
+      'local command\n',
+      'utf-8'
+    )
+  })
+
+  it('does not duplicate a global Git ignore rule in the repository', async () => {
+    gitExecFileSyncMock.mockReturnValue('')
+    const fs = await import('node:fs')
+    vi.mocked(fs.writeFileSync).mockClear()
+    vi.mocked(fs.existsSync).mockImplementation(
+      (path) => path === TEST_GITIGNORE_PATH || path === join(TEST_REPO_PATH, '.orca')
+    )
+    vi.mocked(fs.readFileSync).mockImplementation((path) => {
+      if (path === TEST_GITIGNORE_PATH) {
+        return 'node_modules/\n'
+      }
+      return ''
+    })
+
+    const { writeIssueCommand } = await import('./issue-command-file')
+    writeIssueCommand(TEST_REPO_PATH, 'local command')
+
+    expect(gitExecFileSyncMock).toHaveBeenCalledWith(['check-ignore', '--quiet', '--', '.orca'], {
+      cwd: TEST_REPO_PATH
+    })
+    expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalledWith(
+      TEST_GITIGNORE_PATH,
+      expect.anything(),
       'utf-8'
     )
     expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalledWith(
