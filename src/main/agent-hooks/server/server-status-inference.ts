@@ -3,6 +3,7 @@ import {
   markClaudeLeadTurnInterrupted,
   clearClaudeAnsweredQuestionWait
 } from '../../../shared/agent-hook-listener/providers/claude-roster-state'
+import { claudeRosterToSnapshots } from '../../../shared/claude-subagent-roster'
 import {
   isAgentInterruptInputIntent,
   isNavigationEscapeIntent,
@@ -263,6 +264,9 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
     }
     // Why: sync the listener's lead-turn record too, or a later child event re-emits the stale waiting state and resurrects the card.
     const restored = clearClaudeAnsweredQuestionWait(this.state, existing.paneKey)
+    const subagents = claudeRosterToSnapshots(
+      this.state.claudeSubagentRosterByPaneKey.get(existing.paneKey)
+    )
     const inferred = this.applyNormalizedStatus({
       paneKey: existing.paneKey,
       tabId: existing.tabId,
@@ -287,7 +291,7 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
         ...(restored.turnCompletedAt !== undefined
           ? { turnCompletedAt: restored.turnCompletedAt }
           : {}),
-        ...(payload.subagents ? { subagents: payload.subagents } : {}),
+        ...(subagents ? { subagents } : {}),
         mainAgent: restored.mainAgent
       }
     })
