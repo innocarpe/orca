@@ -7,6 +7,16 @@ export type DropUploadFailure = {
 }
 
 const MAX_VISIBLE_DROP_FAILURES = 2
+const FORMATTED_BYTE_COUNT = String.raw`\d+(?:\.\d+)? (?:B|KB|MB|GB|TB)`
+
+// Why: the main-process budget errors include dynamic names and sizes, but their surrounding
+// wording is a closed vocabulary; match only those shapes and never render captured details.
+const REMOTE_FILE_LIMIT_REASON = new RegExp(
+  String.raw`^'[^\r\n]*' is ${FORMATTED_BYTE_COUNT}, over the ${FORMATTED_BYTE_COUNT} per-file remote import limit$`
+)
+const REMOTE_TOTAL_LIMIT_REASON = new RegExp(
+  String.raw`^This import is ${FORMATTED_BYTE_COUNT}, over the ${FORMATTED_BYTE_COUNT} total remote import limit$`
+)
 
 const SAFE_FAILURE_REASON_COPY: Readonly<Record<string, { key: string; fallback: string }>> = {
   'File is too large': {
@@ -41,9 +51,16 @@ const SAFE_FAILURE_REASON_COPY: Readonly<Record<string, { key: string; fallback:
 
 function formatDropUploadFailureReason(reason: string): string {
   const copy = SAFE_FAILURE_REASON_COPY[reason]
-  return copy
-    ? translate(copy.key, copy.fallback)
-    : translate('auto.lib.dropUploadFailure.generic', 'Upload failed.')
+  if (copy) {
+    return translate(copy.key, copy.fallback)
+  }
+  if (REMOTE_FILE_LIMIT_REASON.test(reason)) {
+    return translate('auto.lib.dropUploadFailure.fileTooLarge', 'File is too large')
+  }
+  if (REMOTE_TOTAL_LIMIT_REASON.test(reason)) {
+    return translate('auto.lib.dropUploadFailure.totalTooLarge', 'Total upload is too large.')
+  }
+  return translate('auto.lib.dropUploadFailure.generic', 'Upload failed.')
 }
 
 export function formatDropUploadFailureDescription(failed: readonly DropUploadFailure[]): string {

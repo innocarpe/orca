@@ -28,4 +28,19 @@ describe('formatDropUploadFailureDescription', () => {
       ])
     ).toBe('large.txt: File is too large\nprivate.txt: Upload failed.')
   })
+
+  it('maps dynamic remote budget errors without exposing their details', () => {
+    expect(
+      formatDropUploadFailureDescription([
+        {
+          sourcePath: '/tmp/large.txt',
+          reason: "'clip.mp4' is 3 MB, over the 2 MB per-file remote import limit"
+        },
+        {
+          sourcePath: '/tmp/drop',
+          reason: 'This import is 9 GB, over the 8 GB total remote import limit'
+        }
+      ])
+    ).toBe('large.txt: File is too large\ndrop: Total upload is too large.')
+  })
 })

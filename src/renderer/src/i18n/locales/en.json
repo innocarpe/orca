@@ -575,6 +575,7 @@
         "unsupported": "Unsupported file type.",
         "connectionChanged": "Remote connection changed; retry the import.",
         "pairingChanged": "Remote pairing changed; retry the import.",
+        "totalTooLarge": "Total upload is too large.",
         "generic": "Upload failed.",
         "more": "+{{value0}} more failure{{value1}}"
       },

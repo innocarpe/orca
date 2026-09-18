@@ -2594,6 +2594,7 @@
         "pairingChanged": "Remote pairing changed; retry the import.",
         "permissionDenied": "Permission denied.",
         "storageFull": "Not enough storage.",
+        "totalTooLarge": "Total upload is too large.",
         "unsupported": "Unsupported file type."
       },
       "terminal": {
