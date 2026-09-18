@@ -64,6 +64,43 @@ describe('WebSocketTransport static web client', () => {
     await expect(assetResponse.text()).resolves.toBe('console.log("prefixed")')
   })
 
+  it('serves pdf.js CMaps next to the web client for GET and HEAD', async () => {
+    const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
+    mkdirSync(join(staticRoot, 'cmaps'))
+    writeFileSync(join(staticRoot, 'cmaps', 'Adobe-Japan1-UCS2.bcmap'), 'cmap')
+    const transport = createStaticTransport(staticRoot)
+
+    await transport.start()
+    const cmapUrl = `http://127.0.0.1:${transport.resolvedPort}/cmaps/Adobe-Japan1-UCS2.bcmap`
+
+    const getResponse = await fetch(cmapUrl)
+    expect(getResponse.status).toBe(200)
+    expect(getResponse.headers.get('content-type')).toBe('application/octet-stream')
+    await expect(getResponse.text()).resolves.toBe('cmap')
+
+    const headResponse = await fetch(cmapUrl, { method: 'HEAD' })
+    expect(headResponse.status).toBe(200)
+    expect(headResponse.headers.get('content-type')).toBe('application/octet-stream')
+    expect(headResponse.headers.get('content-length')).toBe(String(Buffer.byteLength('cmap')))
+    await expect(headResponse.text()).resolves.toBe('')
+  })
+
+  it('serves pdf.js CMaps when a reverse-proxy path prefix is forwarded', async () => {
+    const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
+    mkdirSync(join(staticRoot, 'cmaps'))
+    writeFileSync(join(staticRoot, 'cmaps', 'Adobe-Japan1-UCS2.bcmap'), 'cmap')
+    const transport = createStaticTransport(staticRoot)
+
+    await transport.start()
+
+    const response = await fetch(
+      `http://127.0.0.1:${transport.resolvedPort}/orca/cmaps/Adobe-Japan1-UCS2.bcmap`
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('application/octet-stream')
+    await expect(response.text()).resolves.toBe('cmap')
+  })
+
   it('does not expose arbitrary files from the static root', async () => {
     const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
     writeFileSync(join(staticRoot, 'package.json'), '{}')
