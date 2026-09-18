@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { formatPlanLabel, usageTextColorClass } from './usage-roster-formatting'
+import {
+  formatPlanLabel,
+  formatUsageUpdatedLabel,
+  usageTextColorClass
+} from './usage-roster-formatting'
 
 describe('formatPlanLabel', () => {
   it('capitalizes a single-word plan', () => {
@@ -20,6 +24,21 @@ describe('formatPlanLabel', () => {
     expect(formatPlanLabel(undefined)).toBeNull()
     expect(formatPlanLabel('')).toBeNull()
     expect(formatPlanLabel('   ')).toBeNull()
+  })
+})
+
+describe('formatUsageUpdatedLabel', () => {
+  const now = 1_000_000_000
+
+  it('returns null when there is no usable timestamp', () => {
+    expect(formatUsageUpdatedLabel(0, now)).toBeNull()
+    expect(formatUsageUpdatedLabel(Number.NaN, now)).toBeNull()
+  })
+
+  it('uses the same just-now / minutes / hours thresholds as the tooltip', () => {
+    expect(formatUsageUpdatedLabel(now - 30_000, now)).toBe('Updated just now')
+    expect(formatUsageUpdatedLabel(now - 5 * 60_000, now)).toBe('Updated 5m ago')
+    expect(formatUsageUpdatedLabel(now - 3 * 3_600_000, now)).toBe('Updated 3h ago')
   })
 })
 
