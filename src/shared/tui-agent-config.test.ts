@@ -24,7 +24,7 @@ describe('TUI_AGENT_CONFIG', () => {
       detectCmdAliases: ['gajae-code'],
       launchCmd: 'gjc',
       expectedProcess: 'gjc',
-      promptInjectionMode: 'flag-prompt',
+      promptInjectionMode: 'stdin-after-start',
       draftPasteReadySignal: 'render-cursor-after-bracketed-paste'
     })
     expect(getTuiAgentDetectCommands(TUI_AGENT_CONFIG['gajae-code'])).toEqual(['gjc', 'gajae-code'])

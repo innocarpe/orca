@@ -601,7 +601,7 @@ describe('tui agent startup plans', () => {
     ).toBeNull()
   })
 
-  it('launches Gajae Code through gjc --prompt', () => {
+  it('launches Gajae Code as bare gjc and delivers the prompt after start', () => {
     const plan = buildAgentStartupPlan({
       agent: 'gajae-code',
       prompt: 'fix it',
@@ -611,9 +611,9 @@ describe('tui agent startup plans', () => {
 
     expect(plan).toEqual({
       agent: 'gajae-code',
-      launchCommand: "gjc --prompt 'fix it'",
+      launchCommand: 'gjc',
       expectedProcess: 'gjc',
-      followupPrompt: null,
+      followupPrompt: 'fix it',
       launchConfig: { agentCommand: 'gjc', agentArgs: '', agentEnv: {} }
     })
   })
