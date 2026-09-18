@@ -126,7 +126,6 @@ export function useWorktreePointerDrag(args: {
         draggingWorktreeId: drag.worktreeId,
         sourceGroupKey: drag.sourceGroupKey,
         draggedIds: drag.draggedIds,
-        pinTargets: drag.pinTargets,
         reorderDraggedIds: drag.reorderDraggedIds,
         reorderUnitDraggedIds: drag.reorderUnitDraggedIds,
         rects: drag.rects,

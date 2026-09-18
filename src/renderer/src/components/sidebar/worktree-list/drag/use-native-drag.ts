@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import type React from 'react'
-import type { WorkspacePinTarget } from '../../../../store/slices/worktree-helpers'
 import { getWorkspaceKanbanSidebarDropTarget } from '../../workspace-kanban-sidebar-drop'
 import { getFullDropIndexForWorktreeDragUnit } from '../../worktree-drag-units'
 import { getWorktreeSidebarDragRectsForGroup } from '../../worktree-sidebar-drag-autoscroll'
@@ -42,12 +41,7 @@ export function useWorktreeNativeDrag(args: {
   })
 
   const handleWorktreeCardDragStart = useCallback(
-    (
-      event: React.DragEvent<HTMLDivElement>,
-      worktreeId: string,
-      draggedIds: readonly string[],
-      pinTargets: readonly WorkspacePinTarget[]
-    ) => {
+    (event: React.DragEvent<HTMLDivElement>, worktreeId: string, draggedIds: readonly string[]) => {
       const sourceGroupKey =
         ctx.worktreeDragGroups.find((group) => group.worktreeIds.includes(worktreeId))?.key ?? null
       if (!sourceGroupKey) {
@@ -66,7 +60,6 @@ export function useWorktreeNativeDrag(args: {
         draggingWorktreeId: worktreeId,
         sourceGroupKey,
         draggedIds,
-        pinTargets,
         reorderDraggedIds,
         reorderUnitDraggedIds,
         rects,

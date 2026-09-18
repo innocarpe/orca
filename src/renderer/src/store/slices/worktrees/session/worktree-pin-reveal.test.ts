@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { ExecutionHostId } from '../../../../../../shared/execution-host'
+import type { WorktreeLineage } from '../../../../../../shared/worktree/lineage-types'
 import type { Worktree } from '../../../../../../shared/worktree/types'
 import { createSetWorktreesPinnedAndReveal } from './worktree-pin-reveal'
 
@@ -25,10 +27,17 @@ function worktree(overrides: Partial<Worktree> = {}): Worktree {
   }
 }
 
-function sliceState(worktrees: Worktree[]) {
+function sliceState(
+  worktrees: Worktree[],
+  overrides: Partial<{
+    activeWorktreeId: string | null
+    activeWorkspaceExecutionHostId: ExecutionHostId | null
+    settings: { showPinnedWorktreesInGroups: boolean }
+  }> = {}
+) {
   const state = {
     activeWorktreeId: null,
-    activeWorkspaceExecutionHostId: null,
+    activeWorkspaceExecutionHostId: null as ExecutionHostId | null,
     activeWorkspaceKey: null,
     worktreeLineageById: {},
     settings: { showPinnedWorktreesInGroups: true },
@@ -40,9 +49,14 @@ function sliceState(worktrees: Worktree[]) {
         (candidate) =>
           candidate.id === worktreeId &&
           (executionHostId === undefined || (candidate.hostId ?? 'local') === executionHostId)
-      )
+      ),
+    ...overrides
   }
   return { state, get: () => state }
+}
+
+function withLineage(worktree: Worktree, lineage: WorktreeLineage): Worktree {
+  return { ...worktree, lineage } as Worktree
 }
 
 describe('setWorktreesPinnedAndReveal', () => {
@@ -64,5 +78,60 @@ describe('setWorktreesPinnedAndReveal', () => {
       }
     ])
     expect(state.updateWorktreeMeta).not.toHaveBeenCalled()
+  })
+
+  it('does not reveal a local lineage child when a remote twin ancestor changed', () => {
+    const localParent = worktree({
+      id: 'repo::/parent',
+      hostId: 'local',
+      instanceId: 'local-parent'
+    })
+    const remoteParent = worktree({
+      id: 'repo::/parent',
+      hostId: 'ssh:host-b',
+      instanceId: 'remote-parent'
+    })
+    const localChild = withLineage(
+      worktree({ id: 'repo::/child', hostId: 'local', instanceId: 'local-child' }),
+      {
+        worktreeId: 'repo::/child',
+        worktreeInstanceId: 'local-child',
+        parentWorktreeId: 'repo::/parent',
+        parentWorktreeInstanceId: 'local-parent',
+        origin: 'manual',
+        capture: { source: 'manual-action', confidence: 'explicit' },
+        createdAt: 1
+      }
+    )
+    const remoteChild = withLineage(
+      worktree({ id: 'repo::/child', hostId: 'ssh:host-b', instanceId: 'remote-child' }),
+      {
+        worktreeId: 'repo::/child',
+        worktreeInstanceId: 'remote-child',
+        parentWorktreeId: 'repo::/parent',
+        parentWorktreeInstanceId: 'remote-parent',
+        origin: 'manual',
+        capture: { source: 'manual-action', confidence: 'explicit' },
+        createdAt: 1
+      }
+    )
+    const { state, get } = sliceState([localParent, remoteParent, localChild, remoteChild], {
+      activeWorktreeId: localChild.id,
+      settings: { showPinnedWorktreesInGroups: false }
+    })
+
+    createSetWorktreesPinnedAndReveal(get)(
+      [{ worktreeId: remoteParent.id, executionHostId: 'ssh:host-b' }],
+      true
+    )
+
+    expect(state.revealWorktreeInSidebar).not.toHaveBeenCalled()
+    expect(state.updateWorktreesMeta).toHaveBeenCalledWith([
+      {
+        worktreeId: remoteParent.id,
+        updates: { isPinned: true },
+        executionHostId: 'ssh:host-b'
+      }
+    ])
   })
 })

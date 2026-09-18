@@ -144,7 +144,7 @@ export function useWorktreeCardWorkspaceActions({
         event.preventDefault()
         return
       }
-      onCardDragStart?.(event, worktree.id, dragIds, pinTargets)
+      onCardDragStart?.(event, worktree.id, dragIds)
     },
     [isDeleting, isMultiSelected, onCardDragStart, selectedWorktrees, worktree]
   )

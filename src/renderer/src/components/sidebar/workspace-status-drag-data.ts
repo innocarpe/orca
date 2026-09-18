@@ -7,6 +7,7 @@ export const WORKSPACE_STATUS_DRAG_IDS_TYPE = 'application/x-orca-worktree-ids'
 export const WORKSPACE_STATUS_DRAG_TARGETS_TYPE = 'application/x-orca-worktree-targets'
 export const WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES = 16 * 1024
 export const WORKSPACE_STATUS_DRAG_ID_MAX_COUNT = 512
+export const WORKSPACE_STATUS_DRAG_TARGET_MAX_COUNT = 512
 
 export function writeWorkspaceDragData(
   dataTransfer: DataTransfer,
@@ -22,7 +23,7 @@ export function writeWorkspaceDragData(
     !firstWorktreeId ||
     worktreeIds.length > WORKSPACE_STATUS_DRAG_ID_MAX_COUNT ||
     !isWorkspaceStatusDragPayloadWithinLimit(idsPayload) ||
-    (pinTargets && pinTargets.length > 0 && !targetPayload)
+    (pinTargets !== undefined && (pinTargets.length !== worktreeIds.length || !targetPayload))
   ) {
     return false
   }
@@ -117,15 +118,10 @@ export function hasWorkspaceDragData(dataTransfer: DataTransfer): boolean {
 function collectWorkspacePinTargets(values: readonly unknown[]): WorkspacePinTarget[] | null {
   const targets: WorkspacePinTarget[] = []
   for (const value of values) {
-    if (targets.length >= WORKSPACE_STATUS_DRAG_ID_MAX_COUNT) {
+    if (targets.length >= WORKSPACE_STATUS_DRAG_TARGET_MAX_COUNT) {
       return null
     }
-    if (typeof value === 'string') {
-      if (value.length === 0) {
-        return null
-      }
-      targets.push(value)
-    } else if (Array.isArray(value)) {
+    if (Array.isArray(value)) {
       const [worktreeId, executionHostId] = value
       const target = parseQualifiedWorkspacePinTarget(worktreeId, executionHostId)
       if (!target) {
@@ -177,9 +173,22 @@ function isWorkspaceStatusDragPayloadWithinLimit(value: string): boolean {
 }
 
 function encodeWorkspacePinTargets(targets: readonly WorkspacePinTarget[]): string | null {
-  const encoded = targets.map((target) =>
-    typeof target === 'string' ? target : [target.worktreeId, target.executionHostId]
-  )
+  if (
+    targets.length === 0 ||
+    targets.length > WORKSPACE_STATUS_DRAG_TARGET_MAX_COUNT ||
+    targets.some((target) => typeof target === 'string')
+  ) {
+    return null
+  }
+  const encoded = targets.map((target) => {
+    if (typeof target === 'string') {
+      return null
+    }
+    return [target.worktreeId, target.executionHostId]
+  })
+  if (encoded.some((target) => target === null)) {
+    return null
+  }
   const payload = JSON.stringify(encoded)
   return isWorkspaceStatusDragPayloadWithinLimit(payload) ? payload : null
 }

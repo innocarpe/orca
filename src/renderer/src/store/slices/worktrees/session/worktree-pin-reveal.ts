@@ -10,6 +10,11 @@ import {
 } from '../../../../../../shared/resolved-worktree-lineage'
 import type { WorktreeLineage } from '../../../../../../shared/worktree/lineage-types'
 import type { Worktree } from '../../../../../../shared/worktree/types'
+import {
+  LOCAL_EXECUTION_HOST_ID,
+  type ExecutionHostId
+} from '../../../../../../shared/execution-host'
+import { getWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
 
 type WorktreeWithEmbeddedLineage = Worktree & { lineage?: WorktreeLineage | null }
 type WorktreePinRevealState = {
@@ -38,15 +43,21 @@ function getProjectedLineage(
 function hasChangedLineageAncestor(
   get: WorktreePinRevealGet,
   worktreeId: string,
-  changedWorktreeIds: ReadonlySet<string>
+  executionHostId: ExecutionHostId | undefined,
+  changedWorktreeIdentities: ReadonlySet<string>
 ): boolean {
   const seen = new Set<string>()
   const validLineageByChildId = new Map<string, WorktreeLineage>()
-  let child = get().getKnownWorktreeById(worktreeId)
+  let child = get().getKnownWorktreeById(worktreeId, executionHostId)
   while (child && !seen.has(child.id)) {
     seen.add(child.id)
     const lineage = getProjectedLineage(get, child)
-    const parent = lineage ? get().getKnownWorktreeById(lineage.parentWorktreeId) : null
+    const parent = lineage
+      ? get().getKnownWorktreeById(
+          lineage.parentWorktreeId,
+          child.hostId ?? LOCAL_EXECUTION_HOST_ID
+        )
+      : null
     if (!lineage || !parent || !isValidResolvedWorktreeLineageEdge(child, parent, lineage)) {
       break
     }
@@ -54,14 +65,19 @@ function hasChangedLineageAncestor(
     child = parent
   }
   const cyclicIds = getCyclicWorktreeLineageChildIds(validLineageByChildId)
-  child = get().getKnownWorktreeById(worktreeId)
+  child = get().getKnownWorktreeById(worktreeId, executionHostId)
   while (child && !cyclicIds.has(child.id)) {
     const lineage = getProjectedLineage(get, child)
-    const parent = lineage ? get().getKnownWorktreeById(lineage.parentWorktreeId) : null
+    const parent = lineage
+      ? get().getKnownWorktreeById(
+          lineage.parentWorktreeId,
+          child.hostId ?? LOCAL_EXECUTION_HOST_ID
+        )
+      : null
     if (!lineage || !parent || !isValidResolvedWorktreeLineageEdge(child, parent, lineage)) {
       return false
     }
-    if (changedWorktreeIds.has(parent.id)) {
+    if (changedWorktreeIdentities.has(getWorktreeHostIdentity(parent))) {
       return true
     }
     child = parent
@@ -80,7 +96,7 @@ export function createSetWorktreesPinnedAndReveal(
     )
     // Skip worktrees already in the target state so a no-op toggle doesn't scroll the viewport away.
     const updates: WorktreeMetaBatchUpdate[] = []
-    const changedWorktreeIds = new Set<string>()
+    const changedWorktreeIdentities = new Set<string>()
     let didChange = false
     let revealWorktreeId: string | null = null
     for (const target of targets) {
@@ -93,7 +109,7 @@ export function createSetWorktreesPinnedAndReveal(
         continue
       }
       didChange = true
-      changedWorktreeIds.add(worktreeId)
+      changedWorktreeIdentities.add(getWorktreeHostIdentity(current))
       const workspaceScope = parseWorkspaceKey(worktreeId)
       if (workspaceScope?.type === 'folder') {
         void get().updateWorktreeMeta(
@@ -126,7 +142,12 @@ export function createSetWorktreesPinnedAndReveal(
       revealWorktreeId === null &&
       activeSidebarWorktreeId !== null &&
       get().settings?.showPinnedWorktreesInGroups !== true &&
-      hasChangedLineageAncestor(get, activeSidebarWorktreeId, changedWorktreeIds)
+      hasChangedLineageAncestor(
+        get,
+        activeSidebarWorktreeId,
+        get().activeWorkspaceExecutionHostId ?? undefined,
+        changedWorktreeIdentities
+      )
     ) {
       revealWorktreeId = activeSidebarWorktreeId
     }

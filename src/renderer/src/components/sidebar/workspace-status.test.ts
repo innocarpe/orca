@@ -4,6 +4,7 @@ import {
   WORKSPACE_STATUS_DRAG_ID_MAX_COUNT,
   WORKSPACE_STATUS_DRAG_IDS_TYPE,
   WORKSPACE_STATUS_DRAG_PAYLOAD_MAX_BYTES,
+  WORKSPACE_STATUS_DRAG_TARGET_MAX_COUNT,
   WORKSPACE_STATUS_DRAG_TARGETS_TYPE,
   WORKSPACE_STATUS_DRAG_TYPE,
   hasWorkspaceDragData,
@@ -87,6 +88,23 @@ describe('workspace status drag data', () => {
     expect(readWorkspaceDragDataTargets(dataTransfer)).toEqual(targets)
   })
 
+  it('round-trips a qualified target batch near the maximum target count', () => {
+    const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
+    const targets: WorkspacePinTarget[] = Array.from(
+      { length: WORKSPACE_STATUS_DRAG_TARGET_MAX_COUNT - 1 },
+      (_value, index) => ({ worktreeId: `w${index.toString(36)}`, executionHostId: 'local' })
+    )
+
+    expect(
+      writeWorkspaceDragData(
+        dataTransfer,
+        targets.map((target) => (typeof target === 'string' ? target : target.worktreeId)),
+        targets
+      )
+    ).toBe(true)
+    expect(readWorkspaceDragDataTargets(dataTransfer)).toEqual(targets)
+  })
+
   it('refuses an oversized qualified target batch instead of writing an unsafe fallback', () => {
     const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
     const targets: WorkspacePinTarget[] = Array.from({ length: 512 }, (_value, index) => ({
@@ -99,6 +117,22 @@ describe('workspace status drag data', () => {
         dataTransfer,
         targets.map((target) => (typeof target === 'string' ? target : target.worktreeId)),
         targets
+      )
+    ).toBe(false)
+    expect(dataTransfer.types).toEqual([])
+  })
+
+  it('refuses a qualified target batch whose count does not match its ids', () => {
+    const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
+
+    expect(
+      writeWorkspaceDragData(
+        dataTransfer,
+        ['shared'],
+        [
+          { worktreeId: 'shared', executionHostId: 'local' },
+          { worktreeId: 'shared', executionHostId: 'ssh:host-b' }
+        ]
       )
     ).toBe(false)
     expect(dataTransfer.types).toEqual([])

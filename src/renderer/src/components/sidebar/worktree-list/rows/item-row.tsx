@@ -24,7 +24,6 @@ import { stopNestedWorktreeCardBubble } from './header-event-guards'
 import type { WorktreeItemRow } from '../listing/renderable-rows'
 import { getWorktreeOptionId } from './option-dom'
 import type { WorktreeRowDragState } from '../drag/row-state'
-import type { WorkspacePinTarget } from '../../../../store/slices/worktree-helpers'
 
 export type WorktreeItemRowContext = {
   settings: AppState['settings']
@@ -58,8 +57,7 @@ export type WorktreeItemRowContext = {
   onCardDragStart: (
     event: React.DragEvent<HTMLDivElement>,
     worktreeId: string,
-    draggedIds: readonly string[],
-    pinTargets: readonly WorkspacePinTarget[]
+    draggedIds: readonly string[]
   ) => void
   onCardDragEnd: () => void
 }
