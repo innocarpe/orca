@@ -12,6 +12,10 @@ import type {
   MobileViewState
 } from '../worktree/workspace-view-settings'
 import type { FilterState, Worktree } from '../worktree/workspace-list-sections'
+import type {
+  MobileProjectGroup,
+  MobileRepoGrouping
+} from '../worktree/workspace-list-project-groups'
 import type { MobileHostRepoIcon } from './host-screen-reply-schema'
 
 export function useHostScreenState(hostId: string | undefined, action: string | undefined) {
@@ -75,6 +79,10 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
   const [sleptIds, setSleptIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [projectGroups, setProjectGroups] = useState<MobileProjectGroup[]>([])
+  const [repoGroupingById, setRepoGroupingById] = useState<Map<string, MobileRepoGrouping>>(
+    new Map()
+  )
   // Why: ref so the ui.get merge and ui.set writes read the latest values without re-creating callbacks on every state change.
   const viewStateRef = useRef<MobileViewState>({
     groupMode: 'repo',
@@ -108,7 +116,9 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     newWorktreeModalVisibleRef,
     optimisticActiveWorktreeIdentity,
     pinnedIds,
+    projectGroups,
     repoColorsByName,
+    repoGroupingById,
     repoHostIdByRepoId,
     repoIconsByName,
     repoIdsByName,
@@ -129,7 +139,9 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
     setPinnedIds,
+    setProjectGroups,
     setRepoColorsByName,
+    setRepoGroupingById,
     setRepoHostIdByRepoId,
     setRepoIconsByName,
     setRepoIdsByName,
