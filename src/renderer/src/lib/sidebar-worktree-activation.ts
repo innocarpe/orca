@@ -10,7 +10,6 @@ import { useAppStore } from '@/store'
 import { findRepoForHost } from '@/store/slices/repo-host-identity'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { buildSidebarDefaultAgentStartup } from '@/lib/sidebar-default-agent-startup'
-import { workspaceHasSleepingAgentSessions } from '@/lib/worktree-agent-activation-gate'
 
 type SidebarActivationOptions = {
   launchDefaultAgent?: boolean
@@ -33,12 +32,13 @@ export async function activateWorktreeFromSidebar(
     return
   }
   // Keep navigation independent from an optional runtime wake IPC.
-  const startup = options?.launchDefaultAgent
+  // Why: seed-if-empty is not hasActivationWork, so the gate still adopts live/unverifiable surfaces.
+  const seedStartupIfEmpty = options?.launchDefaultAgent
     ? resolveSidebarDefaultAgentStartup(worktreeId, executionHostId)
     : undefined
   activateAndRevealWorktree(worktreeId, {
     revealInSidebar: false,
-    ...(startup ? { startup } : {}),
+    ...(seedStartupIfEmpty ? { seedStartupIfEmpty } : {}),
     ...(executionHostId ? { executionHostId } : {})
   })
 
@@ -66,13 +66,6 @@ export async function activateWorktreeFromSidebar(
 
 function resolveSidebarDefaultAgentStartup(worktreeId: string, executionHostId?: ExecutionHostId) {
   const state = useAppStore.getState()
-  // Why: attaching startup marks hasActivationWork and skips the gate that adopts live/hydrating surfaces.
-  if (
-    state.reconcileWorktreeTabModel(worktreeId).renderableTabCount !== 0 ||
-    workspaceHasSleepingAgentSessions(state, worktreeId)
-  ) {
-    return undefined
-  }
   const worktree = state.getKnownWorktreeById(worktreeId, executionHostId)
   if (!worktree) {
     return undefined

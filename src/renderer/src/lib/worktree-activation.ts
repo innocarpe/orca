@@ -181,6 +181,7 @@ export function activateAndRevealWorktree(
   if (!wt) {
     return false
   }
+  // Why: seedStartupIfEmpty is not launch work — the gate must still adopt live/unverifiable surfaces.
   const hasActivationWork = Boolean(
     opts?.startup || opts?.setup || opts?.defaultTabs || opts?.issueCommand
   )
@@ -246,7 +247,8 @@ export function activateAndRevealWorktree(
     gateAndReseedEmptyWorkspace(
       worktreeId,
       opts?.providesInitialSurface === true,
-      opts?.executionHostId
+      opts?.executionHostId,
+      opts?.seedStartupIfEmpty
     )
   }
 
@@ -266,6 +268,7 @@ export function activateAndRevealWorktree(
             ...(opts?.backendStartupTerminalSpawned ? { backendStartupTerminalSpawned: true } : {}),
             ...(opts?.createNewTerminalForStartup ? { createNewTerminalForStartup: true } : {}),
             ...(providesInitialSurface ? { callerProvidesSurface: true } : {}),
+            ...(opts?.seedStartupIfEmpty ? { seedStartupIfEmpty: opts.seedStartupIfEmpty } : {}),
             reseedEmptiedWorkspace: !providesInitialSurface
           }
         )
