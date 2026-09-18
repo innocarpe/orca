@@ -35,9 +35,10 @@ function sliceState(
     settings: { showPinnedWorktreesInGroups: boolean }
   }> = {}
 ) {
+  const activeWorkspaceExecutionHostId: ExecutionHostId | null = null
   const state = {
     activeWorktreeId: null,
-    activeWorkspaceExecutionHostId: null as ExecutionHostId | null,
+    activeWorkspaceExecutionHostId,
     activeWorkspaceKey: null,
     worktreeLineageById: {},
     settings: { showPinnedWorktreesInGroups: true },
@@ -55,8 +56,11 @@ function sliceState(
   return { state, get: () => state }
 }
 
-function withLineage(worktree: Worktree, lineage: WorktreeLineage): Worktree {
-  return { ...worktree, lineage } as Worktree
+function withLineage(
+  worktree: Worktree,
+  lineage: WorktreeLineage
+): Worktree & { lineage: WorktreeLineage } {
+  return { ...worktree, lineage }
 }
 
 describe('setWorktreesPinnedAndReveal', () => {

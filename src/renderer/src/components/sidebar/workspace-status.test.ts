@@ -108,8 +108,8 @@ describe('workspace status drag data', () => {
   it('refuses an oversized qualified target batch instead of writing an unsafe fallback', () => {
     const dataTransfer = new TestDataTransfer() as unknown as DataTransfer
     const targets: WorkspacePinTarget[] = Array.from({ length: 512 }, (_value, index) => ({
-      worktreeId: `worktree-${index.toString().padStart(3, '0')}-${'x'.repeat(36)}`,
-      executionHostId: 'ssh:host-with-a-long-name'
+      worktreeId: `${index}`,
+      executionHostId: `ssh:${'h'.repeat(30)}`
     }))
 
     expect(
