@@ -193,6 +193,7 @@ describe('/shared ai-vault-session-filters (lifted core)', () => {
 
   it('exposes a stable agent label and folder label', () => {
     expect(agentLabel('claude')).toBe('Claude')
+    expect(agentLabel('mimo-code')).toBe('MiMo Code')
     expect(folderLabel('/Users/ada/repo/app')).toBe('repo/app')
   })
 
