@@ -498,6 +498,19 @@ describe('fetchOpenCodeGoRateLimits', () => {
     expect(result.error).toBe('Usage fetch failed (404)')
   })
 
+  it('tells the user to include __Host-console_session when usage fetch returns 401', async () => {
+    netFetchMock
+      .mockResolvedValueOnce(makeResponse(WORKSPACES_RESPONSE))
+      .mockResolvedValueOnce(makeResponse('Unauthorized', 401))
+
+    const result = await fetchOpenCodeGoRateLimits('auth=mytoken')
+
+    expect(result.status).toBe('error')
+    expect(result.error).toBe(
+      'Usage fetch failed (401) — paste the full Cookie header including __Host-console_session (auth alone is not enough)'
+    )
+  })
+
   it('returns error when usage data cannot be parsed', async () => {
     netFetchMock
       .mockResolvedValueOnce(makeResponse(WORKSPACES_RESPONSE))

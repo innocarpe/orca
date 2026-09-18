@@ -234,7 +234,10 @@ async function fetchOpenCodeGoRateLimitsWithSession(
       })
 
       if (!statusRes.ok) {
-        lastError = `Usage fetch failed (${statusRes.status})`
+        lastError =
+          statusRes.status === 401
+            ? 'Usage fetch failed (401) — paste the full Cookie header including __Host-console_session (auth alone is not enough)'
+            : `Usage fetch failed (${statusRes.status})`
         continue
       }
 
