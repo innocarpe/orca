@@ -1,3 +1,4 @@
+import { normalizeClaudeManagedAccountDisplayName } from '../../shared/claude-managed-account-label'
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
@@ -115,6 +116,19 @@ export class ClaudeAccountSelection {
     }
   }
 
+  updateDisplayName(accountId: string, displayName: string | null): ClaudeRateLimitAccountsState {
+    this.requireAccount(accountId)
+    const settings = this.store.getSettings()
+    const nextDisplayName = normalizeClaudeManagedAccountDisplayName(displayName)
+    const now = Date.now()
+    this.store.updateSettings({
+      claudeManagedAccounts: settings.claudeManagedAccounts.map((entry) =>
+        entry.id === accountId ? { ...entry, displayName: nextDisplayName, updatedAt: now } : entry
+      )
+    })
+    return this.snapshot()
+  }
+
   snapshot(): ClaudeRateLimitAccountsState {
     const settings = this.store.getSettings()
     return {
@@ -184,6 +198,7 @@ function toClaudeAccountSummary(account: ClaudeManagedAccount): ClaudeManagedAcc
     authMethod: account.authMethod ?? 'unknown',
     organizationUuid: account.organizationUuid ?? null,
     organizationName: account.organizationName ?? null,
+    displayName: account.displayName ?? null,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
     lastAuthenticatedAt: account.lastAuthenticatedAt
