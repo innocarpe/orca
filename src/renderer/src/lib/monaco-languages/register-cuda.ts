@@ -30,10 +30,55 @@ const CUDA_KEYWORDS = [
   'warpSize'
 ] as const
 
+const CUDA_VECTOR_TYPES = [
+  'char1',
+  'char2',
+  'char3',
+  'char4',
+  'uchar1',
+  'uchar2',
+  'uchar3',
+  'uchar4',
+  'short1',
+  'short2',
+  'short3',
+  'short4',
+  'ushort1',
+  'ushort2',
+  'ushort3',
+  'ushort4',
+  'int1',
+  'int2',
+  'int3',
+  'int4',
+  'uint1',
+  'uint2',
+  'uint3',
+  'uint4',
+  'long1',
+  'long2',
+  'long3',
+  'long4',
+  'ulong1',
+  'ulong2',
+  'ulong3',
+  'ulong4',
+  'longlong1',
+  'longlong2',
+  'ulonglong1',
+  'ulonglong2',
+  'float1',
+  'float2',
+  'float3',
+  'float4',
+  'double1',
+  'double2'
+] as const
+
 export const cudaMonarchLanguage: Monaco.languages.IMonarchLanguage = {
   ...cppMonarchLanguage,
   tokenPostfix: '.cuda',
-  keywords: [...(cppMonarchLanguage.keywords ?? []), ...CUDA_KEYWORDS]
+  keywords: [...(cppMonarchLanguage.keywords ?? []), ...CUDA_KEYWORDS, ...CUDA_VECTOR_TYPES]
 }
 
 export function registerCudaLanguage(monaco: MonacoModule): void {
