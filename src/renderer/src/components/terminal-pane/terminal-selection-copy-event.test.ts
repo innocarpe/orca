@@ -35,6 +35,7 @@ describe('installTerminalSelectionCopyHandler', () => {
   it('leaves an empty selection to the native copy path', () => {
     const terminal = makeTerminal('')
     const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue()
+    installTerminalSelectionCopyHandler(terminal, writeClipboardText)
 
     const { event } = dispatchCopy(terminal.element)
 
