@@ -99,6 +99,24 @@ describe('renderer web client projection', () => {
     expect(result.stderr).toContain('Renderer manifest is missing entry: web-index.html')
   })
 
+  it('projects pdf.js viewer asset directories next to web-index.html', () => {
+    const root = createRendererFixture()
+    writeFixtureFile(root, 'out/renderer/cmaps/Adobe-Japan1-UCS2.bcmap', 'cmap')
+    writeFixtureFile(root, 'out/renderer/standard_fonts/LiberationSans-Regular.otf', 'font')
+    writeFixtureFile(root, 'out/renderer/wasm/jbig2.wasm', 'wasm')
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: root,
+      encoding: 'utf8'
+    })
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(readFileSync(join(root, 'out/web/cmaps/Adobe-Japan1-UCS2.bcmap'), 'utf8')).toBe('cmap')
+    expect(
+      readFileSync(join(root, 'out/web/standard_fonts/LiberationSans-Regular.otf'), 'utf8')
+    ).toBe('font')
+    expect(readFileSync(join(root, 'out/web/wasm/jbig2.wasm'), 'utf8')).toBe('wasm')
+  })
+
   it('rejects renderer entries that execute another entry root', () => {
     const root = createRendererFixture()
     const manifestPath = join(root, 'out/renderer/.vite/manifest.json')
