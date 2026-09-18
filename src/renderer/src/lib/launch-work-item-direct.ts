@@ -212,11 +212,13 @@ export async function launchWorkItemDirect(args: LaunchWorkItemDirectArgs): Prom
     )
     worktreeId = result.worktree.id
     worktreePath = result.worktree.path
-    await assignUnassignedGitHubIssueOnStart({
+    // Why: assignment is best-effort and can wait on gh; do not delay reveal.
+    void assignUnassignedGitHubIssueOnStart({
       enabled: settings.assignUnassignedGitHubIssuesOnStart === true,
       item: { ...item, type: itemType, number: itemNumber },
-      repoId
-    })
+      repoId,
+      sourceContext: args.sourceContext
+    }).catch(() => undefined)
 
     const launchPreparation = await prepareDirectWorkItemAgentLaunch({
       worktreeId,
