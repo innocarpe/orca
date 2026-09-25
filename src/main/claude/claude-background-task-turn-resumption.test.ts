@@ -134,6 +134,40 @@ describe('a typed background-task row opens the turn it resumes', () => {
     expect(projected(items())).toBe('working')
   })
 
+  it('keeps an idle chat idle when a live task only reports progress', () => {
+    const { translator, items } = harness()
+    spawnToolCall(translator)
+    translator.handle(
+      systemFrame('s1', {
+        subtype: 'task_started',
+        task_id: 'live-progress',
+        tool_use_id: TOOL,
+        task_type: 'local_bash',
+        description: 'Wait for the verification verdict',
+        is_backgrounded: true
+      })
+    )
+    settleTurn(translator)
+    expect(projected(items())).toBe('idle')
+
+    translator.handle(
+      systemFrame('s2', {
+        subtype: 'task_progress',
+        task_id: 'live-progress',
+        tool_use_id: TOOL,
+        usage: { total_tokens: 14866 }
+      })
+    )
+
+    const taskRow = items().find((item) => item.itemId.includes('live-progress'))
+    expect(taskRow).toBeDefined()
+    expect(JSON.stringify(taskRow?.body)).toContain('14866')
+    expect(
+      items().filter((item) => readAgentJournalTurn(item.body)?.state === 'running')
+    ).toHaveLength(0)
+    expect(projected(items())).toBe('idle')
+  })
+
   it('does not reopen a completed turn for a late task revision', () => {
     const { translator, items } = harness()
     spawnToolCall(translator)
