@@ -4,6 +4,7 @@ import type { AgentStatusState } from '../../shared/agent-status-types'
 import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-title'
 import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import type { TuiAgent } from '../../shared/tui-agent'
+import { isDsbWorkingTitle } from './dsb-terminal-readiness'
 import { detectExplicitIdleStatusFromTitle } from './terminal-wait-detection'
 
 /**
@@ -160,6 +161,25 @@ export function hasQuietMuseReadyPrompt(
 
 /** The one place the tiers are combined; every satisfaction site routes here. */
 export function isTuiIdleSatisfied(input: TuiIdleSatisfactionInput): boolean {
+  // Why before the shared body scan: DeepSeek Build keeps ❯ on screen during a turn,
+  // and that turn retitles to "Waiting for response…". A generic ready-prompt hit
+  // would settle the wait in the middle of the turn.
+  if (input.agent === 'dsb') {
+    const title = input.rendererTitle ?? input.record.lastOscTitle ?? ''
+    const reported = input.firstPartyStatus?.state
+    if (reported === 'working' || reported === 'blocked' || reported === 'waiting') {
+      return false
+    }
+    // Why done outranks a stale spinner title: the OSC title can lag one frame
+    // behind {"state":"done"}, and the composer glyph stays on screen either way.
+    if (reported === 'done' && input.readPositiveBodyEvidence()) {
+      return true
+    }
+    if (isDsbWorkingTitle(title)) {
+      return false
+    }
+    return input.readPositiveBodyEvidence()
+  }
   // Why the title before the body: both are tier 1, so either settles, but the title is a
   // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.
   if (hasExplicitIdleTitle(input.record, input.rendererTitle) || input.readPositiveBodyEvidence()) {

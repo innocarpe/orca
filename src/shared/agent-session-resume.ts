@@ -19,7 +19,8 @@ export const RESUMABLE_TUI_AGENTS = [
   'copilot',
   'kimi',
   'muse',
-  'zcode'
+  'zcode',
+  'dsb'
 ] as const satisfies readonly TuiAgent[]
 
 export type ResumableTuiAgent = (typeof RESUMABLE_TUI_AGENTS)[number]
@@ -314,5 +315,9 @@ export function getAgentResumeArgv(
       return providerSession.key === 'session_id' ? ['muse', 'resume', id] : null
     case 'zcode':
       return providerSession.key === 'session_id' ? ['zcode', '--resume', id] : null
+    // Why: `dsb --resume <id>` re-enters a full-screen TUI session. Bare `-r` with
+    // no id resumes the most recent one, so an explicit id is required here.
+    case 'dsb':
+      return providerSession.key === 'session_id' ? ['dsb', '--resume', id] : null
   }
 }
