@@ -269,7 +269,9 @@ export class ClaudeBackgroundTaskRows {
       id,
       row,
       () => {
-        if (journaling && openOutputTurn) {
+        // Why: a progress tick refreshes the row only. Opening a turn here
+        // flips an idle chat back to working.
+        if (journaling && openOutputTurn && journaling.frame.subtype !== 'task_progress') {
           this.deps.openOutputTurn?.(journaling.frame, journaling.observedAt)
         }
       },
