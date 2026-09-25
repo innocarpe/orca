@@ -211,7 +211,8 @@ export function createAgentStatusEventApplicator(args: {
       existingStatus &&
       shouldSuppressInheritedTerminalStatus({
         inheritedFromActivePane: identity.inheritedFromActivePane,
-        incomingState: statusPayload.state
+        incomingState: statusPayload.state,
+        sameTerminalOwner: (existingStatus.connectionId ?? null) === (data.connectionId ?? null)
       })
     ) {
       return 'dropped'
