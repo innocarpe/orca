@@ -129,6 +129,30 @@ describe('agentDisplayLabel', () => {
     expect(agentDotState(stopping, 0)).toBe('working')
   })
 
+  it('prefers a stable name over the last message', () => {
+    expect(
+      agentDisplayLabel(
+        row({ conversationName: 'Patient sync spike', lastAssistantMessage: 'Done' }),
+        0
+      )
+    ).toBe('Patient sync spike')
+    expect(
+      agentDisplayLabel(row({ taskTitle: 'Fix auth redirect', lastAssistantMessage: 'Done' }), 0)
+    ).toBe('Fix auth redirect')
+    expect(
+      agentDisplayLabel(
+        row({ displayName: 'Chart sync', lastAssistantMessage: 'Done', prompt: 'sync the chart' }),
+        0
+      )
+    ).toBe('Chart sync')
+  })
+
+  it('keeps the last message when the row has no stable name', () => {
+    expect(
+      agentDisplayLabel(row({ lastAssistantMessage: 'hello there', prompt: 'do the thing' }), 0)
+    ).toBe('hello there')
+  })
+
   it('falls back to the decayed state label when stale', () => {
     expect(agentDisplayLabel(row({ state: 'working', prompt: '', updatedAt: 0 }), 1_800_001)).toBe(
       'Idle'

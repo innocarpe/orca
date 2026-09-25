@@ -15,6 +15,7 @@ import {
   applyRuntimeWorktreePsTerminalActivity
 } from '../runtime-worktree-ps-activity'
 import { applyRuntimeWorktreePsUnverifiableTerminals } from '../runtime-worktree-ps-unverifiable-terminals'
+import { resolveWorktreeAgentConversationNames } from '../runtime-worktree-agent-conversation-name'
 import { attachRuntimeWorktreeAgentRows } from '../runtime-worktree-agent-rows'
 import { attachRuntimeWorktreeAgentRowWaits } from '../runtime-worktree-agent-row-waits'
 import { compareWorktreePs } from '../runtime-worktree-status-projection'
@@ -125,11 +126,18 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
       hookSnapshots: this.getAgentStatusSnapshotFn?.() ?? [],
       readStructuredSummary: getStructuredAgentSessionHost()?.readStatusSummary
     })
+    const orchestrationByPaneKey = this.agentOrchestrationProjection.buildByPaneKey()
     attachRuntimeWorktreeAgentRows({
       summaries,
       terminalTitleEvidenceByWorktreeId,
       rowSources,
-      orchestrationByPaneKey: this.agentOrchestrationProjection.buildByPaneKey(),
+      orchestrationByPaneKey,
+      conversationNameByPaneKey: resolveWorktreeAgentConversationNames({
+        sources: rowSources.values(),
+        tabsByWorktree: session?.tabsByWorktree,
+        generatedTitlesEnabled: this.store?.getSettings()?.tabAutoGenerateTitle === true,
+        orchestrationByPaneKey
+      }),
       getSummary
     })
 

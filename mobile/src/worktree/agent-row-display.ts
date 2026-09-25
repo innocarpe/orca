@@ -72,9 +72,22 @@ export function agentStateLabel(state: AgentDotState): string {
 }
 
 // Match DashboardAgentRow fallback order; a user-requested Stop takes precedence while ending the turn.
+// Prefer a stable conversation or task name over the last message (#20444).
 export function agentDisplayLabel(row: RuntimeWorktreeAgentRow, now: number): string {
   if (row.state === 'working' && row.mainAgent?.stopping === true) {
     return translate('worktree.agentRowDisplay.stopping', 'Stopping…')
+  }
+  const conversationName = row.conversationName?.trim()
+  if (conversationName) {
+    return conversationName
+  }
+  const taskTitle = row.taskTitle?.trim()
+  if (taskTitle) {
+    return taskTitle
+  }
+  const displayName = row.displayName?.trim()
+  if (displayName) {
+    return displayName
   }
   const message = row.lastAssistantMessage?.trim()
   if (message) {
