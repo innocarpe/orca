@@ -538,7 +538,7 @@ describe('MobileNativeChatView', () => {
 
       expect(onLoadEarlier).toHaveBeenCalledOnce()
       expect(scrollToEnd).not.toHaveBeenCalled()
-      expect(scrollToOffset).not.toHaveBeenCalled()
+      expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 550 })
       expect(
         renderer!.root.findAll((node) => node.props.accessibilityLabel === 'Scroll to latest')
       ).toHaveLength(1)

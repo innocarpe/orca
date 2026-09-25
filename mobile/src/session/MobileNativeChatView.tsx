@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -25,6 +25,7 @@ import {
   type MobileNativeChatPendingItem
 } from './mobile-native-chat-render-data'
 import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-gesture'
+import { createMobileEarlierPageGate } from './mobile-native-chat-earlier-page'
 import { useMobileNativeChatTailFollow } from './use-mobile-native-chat-tail-follow'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 import { useSettledMobileNativeChatInputLock } from './use-mobile-native-chat-input-lease'
@@ -219,9 +220,10 @@ export function MobileNativeChatView({
     endUserDrag,
     beginMomentum,
     endMomentum,
-    detachFromTail,
+    holdVisibleContent,
     recordScrollMetrics
   } = useMobileNativeChatTailFollow<NativeChatMessage>({ hasItems: data.length > 0 })
+  const earlierPageGateRef = useRef(createMobileEarlierPageGate())
 
   const handleSend = useCallback(
     async (text: string): Promise<boolean> => {
@@ -240,20 +242,25 @@ export function MobileNativeChatView({
   )
 
   const loadEarlier = useCallback(() => {
-    detachFromTail()
+    holdVisibleContent()
     onLoadEarlier?.()
-  }, [detachFromTail, onLoadEarlier])
+  }, [holdVisibleContent, onLoadEarlier])
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset } = e.nativeEvent
       recordScrollMetrics(e.nativeEvent)
-      // Near the top — page in older history.
-      if (contentOffset.y < 60 && hasMore && !loadingEarlier) {
+      if (
+        earlierPageGateRef.current.observe({
+          offsetY: e.nativeEvent.contentOffset.y,
+          itemCount: data.length,
+          hasMore: hasMore === true,
+          loadingEarlier
+        })
+      ) {
         loadEarlier()
       }
     },
-    [hasMore, loadingEarlier, loadEarlier, recordScrollMetrics]
+    [data.length, hasMore, loadingEarlier, loadEarlier, recordScrollMetrics]
   )
 
   // Per-turn status rows: one live indicator while the turn runs, then a settled

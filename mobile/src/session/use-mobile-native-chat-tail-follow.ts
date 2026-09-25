@@ -26,6 +26,11 @@ export type MobileNativeChatTailFollow<TItem> = {
   endMomentum: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
   /** Leave the tail deliberately, e.g. before prepending older history. */
   detachFromTail: () => void
+  /**
+   * Remember the visible offset before an earlier page is prepended, then
+   * shift by the height that page adds so the reader stays on the same row.
+   */
+  holdVisibleContent: () => void
   recordScrollMetrics: (event: NativeScrollEvent) => void
 }
 
@@ -55,6 +60,9 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
   const atTailRef = useRef(true)
   const userScrollActiveRef = useRef(false)
   const userScrollSettleFrameRef = useRef<number | null>(null)
+  const lastOffsetYRef = useRef(0)
+  const lastHeightRef = useRef(0)
+  const prependAnchorRef = useRef<{ offsetY: number; height: number } | null>(null)
 
   // Single writer, so the event-time ref and the render flag cannot disagree.
   const setFollowing = useCallback((next: boolean) => {
@@ -82,9 +90,18 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
 
   const pinToTailAfterContentResize = useCallback(
     (_width: number, height: number) => {
+      const anchor = prependAnchorRef.current
+      if (anchor && !followingRef.current && height > anchor.height) {
+        const offset = anchor.offsetY + (height - anchor.height)
+        prependAnchorRef.current = null
+        lastOffsetYRef.current = offset
+        listRef.current?.scrollToOffset({ animated: false, offset })
+        return
+      }
       if (!followingRef.current || !hasItems) {
         return
       }
+      prependAnchorRef.current = null
       listRef.current?.scrollToOffset({ animated: false, offset: height })
     },
     [hasItems]
@@ -98,7 +115,11 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
   }, [])
 
   const recordScrollMetrics = useCallback(
-    (event: NativeScrollEvent) => setAtTail(isAtTail(event)),
+    (event: NativeScrollEvent) => {
+      lastOffsetYRef.current = event.contentOffset.y
+      lastHeightRef.current = event.contentSize.height
+      setAtTail(isAtTail(event))
+    },
     [setAtTail]
   )
 
@@ -166,6 +187,18 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
     setFollowing(false)
   }, [clearUserScrollSettle, setAtTail, setFollowing])
 
+  const holdVisibleContent = useCallback(() => {
+    detachFromTail()
+    // Why: FlatList keeps the numeric offset when rows are prepended, which
+    // slides the visible page down by the inserted height.
+    if (lastHeightRef.current > 0) {
+      prependAnchorRef.current = {
+        offsetY: lastOffsetYRef.current,
+        height: lastHeightRef.current
+      }
+    }
+  }, [detachFromTail])
+
   useEffect(() => clearUserScrollSettle, [clearUserScrollSettle])
 
   return {
@@ -179,6 +212,7 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
     beginMomentum,
     endMomentum,
     detachFromTail,
+    holdVisibleContent,
     recordScrollMetrics
   }
 }
