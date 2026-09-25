@@ -226,6 +226,29 @@ describe('tui-idle evidence ranking', () => {
     expect(settled).toHaveBeenCalledWith({ ok: expect.objectContaining({ satisfied: true }) })
   })
 
+  it('settles a resting DeepSeek Harness title without waiting for silence', async () => {
+    const pty = makeTuiIdlePty({
+      lastAgentStatus: null,
+      lastOscTitle: '✦ \u{1F40B} dsh-demo-repo'
+    })
+    const { wait } = createWait({ pty, agent: null })
+    await expect(
+      wait.wait(HANDLE, { condition: 'tui-idle', timeoutMs: 60_000 })
+    ).resolves.toMatchObject({ satisfied: true })
+  })
+
+  it('does not treat a working DeepSeek Harness title as idle', async () => {
+    const pty = makeTuiIdlePty({
+      lastAgentStatus: null,
+      lastOscTitle: '\u2802 \u{1F40B} fix the flaky test',
+      lastOutputAt: Date.now()
+    })
+    const { wait } = createWait({ pty, agent: null })
+    const settled = watch(wait.wait(HANDLE, { condition: 'tui-idle', timeoutMs: 60_000 }))
+    await advanceWhileStreaming(pty, 2)
+    expect(settled).not.toHaveBeenCalled()
+  })
+
   it('never settles another agent quoting Muse in its scrollback', async () => {
     const pty = makeTuiIdlePty({
       lastAgentStatus: null,

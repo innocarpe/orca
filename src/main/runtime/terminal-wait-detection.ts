@@ -6,6 +6,7 @@ import {
 } from '../../shared/agent-detection'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
 import { findAntigravityReadyPromptIndex } from './antigravity-terminal-readiness'
+import { findDshReadyPromptIndex, isDshRestingTitle } from './dsh-terminal-readiness'
 import { startOfLastLines, startOfLastNonBlankLines } from './terminal-wait-tail-window'
 
 const EXPLICIT_IDLE_TITLE_RE = /(^|\s)(ready|idle|done)(\s|$|[.!?])/i
@@ -14,6 +15,10 @@ const GEMINI_IDLE_PREFIX = '\u25c7'
 const PI_IDLE_PREFIX = '\u03c0 - '
 
 function computeExplicitIdleStatusFromTitle(title: string): AgentStatus | null {
+  // Why before the generic classifier: ✦ is Gemini's working glyph and DSH's rest prefix.
+  if (isDshRestingTitle(title)) {
+    return 'idle'
+  }
   const status = detectAgentStatusFromTitle(title)
   if (status !== 'idle') {
     return null
@@ -93,7 +98,8 @@ function findDismissedStartupModalIndex(normalized: string): number | null {
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
     findCursorActivePromptIndex(normalized),
-    findMuseReadyPromptIndex(normalized)
+    findMuseReadyPromptIndex(normalized),
+    findDshReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
@@ -102,7 +108,8 @@ function findKnownReadyPromptIndex(normalized: string): number | null {
   const indexes = [
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
-    findCursorReadyPromptIndex(normalized)
+    findCursorReadyPromptIndex(normalized),
+    findDshReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }

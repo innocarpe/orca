@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  detectExplicitIdleStatusFromTitle,
   detectTerminalWaitBlockedReason,
   isKnownReadyPromptPreview,
   isMuseReadyPromptPreview
@@ -580,5 +581,57 @@ describe('isMuseReadyPromptPreview', () => {
     const waitText = waitTextFor([...MUSE_READY_SCREEN_META, ...MUSE_TRUST_DIALOG])
     expect(detectTerminalWaitBlockedReason(waitText)).toBe('agent-trust-workspace')
     expect(isMuseReadyPromptPreview(waitText)).toBe(false)
+  })
+})
+
+const DSH_REST_TITLE = '✦ \u{1F40B} dsh-demo-repo'
+const DSH_WORKING_TITLE = '\u2802 \u{1F40B} fix the flaky test'
+
+function dshIdleScreen(): string[] {
+  return [
+    '✦ dsh-tui  v0.11.0',
+    'deepseek-flash · Max effort',
+    'Explore the uncharted!',
+    '  ⌸ ❯',
+    'deepseek-flash · max · dsh-demo-repo'
+  ]
+}
+
+describe('DeepSeek Harness tui-idle', () => {
+  it('treats a resting whale title as idle and a spinner title as not', () => {
+    expect(detectExplicitIdleStatusFromTitle(DSH_REST_TITLE)).toBe('idle')
+    expect(detectExplicitIdleStatusFromTitle(DSH_WORKING_TITLE)).toBeNull()
+    expect(detectExplicitIdleStatusFromTitle('✦ gemini')).toBeNull()
+  })
+
+  it('accepts the captured idle composer', () => {
+    expect(isKnownReadyPromptPreview(waitTextFor(dshIdleScreen()))).toBe(true)
+  })
+
+  it('refuses the composer while a turn still owns the bottom of the screen', () => {
+    const waitText = waitTextFor([
+      ...dshIdleScreen(),
+      '> Write five short sentences about rain.',
+      'esc to interrupt',
+      '  ⌸ ❯'
+    ])
+    expect(isKnownReadyPromptPreview(waitText)).toBe(false)
+  })
+
+  it('refuses a shell that only echoed the launcher', () => {
+    expect(isKnownReadyPromptPreview(waitTextFor(['$ dsh-tui', '❯']))).toBe(false)
+  })
+
+  it('does not read a question choice as the idle composer', () => {
+    expect(
+      isKnownReadyPromptPreview(
+        waitTextFor([
+          '✦ dsh-tui  v0.11.0',
+          'deepseek-flash · Max effort',
+          'quick question',
+          '❯● Tea'
+        ])
+      )
+    ).toBe(false)
   })
 })
