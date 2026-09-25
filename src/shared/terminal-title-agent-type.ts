@@ -214,6 +214,11 @@ function computeAgentLabel(title: string): string | null {
   if (HERMES_AGENT_NAME_RE.test(title)) {
     return 'Hermes'
   }
+  // Why: a working DeepSeek Build title is "spinner - Waiting for response… - DeepSeek Build".
+  // The braille frame would otherwise be claimed as Claude.
+  if (/deepseek build/i.test(title)) {
+    return 'DeepSeek Build'
+  }
   if (isClaudeAgent(title)) {
     return 'Claude Code'
   }
@@ -241,6 +246,7 @@ const TITLE_LABEL_TO_AGENT: Partial<Record<string, TuiAgent>> = {
   Cursor: 'cursor',
   Droid: 'droid',
   Hermes: 'hermes',
+  'DeepSeek Build': 'dsb',
   Pi: 'pi',
   OMP: 'omp'
 }
