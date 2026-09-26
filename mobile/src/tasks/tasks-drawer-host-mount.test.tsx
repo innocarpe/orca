@@ -8,9 +8,12 @@ vi.mock('../components/mounted-bottom-drawer', () => ({
   MountedBottomDrawer: 'MountedBottomDrawer'
 }))
 
-vi.mock('react-native', () => ({
-  Modal: ({ children }: { children?: unknown }) => children
-}))
+vi.mock('react-native', () => {
+  const react = require('react') as typeof import('react')
+  return {
+    Modal: ({ children }: { children?: unknown }) => react.createElement('Modal', null, children)
+  }
+})
 
 function Stack({ openCount }: { openCount: number }) {
   return createElement(
@@ -48,6 +51,10 @@ function setOpenCount(renderer: ReactTestRenderer, openCount: number): void {
 
 function mountedDrawers(renderer: ReactTestRenderer) {
   return renderer.root.findAllByType('MountedBottomDrawer')
+}
+
+function hostModals(renderer: ReactTestRenderer) {
+  return renderer.root.findAllByType('Modal')
 }
 
 describe('TasksDrawerModalHost close', () => {
@@ -111,6 +118,23 @@ describe('TasksDrawerModalHost close', () => {
       mountedDrawers(renderer)[0]?.props.onHidden()
     })
 
-    expect(mountedDrawers(renderer)).toHaveLength(0)
+    expect(hostModals(renderer)).toHaveLength(0)
+  })
+
+  it('balances a hide that finishes in the same update as a reopen', () => {
+    const renderer = renderHost(1)
+    setOpenCount(renderer, 0)
+    const closing = mountedDrawers(renderer)[0]
+
+    act(() => {
+      closing?.props.onHidden()
+      renderer.update(createElement(Stack, { openCount: 1 }))
+    })
+    setOpenCount(renderer, 0)
+    act(() => {
+      mountedDrawers(renderer)[0]?.props.onHidden()
+    })
+
+    expect(hostModals(renderer)).toHaveLength(0)
   })
 })
