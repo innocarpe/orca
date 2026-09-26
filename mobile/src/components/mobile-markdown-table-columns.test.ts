@@ -3,6 +3,7 @@ import { styles } from './mobile-markdown-styles'
 import {
   MOBILE_MARKDOWN_TABLE_CELL_MAX_WIDTH,
   MOBILE_MARKDOWN_TABLE_CELL_MIN_WIDTH,
+  mobileMarkdownGlyphColumns,
   mobileMarkdownTableColumnWidths
 } from './mobile-markdown-table-columns'
 
@@ -81,6 +82,12 @@ describe('mobileMarkdownTableColumnWidths', () => {
     expect(mobileMarkdownTableColumnWidths(['H'], [[latin]])[0]).toBeLessThan(
       MOBILE_MARKDOWN_TABLE_CELL_MAX_WIDTH
     )
+  })
+
+  it('keeps a joined emoji at two columns when Intl.Segmenter is missing', () => {
+    const family = '👨‍👩‍👧‍👦'.repeat(8)
+
+    expect(mobileMarkdownGlyphColumns(family, null)).toBe(16)
   })
 
   it('counts a joined emoji once instead of once per UTF-16 unit', () => {
