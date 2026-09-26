@@ -6,6 +6,7 @@ import { buildPtyTerminalWaitResult, buildTerminalWaitResult } from './terminal-
 import type { AgentStatus } from '../../shared/agent-detection'
 import {
   detectExplicitIdleStatusFromTitle,
+  isDsbReadyPromptPreview,
   isKnownReadyPromptBody,
   isMuseReadyPromptPreview
 } from './terminal-wait-detection'
@@ -114,6 +115,10 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
           agent,
           () => this.readLiveTerminalScreenLines(leaf.ptyId)
         ),
+      readDsbReadyBodyEvidence: () =>
+        isDsbReadyPromptPreview(
+          buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
+        ),
       readMuseReadyBodyEvidence: () =>
         isMuseReadyPromptPreview(
           buildTerminalWaitText(leaf.tailBuffer, leaf.tailPartialLine, leaf.preview)
@@ -205,6 +210,10 @@ export class OrcaRuntimeWithResolveExitWaiters extends OrcaRuntimeWithBindPtyInc
           buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview),
           agent,
           () => this.readLiveTerminalScreenLines(pty.ptyId)
+        ),
+      readDsbReadyBodyEvidence: () =>
+        isDsbReadyPromptPreview(
+          buildTerminalWaitText(pty.tailBuffer, pty.tailPartialLine, pty.preview)
         ),
       readMuseReadyBodyEvidence: () =>
         isMuseReadyPromptPreview(

@@ -5,6 +5,7 @@ import type {
 import { hasAntigravityTerminalHeader } from './antigravity-terminal-readiness'
 import {
   detectTerminalWaitBlockedReason,
+  isDsbReadyPromptPreview,
   isKnownReadyPromptBody,
   isMuseReadyPromptPreview
 } from './terminal-wait-detection'
@@ -57,6 +58,7 @@ export class RuntimeTerminalWait {
       readPositiveBodyEvidence: () =>
         this.deps.getAdoptedPtyIdleStatus(pty) === 'idle' ||
         isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(pty.ptyId)),
+      readDsbReadyBodyEvidence: () => isDsbReadyPromptPreview(waitText),
       readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
       agent,
       firstPartyStatus: this.deps.getFirstPartyAgentStatus(pty.ptyId),
@@ -71,6 +73,7 @@ export class RuntimeTerminalWait {
       rendererTitle: leaf.paneTitle ?? this.deps.getTabTitle(leaf.tabId),
       readPositiveBodyEvidence: () =>
         isKnownReadyPromptBody(waitText, agent, () => this.deps.readScreenLines(leaf.ptyId)),
+      readDsbReadyBodyEvidence: () => isDsbReadyPromptPreview(waitText),
       readMuseReadyBodyEvidence: () => isMuseReadyPromptPreview(waitText),
       agent,
       firstPartyStatus: this.deps.getFirstPartyAgentStatus(leaf.ptyId),

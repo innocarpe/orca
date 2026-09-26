@@ -48,6 +48,11 @@ export function isKnownReadyPromptPreview(preview: string): boolean {
   return isReadyPromptUnblocked(normalized, findKnownReadyPromptIndex(normalized))
 }
 
+export function isDsbReadyPromptPreview(preview: string): boolean {
+  const normalized = preview.toLowerCase()
+  return isReadyPromptUnblocked(normalized, findDsbReadyPromptIndex(normalized))
+}
+
 /**
  * Tier 1 body evidence for every tui-idle site. `readScreenLines` yields the live emulator's
  * visible grid, or null when the runtime has no trustworthy one.
@@ -119,8 +124,7 @@ function findDismissedStartupModalIndex(normalized: string): number | null {
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
     findCursorActivePromptIndex(normalized),
-    findMuseReadyPromptIndex(normalized),
-    findDsbReadyPromptIndex(normalized)
+    findMuseReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
@@ -129,8 +133,7 @@ function findKnownReadyPromptIndex(normalized: string): number | null {
   const indexes = [
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
-    findCursorReadyPromptIndex(normalized),
-    findDsbReadyPromptIndex(normalized)
+    findCursorReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
