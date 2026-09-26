@@ -506,7 +506,7 @@ describe('MobileNativeChatView', () => {
     expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 1_200 })
   })
 
-  it('keeps a history load detached after its triggering drag settles', async () => {
+  it('stays detached when content grows before older rows arrive', async () => {
     vi.useFakeTimers()
     try {
       const folded = [assistantTurn('a1', 'Short history')]
@@ -538,7 +538,7 @@ describe('MobileNativeChatView', () => {
 
       expect(onLoadEarlier).toHaveBeenCalledOnce()
       expect(scrollToEnd).not.toHaveBeenCalled()
-      expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 550 })
+      expect(scrollToOffset).not.toHaveBeenCalled()
       expect(
         renderer!.root.findAll((node) => node.props.accessibilityLabel === 'Scroll to latest')
       ).toHaveLength(1)
