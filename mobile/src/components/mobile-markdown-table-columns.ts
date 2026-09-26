@@ -113,29 +113,62 @@ function isWideCodePoint(codePoint: number): boolean {
   )
 }
 
-function graphemeClusters(value: string): string[] {
-  if (!graphemeSegmenter) {
-    return Array.from(value)
+function fallbackGraphemeClusters(value: string): string[] {
+  const clusters: string[] = []
+  let current = ''
+  for (const char of Array.from(value)) {
+    if (!current || char === '\u200d' || current.endsWith('\u200d')) {
+      current += char
+      continue
+    }
+    clusters.push(current)
+    current = char
   }
-  return Array.from(graphemeSegmenter.segment(value), (part) => part.segment)
+  if (current) {
+    clusters.push(current)
+  }
+  return clusters
+}
+
+function graphemeClusters(value: string, segmenter: GraphemeSegmenter | null): string[] {
+  if (!segmenter) {
+    return fallbackGraphemeClusters(value)
+  }
+  return Array.from(segmenter.segment(value), (part) => part.segment)
+}
+
+function clusterColumns(cluster: string): number {
+  if (cluster.includes('\u200d')) {
+    let wide = false
+    for (const char of Array.from(cluster)) {
+      if (char === '\u200d' || char === '\uFE0F') {
+        continue
+      }
+      const codePoint = char.codePointAt(0)
+      if (codePoint !== undefined && isWideCodePoint(codePoint)) {
+        wide = true
+      }
+    }
+    return wide ? 2 : 0
+  }
+  const codePoint = cluster.codePointAt(0)
+  if (codePoint === undefined || (codePoint >= 0x0300 && codePoint <= 0x036f)) {
+    return 0
+  }
+  if (codePoint === 0xfe0f || codePoint === 0x200d) {
+    return 0
+  }
+  return isWideCodePoint(codePoint) ? 2 : 1
 }
 
 /** Column estimate at fontSize 12. Latin is 1, wide CJK and emoji are 2. */
-function estimatedGlyphColumns(value: string): number {
+export function mobileMarkdownGlyphColumns(
+  value: string,
+  segmenter: GraphemeSegmenter | null = graphemeSegmenter
+): number {
   let columns = 0
-  for (const cluster of graphemeClusters(value)) {
-    if (cluster.includes('\u200d')) {
-      columns += 2
-      continue
-    }
-    const codePoint = cluster.codePointAt(0)
-    if (codePoint === undefined || (codePoint >= 0x0300 && codePoint <= 0x036f)) {
-      continue
-    }
-    if (codePoint === 0xfe0f || codePoint === 0x200d) {
-      continue
-    }
-    columns += isWideCodePoint(codePoint) ? 2 : 1
+  for (const cluster of graphemeClusters(value, segmenter)) {
+    columns += clusterColumns(cluster)
   }
   return columns
 }
@@ -143,7 +176,7 @@ function estimatedGlyphColumns(value: string): number {
 function longestLineLength(value: string): number {
   let longest = 0
   for (const line of visibleInlineText(value).split('\n')) {
-    const columns = estimatedGlyphColumns(line)
+    const columns = mobileMarkdownGlyphColumns(line)
     if (columns > longest) {
       longest = columns
     }
