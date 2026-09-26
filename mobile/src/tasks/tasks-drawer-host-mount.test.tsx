@@ -99,4 +99,18 @@ describe('TasksDrawerModalHost close', () => {
     })
     expect(mountedDrawers(renderer)).toHaveLength(0)
   })
+
+  it('unmounts after a sheet reopens before its hide animation finishes', () => {
+    const renderer = renderHost(1)
+    setOpenCount(renderer, 0)
+    setOpenCount(renderer, 1)
+    setOpenCount(renderer, 0)
+    expect(mountedDrawers(renderer)).toHaveLength(1)
+
+    act(() => {
+      mountedDrawers(renderer)[0]?.props.onHidden()
+    })
+
+    expect(mountedDrawers(renderer)).toHaveLength(0)
+  })
 })

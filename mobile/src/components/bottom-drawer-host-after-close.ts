@@ -5,3 +5,9 @@ export const BottomDrawerHostAfterCloseContext = createContext<(() => void) | nu
 export function useBottomDrawerHostAfterClose(): (() => void) | null {
   return useContext(BottomDrawerHostAfterCloseContext)
 }
+
+export const BottomDrawerHostCloseCancelledContext = createContext<(() => void) | null>(null)
+
+export function useBottomDrawerHostCloseCancelled(): (() => void) | null {
+  return useContext(BottomDrawerHostCloseCancelledContext)
+}
