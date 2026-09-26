@@ -35,6 +35,8 @@ export type TuiIdleEvidenceRecord = {
   lastAgentStatus: AgentStatus | null
   lastOutputAt: number | null
   lastOscTitle?: string | null
+  /** Epoch ms of the PTY OSC title. Leaf copies store a sequence, not this clock. */
+  lastOscTitleEpochMs?: number | null
 }
 
 export type FirstPartyAgentStatus = { state: AgentStatusState; updatedAt: number } | null
@@ -122,6 +124,9 @@ export type TuiIdleSatisfactionInput = {
    *  (~11us and a multi-KB string on a full tail); the title check below usually answers
    *  first, and then none of that has to happen at all. */
   readPositiveBodyEvidence: () => boolean
+  /** DeepSeek Build composer. Kept off the shared ready check so a retained banner
+   *  cannot settle a shell that reused the same ❯. */
+  readDsbReadyBodyEvidence?: () => boolean
   /** Tier 1b body evidence: a Muse ready screen. Thunk for the same reason as above. */
   readMuseReadyBodyEvidence: () => boolean
   agent: TuiAgent | null | undefined
@@ -159,6 +164,30 @@ export function hasQuietMuseReadyPrompt(
   return Date.now() - record.lastOutputAt >= quiescenceMs
 }
 
+function dsbWorkingTitleBlocksSettle(input: TuiIdleSatisfactionInput): boolean {
+  const doneAt = input.firstPartyStatus?.state === 'done' ? input.firstPartyStatus.updatedAt : null
+  const oscEpoch = input.record.lastOscTitleEpochMs
+  const titles = [
+    { title: input.rendererTitle, osc: false },
+    { title: input.record.lastOscTitle, osc: true }
+  ]
+  for (const candidate of titles) {
+    if (typeof candidate.title !== 'string' || !isDsbWorkingTitle(candidate.title)) {
+      continue
+    }
+    // Why the epoch, not the sequence: only lastOscTitleEpochMs shares a clock
+    // with the status frame. A done newer than that OSC title is this turn and
+    // the working text is the lagging frame. A renderer title has no such clock.
+    const laggingOscTitle =
+      candidate.osc && doneAt !== null && typeof oscEpoch === 'number' && doneAt > oscEpoch
+    if (laggingOscTitle) {
+      continue
+    }
+    return true
+  }
+  return false
+}
+
 /** The one place the tiers are combined; every satisfaction site routes here. */
 export function isTuiIdleSatisfied(input: TuiIdleSatisfactionInput): boolean {
   // Why before the shared body scan: DeepSeek Build keeps ❯ on screen during a turn,
@@ -169,16 +198,10 @@ export function isTuiIdleSatisfied(input: TuiIdleSatisfactionInput): boolean {
     if (reported === 'working' || reported === 'blocked' || reported === 'waiting') {
       return false
     }
-    // Why both titles, and why `done` does not win: ❯ stays on screen during a
-    // turn, and a previous `done` is kept until the next status frame. Either
-    // title still reading as working means this turn is open.
-    const working = [input.rendererTitle, input.record.lastOscTitle].some(
-      (title) => typeof title === 'string' && isDsbWorkingTitle(title)
-    )
-    if (working) {
+    if (dsbWorkingTitleBlocksSettle(input)) {
       return false
     }
-    return input.readPositiveBodyEvidence()
+    return input.readDsbReadyBodyEvidence?.() ?? false
   }
   // Why the title before the body: both are tier 1, so either settles, but the title is a
   // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.

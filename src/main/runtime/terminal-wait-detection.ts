@@ -43,16 +43,27 @@ export const detectExplicitIdleStatusFromTitle: (title: string) => AgentStatus |
   memoizeTitleClassification(computeExplicitIdleStatusFromTitle)
 
 export function isKnownReadyPromptPreview(preview: string): boolean {
+  return readyPromptSurvivesBlockedSignal(preview, findKnownReadyPromptIndex)
+}
+
+// Why not inside isKnownReadyPromptPreview: a DeepSeek Build banner stays in
+// the scrollback after the process exits, and a later shell ❯ would then
+// satisfy every agent. Only a pane that is still dsb may use this match.
+export function isDsbReadyPromptPreview(preview: string): boolean {
+  return readyPromptSurvivesBlockedSignal(preview, findDsbReadyPromptIndex)
+}
+
+function readyPromptSurvivesBlockedSignal(
+  preview: string,
+  findReadyIndex: (normalized: string) => number | null
+): boolean {
   const normalized = preview.toLowerCase()
-  const readyIndex = findKnownReadyPromptIndex(normalized)
+  const readyIndex = findReadyIndex(normalized)
   if (readyIndex === null) {
     return false
   }
   const blockedSignal = findTerminalWaitBlockedSignal(normalized)
-  if (blockedSignal !== null && blockedSignal.index > readyIndex) {
-    return false
-  }
-  return true
+  return blockedSignal === null || blockedSignal.index <= readyIndex
 }
 
 // Why separate from isKnownReadyPromptPreview: that one settles tier 1 immediately, while
@@ -94,8 +105,7 @@ function findDismissedStartupModalIndex(normalized: string): number | null {
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
     findCursorActivePromptIndex(normalized),
-    findMuseReadyPromptIndex(normalized),
-    findDsbReadyPromptIndex(normalized)
+    findMuseReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
@@ -104,8 +114,7 @@ function findKnownReadyPromptIndex(normalized: string): number | null {
   const indexes = [
     findCodexReadyPromptIndex(normalized),
     findAntigravityReadyPromptIndex(normalized),
-    findCursorReadyPromptIndex(normalized),
-    findDsbReadyPromptIndex(normalized)
+    findCursorReadyPromptIndex(normalized)
   ].filter((index): index is number => index !== null)
   return indexes.length > 0 ? Math.max(...indexes) : null
 }
