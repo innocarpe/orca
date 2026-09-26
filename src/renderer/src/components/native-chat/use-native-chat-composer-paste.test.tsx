@@ -207,6 +207,27 @@ describe('useNativeChatComposerPaste', () => {
     expect(store.chips).toHaveLength(0)
   })
 
+  it('stops a remote paste when the image probe fails', async () => {
+    mocks.clipboardHasImage.mockRejectedValue(new Error('clipboard changed'))
+    mocks.readClipboardText.mockResolvedValue('caption beside the image')
+    const setNotice = vi.fn()
+    const insertTypedText = vi.fn()
+    const store = createChipStore()
+    const probe = await renderProbe({
+      resolveAttachmentOwner: () => ({ kind: 'runtime' }),
+      store,
+      setNotice,
+      insertTypedText
+    })
+
+    await act(async () => probe.latest().pasteFromClipboard())
+
+    expect(mocks.readClipboardText).not.toHaveBeenCalled()
+    expect(insertTypedText).not.toHaveBeenCalled()
+    expect(setNotice).not.toHaveBeenCalled()
+    expect(store.chips).toHaveLength(0)
+  })
+
   it('inserts plain text into a remote runtime composer', async () => {
     mocks.clipboardHasImage.mockResolvedValue(false)
     mocks.readClipboardImageThumbnail.mockResolvedValue(null)
