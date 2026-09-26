@@ -71,6 +71,27 @@ describe('mobileMarkdownTableColumnWidths', () => {
     )
   })
 
+  it('sizes wide glyphs wider than the same number of latin letters', () => {
+    const hangul = '한'.repeat(20)
+    const latin = 'a'.repeat(20)
+
+    expect(mobileMarkdownTableColumnWidths(['H'], [[hangul]])[0]).toBe(
+      MOBILE_MARKDOWN_TABLE_CELL_MAX_WIDTH
+    )
+    expect(mobileMarkdownTableColumnWidths(['H'], [[latin]])[0]).toBeLessThan(
+      MOBILE_MARKDOWN_TABLE_CELL_MAX_WIDTH
+    )
+  })
+
+  it('counts a joined emoji once instead of once per UTF-16 unit', () => {
+    const family = '👨‍👩‍👧‍👦'.repeat(8)
+    const utf16Sized = 'a'.repeat(family.length)
+
+    expect(mobileMarkdownTableColumnWidths(['H'], [[family]])[0]).toBeLessThan(
+      mobileMarkdownTableColumnWidths(['H'], [[utf16Sized]])[0]!
+    )
+  })
+
   it('does not look through emphasis for a link destination', () => {
     const inner = '[x](https://ex.com/ab)'
     const wrapped = mobileMarkdownTableColumnWidths(['H'], [[`**${inner}**`]])
