@@ -84,11 +84,68 @@ function visibleInlineText(value: string): string {
   return parts.join('')
 }
 
+type GraphemeSegmenter = {
+  segment(value: string): Iterable<{ segment: string }>
+}
+
+function createGraphemeSegmenter(): GraphemeSegmenter | null {
+  const intl = Intl as typeof Intl & {
+    Segmenter?: new (locales: undefined, options: { granularity: 'grapheme' }) => GraphemeSegmenter
+  }
+  if (typeof intl.Segmenter !== 'function') {
+    return null
+  }
+  return new intl.Segmenter(undefined, { granularity: 'grapheme' })
+}
+
+const graphemeSegmenter = createGraphemeSegmenter()
+
+function isWideCodePoint(codePoint: number): boolean {
+  return (
+    codePoint > 0xffff ||
+    (codePoint >= 0x1100 && codePoint <= 0x115f) ||
+    (codePoint >= 0x2e80 && codePoint <= 0xa4cf) ||
+    (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+    (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+    (codePoint >= 0xfe10 && codePoint <= 0xfe6f) ||
+    (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+    (codePoint >= 0xffe0 && codePoint <= 0xffe6)
+  )
+}
+
+function graphemeClusters(value: string): string[] {
+  if (!graphemeSegmenter) {
+    return Array.from(value)
+  }
+  return Array.from(graphemeSegmenter.segment(value), (part) => part.segment)
+}
+
+/** Column estimate at fontSize 12. Latin is 1, wide CJK and emoji are 2. */
+function estimatedGlyphColumns(value: string): number {
+  let columns = 0
+  for (const cluster of graphemeClusters(value)) {
+    if (cluster.includes('\u200d')) {
+      columns += 2
+      continue
+    }
+    const codePoint = cluster.codePointAt(0)
+    if (codePoint === undefined || (codePoint >= 0x0300 && codePoint <= 0x036f)) {
+      continue
+    }
+    if (codePoint === 0xfe0f || codePoint === 0x200d) {
+      continue
+    }
+    columns += isWideCodePoint(codePoint) ? 2 : 1
+  }
+  return columns
+}
+
 function longestLineLength(value: string): number {
   let longest = 0
   for (const line of visibleInlineText(value).split('\n')) {
-    if (line.length > longest) {
-      longest = line.length
+    const columns = estimatedGlyphColumns(line)
+    if (columns > longest) {
+      longest = columns
     }
   }
   return longest
