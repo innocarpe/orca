@@ -32,7 +32,10 @@ vi.mock('../components/NewWorktreeModalController', () => ({
 }))
 vi.mock('../components/PickerModal', () => ({ PickerModal: () => null }))
 
-function controllerWith(hideSleeping: boolean): HostScreenController {
+function controllerWith(
+  hideSleeping: boolean,
+  alwaysShowDefaultBranch = true
+): HostScreenController {
   const fields = {
     actions: {
       handleDeleteWorktree: () => {},
@@ -63,7 +66,7 @@ function controllerWith(hideSleeping: boolean): HostScreenController {
       confirmDelete: null,
       confirmRemoveHost: false,
       filters: {
-        alwaysShowDefaultBranch: true,
+        alwaysShowDefaultBranch,
         filterRepoIds: new Set<string>(),
         hideDefaultBranch: false,
         hideSleeping
@@ -89,11 +92,13 @@ function controllerWith(hideSleeping: boolean): HostScreenController {
   return fields as unknown as HostScreenController
 }
 
-function renderFilters(hideSleeping: boolean): ReactTestRenderer {
+function renderFilters(hideSleeping: boolean, alwaysShowDefaultBranch = true): ReactTestRenderer {
   let renderer: ReactTestRenderer | null = null
   act(() => {
     renderer = create(
-      createElement(HostScreenOverlays, { controller: controllerWith(hideSleeping) })
+      createElement(HostScreenOverlays, {
+        controller: controllerWith(hideSleeping, alwaysShowDefaultBranch)
+      })
     )
   })
   if (!renderer) {
@@ -119,6 +124,19 @@ describe('Hide sleeping default-branch exception', () => {
     expect(styles.filterChildRowText.color).toBe(colors.textMuted)
     expect(styles.filterRowText.color).toBe(colors.textPrimary)
     renderer.unmount()
+  })
+
+  it('exposes whether the exception is on to a screen reader', () => {
+    const enabled = renderFilters(true, true)
+    const enabledRow = enabled.root.findByProps({ accessibilityLabel: exceptionLabel })
+    expect(enabledRow.props.accessibilityRole).toBe('checkbox')
+    expect(enabledRow.props.accessibilityState).toEqual({ checked: true })
+    enabled.unmount()
+
+    const disabled = renderFilters(true, false)
+    const disabledRow = disabled.root.findByProps({ accessibilityLabel: exceptionLabel })
+    expect(disabledRow.props.accessibilityState).toEqual({ checked: false })
+    disabled.unmount()
   })
 
   it('stays hidden until Hide sleeping is on', () => {

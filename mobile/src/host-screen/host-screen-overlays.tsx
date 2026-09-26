@@ -73,6 +73,10 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
               style={styles.filterChildRow}
               onPress={settings.toggleAlwaysShowDefaultBranch}
               accessibilityLabel="Keep the default branch visible while hiding sleeping workspaces"
+              accessibilityRole="checkbox"
+              accessibilityState={{
+                checked: state.filters.alwaysShowDefaultBranch !== false
+              }}
             >
               <Text style={styles.filterChildRowText}>Except default branch</Text>
               {state.filters.alwaysShowDefaultBranch !== false && (
