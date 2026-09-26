@@ -197,8 +197,18 @@ function mobileTasksDrawerLayers(model: ConnectionPresentationModel): DrawerLaye
   ]
 }
 
+export function mobileTasksOpenDrawerCount(model: ConnectionPresentationModel): number {
+  let open = 0
+  for (const layer of mobileTasksDrawerLayers(model)) {
+    if (layer.open) {
+      open += 1
+    }
+  }
+  return open
+}
+
 export function mobileTasksDrawerHostOpen(model: ConnectionPresentationModel): boolean {
-  return mobileTasksDrawerLayers(model).some((layer) => layer.open)
+  return mobileTasksOpenDrawerCount(model) > 0
 }
 
 export function dismissTopMobileTasksDrawer(model: ConnectionPresentationModel): void {

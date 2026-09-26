@@ -75,8 +75,8 @@ import {
   renderMobileTasksProjectDetailDrawer
 } from './mobile-tasks-project-detail-drawer'
 import { renderMobileTasksItemDetailDrawer } from './mobile-tasks-item-detail-drawer'
-import { BottomDrawerModalHost } from '../components/bottom-drawer-modal-host'
-import { dismissTopMobileTasksDrawer, mobileTasksDrawerHostOpen } from './mobile-tasks-drawer-host'
+import { dismissTopMobileTasksDrawer, mobileTasksOpenDrawerCount } from './mobile-tasks-drawer-host'
+import { TasksDrawerModalHost } from './tasks-drawer-host-mount'
 
 export function MobileTasksLegacySurface({ model }: { model: ConnectionPresentationModel }) {
   const {
@@ -180,8 +180,8 @@ export function MobileTasksLegacySurface({ model }: { model: ConnectionPresentat
 
       {renderMobileTasksListSurface(model)}
 
-      <BottomDrawerModalHost
-        visible={mobileTasksDrawerHostOpen(model)}
+      <TasksDrawerModalHost
+        openCount={mobileTasksOpenDrawerCount(model)}
         onRequestClose={() => dismissTopMobileTasksDrawer(model)}
       >
         {renderMobileTasksProviderPicker(model)}
@@ -382,7 +382,7 @@ export function MobileTasksLegacySurface({ model }: { model: ConnectionPresentat
           }}
           onCancel={() => setPendingHostedStateChange(null)}
         />
-      </BottomDrawerModalHost>
+      </TasksDrawerModalHost>
     </SafeAreaView>
   )
 }

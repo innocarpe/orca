@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useCallback } from 'react'
+import { useBottomDrawerHostAfterClose } from './bottom-drawer-host-after-close'
 import { KeyedBottomDrawer } from './keyed-bottom-drawer'
 
 type Props = {
@@ -22,6 +23,11 @@ const SHOWN = 'shown'
 const sheetKey = () => SHOWN
 
 export function BottomDrawer({ visible, onClose, onAfterClose, children, ...drawerProps }: Props) {
+  const hostAfterClose = useBottomDrawerHostAfterClose()
+  const handleAfterClose = useCallback(() => {
+    onAfterClose?.()
+    hostAfterClose?.()
+  }, [onAfterClose, hostAfterClose])
   // Why: hidden drawers are rendered by parent screens even while closed; the keyed drawer
   // renders nothing until shown, which keeps Reanimated/Gesture setup out of hot paths.
   return (
@@ -30,7 +36,7 @@ export function BottomDrawer({ visible, onClose, onAfterClose, children, ...draw
       sheet={visible ? SHOWN : null}
       sheetKey={sheetKey}
       onClose={onClose}
-      onAfterClose={onAfterClose}
+      onAfterClose={handleAfterClose}
     >
       {() => children}
     </KeyedBottomDrawer>
