@@ -165,17 +165,17 @@ export function isTuiIdleSatisfied(input: TuiIdleSatisfactionInput): boolean {
   // and that turn retitles to "Waiting for response…". A generic ready-prompt hit
   // would settle the wait in the middle of the turn.
   if (input.agent === 'dsb') {
-    const title = input.rendererTitle ?? input.record.lastOscTitle ?? ''
     const reported = input.firstPartyStatus?.state
     if (reported === 'working' || reported === 'blocked' || reported === 'waiting') {
       return false
     }
-    // Why done outranks a stale spinner title: the OSC title can lag one frame
-    // behind {"state":"done"}, and the composer glyph stays on screen either way.
-    if (reported === 'done' && input.readPositiveBodyEvidence()) {
-      return true
-    }
-    if (isDsbWorkingTitle(title)) {
+    // Why both titles, and why `done` does not win: ❯ stays on screen during a
+    // turn, and a previous `done` is kept until the next status frame. Either
+    // title still reading as working means this turn is open.
+    const working = [input.rendererTitle, input.record.lastOscTitle].some(
+      (title) => typeof title === 'string' && isDsbWorkingTitle(title)
+    )
+    if (working) {
       return false
     }
     return input.readPositiveBodyEvidence()

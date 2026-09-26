@@ -250,7 +250,7 @@ describe('tui-idle evidence ranking', () => {
     expect(settled).not.toHaveBeenCalled()
   })
 
-  it('settles DeepSeek Build when the status OSC says done even if the title lags', async () => {
+  it('does not settle DeepSeek Build from a done status while the title is still working', async () => {
     const pty = makeTuiIdlePty({
       lastAgentStatus: null,
       lastOscTitle: '⠼ - Waiting for response… - DeepSeek Build',
@@ -261,9 +261,9 @@ describe('tui-idle evidence ranking', () => {
       agent: 'dsb',
       firstPartyStatus: { state: 'done', updatedAt: Date.now() }
     })
-    await expect(
-      wait.wait(HANDLE, { condition: 'tui-idle', timeoutMs: 60_000 })
-    ).resolves.toMatchObject({ satisfied: true })
+    const settled = watch(wait.wait(HANDLE, { condition: 'tui-idle', timeoutMs: 60_000 }))
+    await advanceWhileStreaming(pty, 2)
+    expect(settled).not.toHaveBeenCalled()
   })
 
   it('never settles another agent quoting Muse in its scrollback', async () => {
