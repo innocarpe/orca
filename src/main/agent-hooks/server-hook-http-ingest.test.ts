@@ -255,12 +255,51 @@ describe('AgentHookServer listener replay', () => {
       expect.objectContaining({
         paneKey: PANE,
         state: 'working',
-        prompt: 'foreground claude',
+        prompt: 'background codex',
         agentType: 'claude',
-        providerSession: foreground
+        providerSession: foreground,
+        lastAssistantMessage: 'codex output'
       })
     ])
-    expect(server.getStatusSnapshot()[0]?.lastAssistantMessage).toBeUndefined()
+  })
+
+  it('lets a different connection replace the foreground provider session', () => {
+    const server = new AgentHookServer()
+    const nested = {
+      key: 'session_id' as const,
+      id: 'codex-session',
+      transcriptPath: '/tmp/codex.jsonl'
+    }
+    server.ingestRemote(
+      {
+        paneKey: PANE,
+        providerSession: {
+          key: 'session_id',
+          id: 'claude-session',
+          transcriptPath: '/tmp/claude.jsonl'
+        },
+        payload: { state: 'working', prompt: 'foreground claude', agentType: 'claude' }
+      },
+      'conn-a'
+    )
+    server.ingestRemote(
+      {
+        paneKey: PANE,
+        providerSession: nested,
+        payload: { state: 'working', prompt: 'other connection', agentType: 'codex' }
+      },
+      'conn-b'
+    )
+
+    expect(server.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        paneKey: PANE,
+        state: 'working',
+        prompt: 'other connection',
+        providerSession: nested,
+        connectionId: 'conn-b'
+      })
+    ])
   })
 
   it('does not apply Claude background evidence from a rejected local status', async () => {
