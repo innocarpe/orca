@@ -232,12 +232,13 @@ export function useNativeChatComposerPaste({
       const owner = resolveAttachmentOwner()
       if (owner.kind === 'runtime') {
         // Why: Cmd+V has no paste event, and a remote owner cannot save a local
-        // file. Probe the image so plain text still reaches the composer.
-        const thumbnail = await window.api.ui.readClipboardImageThumbnail().catch(() => null)
+        // file. Thumbnail failure is not "no image" — an oversized image still
+        // has to show the unsupported notice instead of inserting caption text.
+        const imagePresent = await window.api.ui.clipboardHasImage().catch(() => false)
         if (disabledRef.current) {
           return
         }
-        if (thumbnail) {
+        if (imagePresent) {
           setNotice(nativeChatLocalAttachmentUnsupportedNotice())
           return
         }
