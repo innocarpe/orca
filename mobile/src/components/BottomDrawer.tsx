@@ -1,5 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { useBottomDrawerHostAfterClose } from './bottom-drawer-host-after-close'
+import {
+  useBottomDrawerHostAfterClose,
+  useBottomDrawerHostCloseCancelled
+} from './bottom-drawer-host-after-close'
 import { resolveBottomDrawerMounted } from './bottom-drawer-mount-state'
 import { MountedBottomDrawer } from './mounted-bottom-drawer'
 
@@ -34,17 +37,33 @@ export function BottomDrawer({
   const [mounted, setMounted] = useState(visible)
   const onAfterCloseRef = useRef(onAfterClose)
   const hostAfterClose = useBottomDrawerHostAfterClose()
+  const hostCloseCancelled = useBottomDrawerHostCloseCancelled()
   const hostAfterCloseRef = useRef(hostAfterClose)
+  const hostCloseCancelledRef = useRef(hostCloseCancelled)
   const hiddenHandledRef = useRef(false)
   const afterClosePendingRef = useRef(false)
+  const visibleRef = useRef(visible)
+  const closeInFlightRef = useRef(false)
   hostAfterCloseRef.current = hostAfterClose
+  hostCloseCancelledRef.current = hostCloseCancelled
 
   useEffect(() => {
     onAfterCloseRef.current = onAfterClose
   }, [onAfterClose])
 
   useEffect(() => {
-    if (visible) {
+    const wasVisible = visibleRef.current
+    visibleRef.current = visible
+    if (wasVisible && !visible) {
+      closeInFlightRef.current = true
+      return
+    }
+    if (!wasVisible && visible) {
+      // The hide animation was cancelled, so onHidden will not balance the host.
+      if (closeInFlightRef.current && !hiddenHandledRef.current) {
+        hostCloseCancelledRef.current?.()
+      }
+      closeInFlightRef.current = false
       hiddenHandledRef.current = false
       afterClosePendingRef.current = false
     }

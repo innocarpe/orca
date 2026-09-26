@@ -10,6 +10,7 @@ type Props = {
 function useTasksDrawerHostMounted(openCount: number): {
   mounted: boolean
   notifyDrawerAfterClose: () => void
+  notifyDrawerCloseCancelled: () => void
 } {
   const [mounted, setMounted] = useState(openCount > 0)
   const [pendingCloses, setPendingCloses] = useState(0)
@@ -32,17 +33,23 @@ function useTasksDrawerHostMounted(openCount: number): {
     setPendingCloses((pending) => (pending > 0 ? pending - 1 : 0))
   }, [])
 
-  return { mounted, notifyDrawerAfterClose }
+  const notifyDrawerCloseCancelled = useCallback(() => {
+    setPendingCloses((pending) => (pending > 0 ? pending - 1 : 0))
+  }, [])
+
+  return { mounted, notifyDrawerAfterClose, notifyDrawerCloseCancelled }
 }
 
 // Why: dropping the host when the last sheet closes skips that sheet's exit animation.
 export function TasksDrawerModalHost({ openCount, onRequestClose, children }: Props) {
-  const { mounted, notifyDrawerAfterClose } = useTasksDrawerHostMounted(openCount)
+  const { mounted, notifyDrawerAfterClose, notifyDrawerCloseCancelled } =
+    useTasksDrawerHostMounted(openCount)
   return (
     <BottomDrawerModalHost
       visible={mounted}
       onRequestClose={onRequestClose}
       onChildAfterClose={notifyDrawerAfterClose}
+      onChildCloseCancelled={notifyDrawerCloseCancelled}
     >
       {children}
     </BottomDrawerModalHost>
