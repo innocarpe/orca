@@ -1,6 +1,11 @@
 import { spacing } from '../theme/mobile-theme'
+import { createMarkdownInlineMatcher, type MarkdownInlineMatch } from './markdown-inline-matcher'
+import {
+  isIntrawordUnderscoreToken,
+  trimAutolinkTrailingPunctuation
+} from './markdown-inline-token-rules'
 
-/** Matches `tableCell` min/max in mobile-markdown-styles.ts. */
+/** Shared with `tableCell` min/max in mobile-markdown-styles.ts. */
 export const MOBILE_MARKDOWN_TABLE_CELL_MIN_WIDTH = 112
 export const MOBILE_MARKDOWN_TABLE_CELL_MAX_WIDTH = 220
 
@@ -29,9 +34,59 @@ export function mobileMarkdownTableColumnWidths(
   })
 }
 
+function visibleTokenText(token: string): string {
+  const image = token.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+  if (image) {
+    return image[1] || 'image'
+  }
+  const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+  if (link) {
+    return link[1] ?? ''
+  }
+  if (/^https?:\/\//i.test(token)) {
+    const { url, trailing } = trimAutolinkTrailingPunctuation(token)
+    return `${url}${trailing}`
+  }
+  if (token.startsWith('`')) {
+    return token.slice(1, -1)
+  }
+  if (token.startsWith('~~') || token.startsWith('**') || token.startsWith('__')) {
+    return token.slice(2, -2)
+  }
+  return token.slice(1, -1)
+}
+
+function visibleInlineText(value: string): string {
+  // Why: same tokens as renderInline, which paints a link label rather than its URL.
+  const pattern = createMarkdownInlineMatcher(
+    value,
+    /(`[^`]+`|~~[^~]+~~|\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|https?:\/\/[^\s<]+)/g,
+    true
+  )
+  const parts: string[] = []
+  let pendingStart = 0
+  let match: MarkdownInlineMatch | null
+  while ((match = pattern.exec())) {
+    const token = match[0]
+    if (token.startsWith('_') && isIntrawordUnderscoreToken(value, match.index, token)) {
+      pattern.lastIndex = match.index + 1
+      continue
+    }
+    if (match.index > pendingStart) {
+      parts.push(value.slice(pendingStart, match.index))
+    }
+    pendingStart = pattern.lastIndex
+    parts.push(visibleTokenText(token))
+  }
+  if (pendingStart < value.length) {
+    parts.push(value.slice(pendingStart))
+  }
+  return parts.join('')
+}
+
 function longestLineLength(value: string): number {
   let longest = 0
-  for (const line of value.split('\n')) {
+  for (const line of visibleInlineText(value).split('\n')) {
     if (line.length > longest) {
       longest = line.length
     }
