@@ -105,13 +105,53 @@ describe('recordAgentProviderSession', () => {
 
     expect(store.getState().agentStatusByPaneKey['tab-1:leaf-1']).toMatchObject({
       state: 'working',
-      prompt: 'foreground claude',
+      prompt: 'background codex',
       agentType: 'claude',
-      providerSession: foreground
+      providerSession: foreground,
+      lastAssistantMessage: 'codex output'
     })
-    expect(
-      store.getState().agentStatusByPaneKey['tab-1:leaf-1']?.lastAssistantMessage
-    ).toBeUndefined()
+  })
+
+  it('lets a different connection replace the foreground transcript', () => {
+    const store = createTestStore()
+    const nested = {
+      key: 'session_id' as const,
+      id: 'codex-session',
+      transcriptPath: '/tmp/codex.jsonl'
+    }
+
+    store.getState().setAgentStatus(
+      'tab-1:leaf-1',
+      { state: 'working', prompt: 'foreground claude', agentType: 'claude' },
+      'Claude',
+      { updatedAt: 10, stateStartedAt: 10 },
+      { connectionId: 'conn-a' },
+      {
+        providerSession: {
+          key: 'session_id',
+          id: 'claude-session',
+          transcriptPath: '/tmp/claude.jsonl'
+        }
+      }
+    )
+    store
+      .getState()
+      .setAgentStatus(
+        'tab-1:leaf-1',
+        { state: 'working', prompt: 'other connection', agentType: 'codex' },
+        'Codex',
+        { updatedAt: 20, stateStartedAt: 20 },
+        { connectionId: 'conn-b' },
+        { providerSession: nested }
+      )
+
+    expect(store.getState().agentStatusByPaneKey['tab-1:leaf-1']).toMatchObject({
+      state: 'working',
+      prompt: 'other connection',
+      agentType: 'claude',
+      providerSession: nested,
+      connectionId: 'conn-b'
+    })
   })
 
   it('adopts a new agent session after the foreground turn is done', () => {

@@ -22,19 +22,19 @@ type AgentIdentityResolution = {
 export function shouldSuppressInheritedTerminalStatus(args: {
   inheritedFromActivePane: boolean
   incomingState: AgentStatusState
+}): boolean {
+  // Why: a child completion does not prove the parent turn ended.
+  return args.inheritedFromActivePane && args.incomingState === 'done'
+}
+
+export function shouldRetainInheritedProviderSession(args: {
+  inheritedFromActivePane: boolean
+  incomingState: AgentStatusState
   /** False when another connection collides on this pane key and may own it. */
   sameTerminalOwner: boolean
 }): boolean {
-  if (!args.inheritedFromActivePane) {
-    return false
-  }
-  // Why: a child completion does not prove the parent turn ended.
-  if (args.incomingState === 'done') {
-    return true
-  }
-  // Why: a nested CLI inherits ORCA_PANE_KEY on this terminal. Mobile subscribes
-  // to the pane's providerSession, so the child's hook must not replace it.
-  return args.sameTerminalOwner
+  // Why: a nested CLI inherits ORCA_PANE_KEY. Pin the transcript, not the hook.
+  return args.inheritedFromActivePane && args.sameTerminalOwner && args.incomingState !== 'done'
 }
 
 function normalizedKnownAgentType(agentType: AgentType | null | undefined): AgentType | null {
