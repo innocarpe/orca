@@ -59,15 +59,18 @@ export function BottomDrawer({
       return
     }
     if (!wasVisible && visible) {
-      // The hide animation was cancelled, so onHidden will not balance the host.
-      if (closeInFlightRef.current && !hiddenHandledRef.current) {
+      const cancelledBeforeHidden = closeInFlightRef.current && !hiddenHandledRef.current
+      // onHidden and this reopen can land in one commit, before mounted becomes false.
+      const finishedBeforeCommit =
+        hiddenHandledRef.current && afterClosePendingRef.current && mounted
+      if (cancelledBeforeHidden || finishedBeforeCommit) {
         hostCloseCancelledRef.current?.()
       }
       closeInFlightRef.current = false
       hiddenHandledRef.current = false
       afterClosePendingRef.current = false
     }
-  }, [visible])
+  }, [mounted, visible])
 
   useEffect(() => {
     if (mounted || !afterClosePendingRef.current) {
