@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { getAgentResumeArgv } from './agent-session-resume'
 import { isDsbHeadlessOneShotCommand } from './dsb-headless-command'
 
 describe('DeepSeek Build launch shape', () => {
@@ -8,13 +7,20 @@ describe('DeepSeek Build launch shape', () => {
     expect(isDsbHeadlessOneShotCommand(['dsb', '--dogfood'])).toBe(false)
     expect(isDsbHeadlessOneShotCommand(['dsb', 'agent'])).toBe(false)
     expect(isDsbHeadlessOneShotCommand(['dsb', '--resume', 'sess-1'])).toBe(false)
-  })
-
-  it('resumes a full-screen session by id', () => {
-    expect(getAgentResumeArgv('dsb', { key: 'session_id', id: 'sess-1' })).toEqual([
-      'dsb',
-      '--resume',
-      'sess-1'
-    ])
+    expect(
+      isDsbHeadlessOneShotCommand([
+        'node',
+        '/usr/lib/node_modules/@innocarpe/deepseek-build/npm/bin/dsb.js',
+        'run',
+        'explain this'
+      ])
+    ).toBe(true)
+    expect(
+      isDsbHeadlessOneShotCommand([
+        'node',
+        '/usr/lib/node_modules/@innocarpe/deepseek-build/npm/bin/dsb.js',
+        '--dogfood'
+      ])
+    ).toBe(false)
   })
 })

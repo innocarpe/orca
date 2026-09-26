@@ -1,31 +1,8 @@
 import { isTerminalWaitWhitespace } from './terminal-wait-tail-window'
 
+export { isDsbWorkingTitle } from '../../shared/dsb-terminal-title'
+
 const DSB_COMPOSER = '\u276f'
-
-/** Resting OSC title captured from DeepSeek Build 6.0.0. */
-export function isDsbRestingTitle(title: string): boolean {
-  return title.trim().toLowerCase() === 'deepseek build'
-}
-
-/**
- * A running turn retitles to "spinner - Waiting for response… - DeepSeek Build".
- * The braille frame alone is not enough: Claude uses the same block.
- */
-export function isDsbWorkingTitle(title: string): boolean {
-  if (!/deepseek build/i.test(title)) {
-    return false
-  }
-  if (/waiting for response/i.test(title)) {
-    return true
-  }
-  for (const char of title) {
-    const codePoint = char.codePointAt(0)
-    if (codePoint !== undefined && codePoint >= 0x2800 && codePoint <= 0x28ff) {
-      return true
-    }
-  }
-  return false
-}
 
 /**
  * Ready when the splash or a finished turn still shows a lone ❯ after the

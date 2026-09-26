@@ -26,6 +26,12 @@ describe('agent process recognition', () => {
         'node /usr/lib/node_modules/@innocarpe/deepseek-build/npm/bin/dsb.js'
       )
     ).toEqual({ agent: 'dsb', processName: 'dsb' })
+    expect(
+      recognizeAgentProcessFromCommandLine(
+        'node /usr/lib/node_modules/@innocarpe/deepseek-build/npm/bin/dsb.js run "explain this"'
+      )
+    ).toBeNull()
+    expect(recognizeAgentProcessFromCommandLine('dsb run "explain this"')).toBeNull()
   })
 
   it('recognizes packaged Codex foreground process names', () => {
