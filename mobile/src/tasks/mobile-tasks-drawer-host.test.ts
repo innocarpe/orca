@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ConnectionPresentationModel } from './use-mobile-tasks-connection-presentation'
-import { dismissTopMobileTasksDrawer, mobileTasksDrawerHostOpen } from './mobile-tasks-drawer-host'
+import {
+  dismissTopMobileTasksDrawer,
+  mobileTasksDrawerHostOpen,
+  mobileTasksOpenDrawerCount
+} from './mobile-tasks-drawer-host'
 
 function model(overrides: Partial<ConnectionPresentationModel> = {}): ConnectionPresentationModel {
   return {
@@ -25,6 +29,18 @@ describe('mobile tasks drawer host', () => {
 
   it('opens for the issue detail sheet alone', () => {
     expect(mobileTasksDrawerHostOpen(model({ actionItem: { key: 'issue-1' } as never }))).toBe(true)
+    expect(mobileTasksOpenDrawerCount(model({ actionItem: { key: 'issue-1' } as never }))).toBe(1)
+  })
+
+  it('counts a follow-up sheet stacked on the detail sheet', () => {
+    expect(
+      mobileTasksOpenDrawerCount(
+        model({
+          actionItem: { key: 'issue-1' } as never,
+          pendingHostedStateChange: { source: 'task', nextState: 'closed' } as never
+        })
+      )
+    ).toBe(2)
   })
 
   it('stays open while a follow-up confirm is stacked on the detail sheet', () => {

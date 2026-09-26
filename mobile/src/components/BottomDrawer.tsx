@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useBottomDrawerHostAfterClose } from './bottom-drawer-host-after-close'
 import { resolveBottomDrawerMounted } from './bottom-drawer-mount-state'
 import { MountedBottomDrawer } from './mounted-bottom-drawer'
 
@@ -32,8 +33,11 @@ export function BottomDrawer({
 }: Props) {
   const [mounted, setMounted] = useState(visible)
   const onAfterCloseRef = useRef(onAfterClose)
+  const hostAfterClose = useBottomDrawerHostAfterClose()
+  const hostAfterCloseRef = useRef(hostAfterClose)
   const hiddenHandledRef = useRef(false)
   const afterClosePendingRef = useRef(false)
+  hostAfterCloseRef.current = hostAfterClose
 
   useEffect(() => {
     onAfterCloseRef.current = onAfterClose
@@ -52,6 +56,7 @@ export function BottomDrawer({
     }
     afterClosePendingRef.current = false
     onAfterCloseRef.current?.()
+    hostAfterCloseRef.current?.()
   }, [mounted])
 
   const handleHidden = useCallback(() => {
