@@ -218,6 +218,7 @@ export function MobileNativeChatView({
   } = useMobileNativeChatTailFollow<NativeChatMessage>({
     hasItems: data.length > 0,
     historyHeadId,
+    messageIds: messages.map((message) => message.id),
     earlierPageLoading: loadingEarlier === true,
     surfaceKey: sendSurfaceId
   })

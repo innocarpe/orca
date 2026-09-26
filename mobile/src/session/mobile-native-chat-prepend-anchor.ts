@@ -17,10 +17,16 @@ export function planMobileChatPrependResize(args: {
   /** Reader offset at insertion time, including scrolls during the request. */
   offsetY: number
   historyHeadId: string | null
+  /**
+   * The armed head is still in the list. A bounded-window trim drops that row
+   * and must not be compensated as an earlier page.
+   */
+  armedHeadRetained?: boolean
 }): { anchor: MobileChatPrependAnchor | null; scrollOffset: number | null } {
   const { anchor, following, hasItems, height, offsetY, historyHeadId } = args
+  const armedHeadRetained = args.armedHeadRetained !== false
   if (anchor && !following) {
-    if (historyHeadId !== anchor.historyHeadId && height > anchor.height) {
+    if (armedHeadRetained && historyHeadId !== anchor.historyHeadId && height > anchor.height) {
       return { anchor: null, scrollOffset: offsetY + (height - anchor.height) }
     }
     if (historyHeadId === anchor.historyHeadId) {
@@ -29,7 +35,7 @@ export function planMobileChatPrependResize(args: {
         scrollOffset: null
       }
     }
-    // The head changed without added height, so there is no insert to hold.
+    // A trim drops the armed row. A head change without added height is not an insert.
     return { anchor: null, scrollOffset: null }
   }
   if (!following || !hasItems) {

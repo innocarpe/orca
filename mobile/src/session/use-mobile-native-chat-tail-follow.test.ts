@@ -27,10 +27,12 @@ describe('useMobileNativeChatTailFollow earlier-page anchor', () => {
     historyHeadId: string | null
     earlierPageLoading: boolean
     surfaceKey: string
+    messageIds: readonly string[]
   }) {
     api = useMobileNativeChatTailFollow<string>({
       hasItems: true,
       historyHeadId: props.historyHeadId,
+      messageIds: props.messageIds,
       earlierPageLoading: props.earlierPageLoading,
       surfaceKey: props.surfaceKey
     })
@@ -43,11 +45,13 @@ describe('useMobileNativeChatTailFollow earlier-page anchor', () => {
     historyHeadId: string | null
     earlierPageLoading?: boolean
     surfaceKey?: string
+    messageIds?: readonly string[]
   }): Promise<void> {
     const element = createElement(Harness, {
       historyHeadId: props.historyHeadId,
       earlierPageLoading: props.earlierPageLoading ?? false,
-      surfaceKey: props.surfaceKey ?? 'tab-a'
+      surfaceKey: props.surfaceKey ?? 'tab-a',
+      messageIds: props.messageIds ?? (props.historyHeadId ? [props.historyHeadId] : [])
     })
     await act(async () => {
       if (renderer) {
@@ -73,7 +77,7 @@ describe('useMobileNativeChatTailFollow earlier-page anchor', () => {
       api!.holdVisibleContent()
       api!.recordScrollMetrics(metrics(80, 400))
     })
-    await render({ historyHeadId: 'a0', earlierPageLoading: true })
+    await render({ historyHeadId: 'a0', earlierPageLoading: true, messageIds: ['a0', 'a1'] })
     act(() => api!.pinToTailAfterContentResize(320, 900))
 
     expect(scrollToOffset).toHaveBeenCalledOnce()
@@ -90,7 +94,7 @@ describe('useMobileNativeChatTailFollow earlier-page anchor', () => {
     })
     expect(scrollToOffset).not.toHaveBeenCalled()
 
-    await render({ historyHeadId: 'a0', earlierPageLoading: true })
+    await render({ historyHeadId: 'a0', earlierPageLoading: true, messageIds: ['a0', 'a1'] })
     act(() => api!.pinToTailAfterContentResize(320, 900))
     expect(scrollToOffset).toHaveBeenCalledWith({ animated: false, offset: 440 })
     await unmount()
@@ -102,7 +106,7 @@ describe('useMobileNativeChatTailFollow earlier-page anchor', () => {
       api!.recordScrollMetrics(metrics(20, 400))
       api!.holdVisibleContent()
     })
-    await render({ historyHeadId: 'a0', earlierPageLoading: false })
+    await render({ historyHeadId: 'a0', earlierPageLoading: false, messageIds: ['a0', 'a1'] })
     act(() => api!.pinToTailAfterContentResize(320, 900))
 
     expect(scrollToOffset).toHaveBeenCalledOnce()
@@ -130,6 +134,19 @@ describe('useMobileNativeChatTailFollow earlier-page anchor', () => {
       api!.holdVisibleContent()
     })
     await render({ historyHeadId: 'b0', earlierPageLoading: false, surfaceKey: 'tab-b' })
+    act(() => api!.pinToTailAfterContentResize(320, 900))
+
+    expect(scrollToOffset).not.toHaveBeenCalled()
+    await unmount()
+  })
+
+  it('does not shift a detached reader when a live append trims the armed row', async () => {
+    await render({ historyHeadId: 'a1', earlierPageLoading: true, messageIds: ['a1', 'a2'] })
+    act(() => {
+      api!.recordScrollMetrics(metrics(20, 400))
+      api!.holdVisibleContent()
+    })
+    await render({ historyHeadId: 'a2', earlierPageLoading: false, messageIds: ['a2', 'a3'] })
     act(() => api!.pinToTailAfterContentResize(320, 900))
 
     expect(scrollToOffset).not.toHaveBeenCalled()

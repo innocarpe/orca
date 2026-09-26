@@ -44,6 +44,18 @@ describe('planMobileChatPrependResize', () => {
     })
   })
 
+  it('does not shift when the armed row was trimmed out of the window', () => {
+    expect(
+      plan({
+        anchor: armed,
+        height: 900,
+        offsetY: 80,
+        historyHeadId: 'a2',
+        armedHeadRetained: false
+      })
+    ).toEqual({ anchor: null, scrollOffset: null })
+  })
+
   it('pins a followed tail and leaves a detached reader still', () => {
     expect(plan({ following: true, height: 900 }).scrollOffset).toBe(900)
     expect(plan({ height: 900 }).scrollOffset).toBeNull()

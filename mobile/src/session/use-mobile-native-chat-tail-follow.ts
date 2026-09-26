@@ -54,13 +54,15 @@ export type MobileNativeChatTailFollow<TItem> = {
 export function useMobileNativeChatTailFollow<TItem>(args: {
   /** Guards `scrollToEnd` against an empty list. */
   hasItems: boolean
-  /** Oldest transcript row. Changes only when older history is inserted. */
+  /** Oldest transcript row. Also changes when the bounded window trims it. */
   historyHeadId: string | null
+  /** Ids currently in the transcript, so a trim is not mistaken for a prepend. */
+  messageIds: readonly string[]
   earlierPageLoading: boolean
   /** Chat surface identity. The view is reused across tab switches. */
   surfaceKey: string
 }): MobileNativeChatTailFollow<TItem> {
-  const { hasItems, historyHeadId, earlierPageLoading, surfaceKey } = args
+  const { hasItems, historyHeadId, messageIds, earlierPageLoading, surfaceKey } = args
   const listRef = useRef<FlatList<TItem> | null>(null)
   const [following, setFollowingFlag] = useState(true)
   const [atTail, setAtTailFlag] = useState(true)
@@ -74,18 +76,23 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
   const prependAnchorRef = useRef<MobileChatPrependAnchor | null>(null)
   const historyHeadIdRef = useRef(historyHeadId)
   historyHeadIdRef.current = historyHeadId
+  const messageIdsRef = useRef(messageIds)
+  messageIdsRef.current = messageIds
   const surfaceKeyRef = useRef(surfaceKey)
   if (surfaceKeyRef.current !== surfaceKey) {
     surfaceKeyRef.current = surfaceKey
     prependAnchorRef.current = null
   }
   const earlierPageLoadingRef = useRef(earlierPageLoading)
+  const armedHeadId = prependAnchorRef.current?.historyHeadId
+  const armedHeadRetained = armedHeadId != null && messageIds.includes(armedHeadId)
   if (
     earlierPageLoadingRef.current &&
     !earlierPageLoading &&
-    prependAnchorRef.current?.historyHeadId === historyHeadId
+    prependAnchorRef.current &&
+    (armedHeadId === historyHeadId || !armedHeadRetained)
   ) {
-    // The page finished without inserting older rows. A later tail append must not use the anchor.
+    // The page finished without inserting older rows, or the window trimmed the armed row.
     prependAnchorRef.current = null
   }
   earlierPageLoadingRef.current = earlierPageLoading
@@ -124,7 +131,10 @@ export function useMobileNativeChatTailFollow<TItem>(args: {
         hasItems,
         height,
         offsetY: lastOffsetYRef.current,
-        historyHeadId: historyHeadIdRef.current
+        historyHeadId: historyHeadIdRef.current,
+        armedHeadRetained:
+          prependAnchorRef.current?.historyHeadId != null &&
+          messageIdsRef.current.includes(prependAnchorRef.current.historyHeadId)
       })
       prependAnchorRef.current = plan.anchor
       if (plan.anchor) {
