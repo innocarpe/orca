@@ -110,6 +110,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       conversationNameByPaneKey: resolveWorktreeAgentConversationNames({
         sources: rowSources.values(),
         tabsByWorktree: session?.tabsByWorktree,
+        unifiedTabs: session?.unifiedTabs,
+        terminalLayoutsByTabId: session?.terminalLayoutsByTabId,
         generatedTitlesEnabled: visibilitySettings?.tabAutoGenerateTitle === true,
         orchestrationByPaneKey
       }),
