@@ -135,6 +135,8 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithWorktr
       conversationNameByPaneKey: resolveWorktreeAgentConversationNames({
         sources: rowSources.values(),
         tabsByWorktree: session?.tabsByWorktree,
+        unifiedTabs: session?.unifiedTabs,
+        terminalLayoutsByTabId: session?.terminalLayoutsByTabId,
         generatedTitlesEnabled: this.store?.getSettings()?.tabAutoGenerateTitle === true,
         orchestrationByPaneKey
       }),

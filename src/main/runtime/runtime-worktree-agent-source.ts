@@ -32,4 +32,6 @@ export type RuntimeWorktreeAgentSource = Pick<AgentStatusIpcPayload, 'subagents'
   /** Projected by the structured session host; `owned` rows stay fresh past the staleness window. */
   structuredHost?: StructuredHostStatus
   programStatus?: ProgramStatusFacet
+  /** Provider session id the shared name resolver matches against `aiVaultTitle`. */
+  providerSessionId?: string
 }
