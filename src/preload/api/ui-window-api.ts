@@ -15,7 +15,7 @@ export type UiWindowApi = {
   }) => Promise<string | null>
   readClipboardImageThumbnail: () => Promise<ClipboardImageThumbnail | null>
   /** True when the clipboard holds an image, even if it is too large to preview. */
-  clipboardHasImage: () => Promise<boolean>
+  clipboardHasImage: () => Promise<boolean | null>
   writeClipboardText: (text: string) => Promise<void>
   writeTerminalClipboardText: (text: string) => Promise<void>
   writeSelectionClipboardText: (text: string) => Promise<void>

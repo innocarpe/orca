@@ -15,7 +15,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function loadClipboardHasImage(): Promise<() => Promise<boolean>> {
+async function loadClipboardHasImage(): Promise<() => Promise<boolean | null>> {
   const module = await import('./web-clipboard-api')
   return module.clipboardHasImage
 }
@@ -43,6 +43,13 @@ describe('clipboardHasImage', () => {
     const clipboardHasImage = await loadClipboardHasImage()
 
     await expect(clipboardHasImage()).resolves.toBe(false)
+  })
+
+  it('returns null when the clipboard cannot be read for images', async () => {
+    vi.stubGlobal('navigator', { clipboard: { readText: vi.fn() } })
+    const clipboardHasImage = await loadClipboardHasImage()
+
+    await expect(clipboardHasImage()).resolves.toBeNull()
   })
 
   it('rejects when the clipboard read fails instead of reporting no image', async () => {
