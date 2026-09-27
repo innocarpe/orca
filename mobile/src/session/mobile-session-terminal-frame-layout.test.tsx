@@ -50,8 +50,8 @@ vi.mock('./TerminalPaneView', () => ({ TerminalPaneView: () => null }))
 vi.mock('./MobileNativeChatOverlay', () => ({ MobileNativeChatOverlay: () => null }))
 vi.mock('./MobileSessionFileReader', () => ({ FileReader: () => null }))
 vi.mock('./MobileSessionMarkdownReader', () => ({ MarkdownReader: () => null }))
-vi.mock('./mobile-session-styles', () => ({
-  styles: { terminalFrame: { flex: 1 }, terminalBottomInset: { marginBottom: 16 } }
+vi.mock('./mobile-session-styles', async () => ({
+  styles: (await import('./mobile-session-frame-styles')).mobileSessionFrameStyles
 }))
 
 import { MobileSessionActiveContent } from './MobileSessionActiveContent'
