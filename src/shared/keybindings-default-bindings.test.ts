@@ -11,7 +11,7 @@ import {
   keybindingMatchesAction
 } from './keybindings'
 import type { KeybindingActionId } from './keybindings'
-import { ALL_TUI_AGENTS } from './tui-agent-display-names'
+import { TAB_LAUNCH_TUI_AGENTS } from './tui-agent-display-names'
 
 describe('keybindings', () => {
   it('defines a default shortcut for opening markdown notes', () => {
@@ -417,8 +417,8 @@ describe('keybindings', () => {
     ).toBe(true)
   })
 
-  it('defines an unassigned per-agent tab action for every TUI agent', () => {
-    for (const agent of ALL_TUI_AGENTS) {
+  it('defines an unassigned per-agent tab action for launchable TUI agents only', () => {
+    for (const agent of TAB_LAUNCH_TUI_AGENTS) {
       const actionId = agentTabActionId(agent)
       const definition = getKeybindingDefinition(actionId)
       expect(definition, actionId).toBeDefined()
@@ -426,6 +426,7 @@ describe('keybindings', () => {
       expect(definition?.scope).toBe('tabs')
       expect(getEffectiveKeybindingsForAction(actionId, 'darwin')).toEqual([])
     }
+    expect(getKeybindingDefinition(agentTabActionId('dsb'))).toBeNull()
   })
 
   it('matches per-agent tab actions only through user overrides', () => {

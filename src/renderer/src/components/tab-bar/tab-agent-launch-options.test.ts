@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { getAgentCatalog, getAgentLabel } from '../../lib/agent-catalog'
 import {
   buildTabAgentLaunchOptions,
   findMatchingTabAgentLaunchOptions,
@@ -19,6 +20,15 @@ describe('tab agent launch options', () => {
       'claude',
       'codex'
     ])
+  })
+
+  it('keeps a recognized DeepSeek Build session out of launch menus', () => {
+    expect(orderTabLaunchAgents(null, ['codex', 'dsb'])).toEqual(['codex'])
+  })
+
+  it('labels DeepSeek Build without offering it in the launch catalog', () => {
+    expect(getAgentLabel('dsb')).toBe('DeepSeek Build')
+    expect(getAgentCatalog().some((entry) => entry.id === 'dsb')).toBe(false)
   })
 
   it('drops a disabled default agent instead of surfacing it first', () => {

@@ -10,6 +10,7 @@ import {
   isCursorAgentTitle,
   isDshTerminalTitle
 } from './agent-title-core'
+import { isDeepSeekBuildTerminalTitle } from './dsb-terminal-title'
 
 export { DSH_WHALE, isDshTerminalTitle } from './agent-title-core'
 import { isOpenCodeNativeTitle } from './opencode-terminal-title'
@@ -123,6 +124,10 @@ function computeIsClaudeAgent(title: string): boolean {
   // another agent in the task text caused false negatives for real Claude tabs.
   if (title.startsWith('. ') || title.startsWith('* ')) {
     return true
+  }
+  // Why: a working DeepSeek Build title uses Claude's braille frame.
+  if (isDeepSeekBuildTerminalTitle(title)) {
+    return false
   }
   if (containsAgentSpinnerGlyph(title)) {
     // Why: named non-Claude agents carry braille spinners too. Gate Cursor by its
@@ -244,6 +249,10 @@ function computeAgentLabel(title: string): string | null {
   if (HERMES_AGENT_NAME_RE.test(title)) {
     return 'Hermes'
   }
+  // Why: match the product's own final segment, not a Claude task that names it.
+  if (isDeepSeekBuildTerminalTitle(title)) {
+    return 'DeepSeek Build'
+  }
   if (isClaudeAgent(title)) {
     return 'Claude Code'
   }
@@ -276,6 +285,7 @@ const TITLE_LABEL_TO_AGENT: Partial<Record<string, TuiAgent>> = {
   Cursor: 'cursor',
   Droid: 'droid',
   Hermes: 'hermes',
+  'DeepSeek Build': 'dsb',
   Pi: 'pi',
   OMP: 'omp'
 }

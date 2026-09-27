@@ -89,6 +89,10 @@ function agentForNormalizedProcess(normalized: string): TuiAgent | undefined {
   if (normalized.startsWith('muse-bin-')) {
     return PROCESS_TO_AGENT.get('muse')
   }
+  // Why: the native runtime binary is `deepseek-build-agent`, spawned by the `dsb` shim.
+  if (normalized === 'deepseek-build-agent') {
+    return PROCESS_TO_AGENT.get('dsb')
+  }
   return undefined
 }
 

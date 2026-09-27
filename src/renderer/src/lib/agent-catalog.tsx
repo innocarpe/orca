@@ -1,6 +1,7 @@
 import type React from 'react'
 import { ClaudeIcon, DroidIcon, OpenAIIcon } from '@/components/status-bar/icons'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
 import {
   AgentLetterIcon,
   AiderIcon,
@@ -34,7 +35,9 @@ export const getAgentCatalog = createLocalizedCatalog(buildAgentCatalogEntries)
 export const AGENT_CATALOG: AgentCatalogEntry[] = getAgentCatalog()
 
 export function getAgentLabel(agent: TuiAgent): string {
-  return getAgentCatalog().find((entry) => entry.id === agent)?.label ?? agent
+  return (
+    getAgentCatalog().find((entry) => entry.id === agent)?.label ?? TUI_AGENT_DISPLAY_NAMES[agent]
+  )
 }
 
 export function AgentIcon({
@@ -113,6 +116,6 @@ export function AgentIcon({
       />
     )
   }
-  const label = catalogEntry?.label ?? agent
+  const label = catalogEntry?.label ?? TUI_AGENT_DISPLAY_NAMES[agent]
   return <AgentLetterIcon letter={label.charAt(0).toUpperCase()} size={size} />
 }
