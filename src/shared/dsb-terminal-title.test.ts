@@ -2,11 +2,36 @@ import { describe, expect, it } from 'vitest'
 import { isClaudeAgent as isIdentityClaudeAgent, getAgentLabel } from './agent-title-identity'
 import { isDeepSeekBuildTerminalTitle } from './dsb-terminal-title'
 import { isClaudeAgent, resolveTerminalTitleAgentType } from './terminal-title-agent-type'
+import { collectAgentTitleEvidence } from './agent-title-evidence'
+import { resolveCanonicalPaneAgentIdentity } from './pane-agent-identity-adapter'
 
 const WORKING = '⠼ - Waiting for response… - DeepSeek Build'
 const CLAUDE_MENTION = '⠋ Review DeepSeek Build integration'
 
 describe('DeepSeek Build terminal titles', () => {
+  it.each(['Codex', 'Gemini', 'Claude', 'OpenCode', 'Grok', 'Cursor', 'Pi', 'Hermes'])(
+    'keeps the DeepSeek Build owner when task text mentions %s',
+    (agent) => {
+      const title = `⠋ Review ${agent} integration - DeepSeek Build`
+      expect(resolveTerminalTitleAgentType(title)).toBe('dsb')
+      expect(getAgentLabel(title)).toBe('DeepSeek Build')
+      expect(collectAgentTitleEvidence(title).agent).toBe('dsb')
+      expect(resolveCanonicalPaneAgentIdentity({ title }).agent).toBe('dsb')
+      expect(isClaudeAgent(title)).toBe(false)
+      expect(isIdentityClaudeAgent(title)).toBe(false)
+    }
+  )
+
+  it.each([
+    ['✳ Review Codex - DeepSeek Build', 'claude', 'Claude Code'],
+    ['. Review Codex - DeepSeek Build', 'claude', 'Claude Code'],
+    ['* Review Codex - DeepSeek Build', 'claude', 'Claude Code'],
+    ['✦ Review Codex - DeepSeek Build', 'gemini', 'Gemini CLI']
+  ])('preserves explicit vendor markers in %s', (title, agent, label) => {
+    expect(resolveTerminalTitleAgentType(title)).toBe(agent)
+    expect(getAgentLabel(title)).toBe(label)
+  })
+
   it('matches the product segment and not a mention inside another task', () => {
     expect(isDeepSeekBuildTerminalTitle('DeepSeek Build')).toBe(true)
     expect(isDeepSeekBuildTerminalTitle('my-project - DeepSeek Build')).toBe(true)

@@ -59,9 +59,7 @@ export const SKILLS_CLI_AGENT_KEY_BY_TUI_AGENT = {
   zcode: 'zcode',
   // Why: DSH ships skills as Cordis plugins, not a `skills --agent` target.
   dsh: null,
-  jcode: null,
-  // Why: DeepSeek Build has its own skill index. The shared skills CLI has no dsb key.
-  dsb: null
+  jcode: null
 } satisfies Record<TuiAgent, string | null>
 
 /**

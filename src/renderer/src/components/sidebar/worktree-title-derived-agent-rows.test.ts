@@ -56,7 +56,7 @@ describe('buildTitleDerivedAgentRows', () => {
       retained: [],
       runtimePaneTitlesByTabId: {
         'tab-1': {
-          1: '⠼ - Waiting for response… - DeepSeek Build',
+          1: '⠼ Review Codex integration - DeepSeek Build',
           2: '⠋ Review DeepSeek Build integration'
         }
       },
@@ -65,9 +65,7 @@ describe('buildTitleDerivedAgentRows', () => {
       now: 2000
     })
 
-    // Why the mention produces no row: a braille task title is not Claude unless
-    // it names Claude, and it is not DeepSeek Build unless the product is the
-    // final title segment.
+    // Why: a task mention does not establish the pane's owner.
     expect(rows.map((row) => [row.agentType, row.state])).toEqual([['dsb', 'working']])
   })
 

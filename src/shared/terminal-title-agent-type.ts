@@ -7,6 +7,7 @@ import {
 } from './agent-name-token-match'
 import {
   containsAgentSpinnerGlyph,
+  hasGeminiStatusGlyph,
   isCursorAgentTitle,
   isDshTerminalTitle
 } from './agent-title-core'
@@ -20,7 +21,7 @@ import {
 } from './pi-compatible-synthetic-title'
 import { resolveCanonicalPaneAgentIdentity } from './pane-agent-identity-adapter'
 import { memoizeTitleClassification } from './terminal-title-classification-memo'
-import type { TuiAgent } from './tui-agent'
+import type { TerminalAgent } from './terminal-agent'
 
 export const CLAUDE_IDLE = '\u2733' // ✳ (eight-spoked asterisk — Claude Code idle prefix)
 const CLAUDE_MANAGEMENT_TITLE_RE =
@@ -182,6 +183,10 @@ function computeAgentLabel(title: string): string | null {
   if (isQoderTerminalTitle(title)) {
     return title.includes('Qoder CLI CN') ? 'Qoder CLI CN' : 'Qoder CLI'
   }
+  // Why: task text can name other agents; preserve vendor glyphs before the product suffix.
+  if (isDeepSeekBuildTerminalTitle(title) && !hasGeminiStatusGlyph(title)) {
+    return 'DeepSeek Build'
+  }
   if (isGeminiTerminalTitle(title)) {
     return 'Gemini CLI'
   }
@@ -249,10 +254,6 @@ function computeAgentLabel(title: string): string | null {
   if (HERMES_AGENT_NAME_RE.test(title)) {
     return 'Hermes'
   }
-  // Why: match the product's own final segment, not a Claude task that names it.
-  if (isDeepSeekBuildTerminalTitle(title)) {
-    return 'DeepSeek Build'
-  }
   if (isClaudeAgent(title)) {
     return 'Claude Code'
   }
@@ -264,7 +265,7 @@ function computeAgentLabel(title: string): string | null {
 export const getAgentLabel: (title: string) => string | null =
   memoizeTitleClassification(computeAgentLabel)
 
-const TITLE_LABEL_TO_AGENT: Partial<Record<string, TuiAgent>> = {
+const TITLE_LABEL_TO_AGENT: Partial<Record<string, TerminalAgent>> = {
   'DeepSeek Harness': 'dsh',
   'Claude Code': 'claude',
   OpenClaude: 'openclaude',
@@ -302,7 +303,7 @@ function hasGenericClaudeStatusPrefix(title: string): boolean {
 
 export { isClaudeIdentityFrameTitle } from './agent-title-core'
 
-function isGenericClaudeStatusClaim(title: string, titleAgent: TuiAgent | null): boolean {
+function isGenericClaudeStatusClaim(title: string, titleAgent: TerminalAgent | null): boolean {
   return (
     titleAgent === 'claude' &&
     hasGenericClaudeStatusPrefix(title) &&
@@ -310,7 +311,7 @@ function isGenericClaudeStatusClaim(title: string, titleAgent: TuiAgent | null):
   )
 }
 
-export function resolveTerminalTitleAgentType(title: string): TuiAgent | null {
+export function resolveTerminalTitleAgentType(title: string): TerminalAgent | null {
   const label = getAgentLabel(title)
   const parsed = label ? (TITLE_LABEL_TO_AGENT[label] ?? null) : null
   return resolveCanonicalPaneAgentIdentity({
@@ -327,7 +328,7 @@ export function resolveTerminalTitleAgentType(title: string): TuiAgent | null {
  * that something is running, not proof the agent is Claude — so a task or
  * worktree title cannot become Claude without an explicit "Claude Code" name.
  */
-function computeExplicitTerminalTitleAgentType(title: string): TuiAgent | null {
+function computeExplicitTerminalTitleAgentType(title: string): TerminalAgent | null {
   const titleAgent = resolveTerminalTitleAgentType(title)
   if (isGenericClaudeStatusClaim(title, titleAgent)) {
     return null
@@ -336,5 +337,5 @@ function computeExplicitTerminalTitleAgentType(title: string): TuiAgent | null {
 }
 
 /** Pure in `title` — memoized so repeated selector reads skip the canonical/title parse. */
-export const resolveExplicitTerminalTitleAgentType: (title: string) => TuiAgent | null =
+export const resolveExplicitTerminalTitleAgentType: (title: string) => TerminalAgent | null =
   memoizeTitleClassification(computeExplicitTerminalTitleAgentType)

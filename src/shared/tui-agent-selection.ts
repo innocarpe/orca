@@ -1,6 +1,5 @@
 import type { TuiAgent } from './tui-agent'
 import { isTuiAgent } from './tui-agent-config'
-import { TAB_LAUNCH_TUI_AGENTS } from './tui-agent-display-names'
 
 // Keep this order in sync with the desktop agent catalog. It defines the
 // automatic fallback priority when the user has not chosen a default agent.
@@ -66,12 +65,7 @@ export function pickTuiAgent(
   }
   const disabledSet = new Set(normalizeDisabledTuiAgents(disabled))
   const detectedSet = detected instanceof Set ? detected : new Set(detected)
-  if (
-    preferred &&
-    TAB_LAUNCH_TUI_AGENTS.includes(preferred) &&
-    detectedSet.has(preferred) &&
-    !disabledSet.has(preferred)
-  ) {
+  if (preferred && detectedSet.has(preferred) && !disabledSet.has(preferred)) {
     return preferred
   }
   for (const agent of TUI_AGENT_AUTO_PICK_ORDER) {

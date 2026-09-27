@@ -6,6 +6,7 @@ import {
   DROID_AGENT_NAME_RE,
   HERMES_AGENT_NAME_RE,
   containsAgentSpinnerGlyph,
+  hasGeminiStatusGlyph,
   isClaudeManagementTitle,
   isCursorAgentTitle,
   isGeminiTerminalTitle,
@@ -81,6 +82,10 @@ function computeAgentLabel(title: string): string | null {
   if (isQoderTerminalTitle(title)) {
     return title.includes('Qoder CLI CN') ? 'Qoder CLI CN' : 'Qoder CLI'
   }
+  // Why: task text can name other agents; preserve vendor glyphs before the product suffix.
+  if (isDeepSeekBuildTerminalTitle(title) && !hasGeminiStatusGlyph(title)) {
+    return 'DeepSeek Build'
+  }
   if (isGeminiTerminalTitle(title)) {
     return 'Gemini CLI'
   }
@@ -134,11 +139,6 @@ function computeAgentLabel(title: string): string | null {
   }
   if (HERMES_AGENT_NAME_RE.test(title)) {
     return 'Hermes'
-  }
-  // Why: the renderer copy must agree with terminal-title-agent-type, or a
-  // working dsb pane is labeled Claude and takes Claude-only side effects.
-  if (isDeepSeekBuildTerminalTitle(title)) {
-    return 'DeepSeek Build'
   }
   if (isClaudeAgent(title)) {
     return 'Claude Code'

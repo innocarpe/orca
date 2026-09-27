@@ -1,5 +1,5 @@
-/** Known TUI agent IDs. The renderer catalog selects which ones can be launched
- *  from menus and configured as the default. */
+/** All AI coding agents Orca knows how to launch. Used for the agent picker in the new-workspace
+ *  flow and for the default-agent setting. Extend this union as new agents are added. */
 export type TuiAgent =
   | 'claude' // Claude Code
   | 'claude-agent-teams' // Claude Code Agent Teams via Orca native panes
@@ -43,7 +43,6 @@ export type TuiAgent =
   | 'trae' // Trae CLI
   | 'muse' // Muse (Meta `muse` CLI)
   | 'zcode' // ZCode (Z.ai `zcode` CLI)
-  | 'dsb' // DeepSeek Build (`dsb` / `deepseek-build`)
   | 'prime-agent' // Prime Agent (Prime Intellect)
   | 'dsh' // DeepSeek Harness (`dsh`, launched through its `dsh-tui` terminal profile)
   | 'jcode' // Jcode

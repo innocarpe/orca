@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { ALL_TUI_AGENTS } from '../../../../shared/tui-agent-display-names'
+import { isTuiAgent, TUI_AGENT_CONFIG } from '../../../../shared/tui-agent-config'
 import { getAgentCatalog, getAgentLabel } from '../../lib/agent-catalog'
+import { agentKindForAgentType, agentTypeToIconAgent } from '../../lib/agent-status'
 import {
   buildTabAgentLaunchOptions,
   findMatchingTabAgentLaunchOptions,
@@ -22,15 +25,15 @@ describe('tab agent launch options', () => {
     ])
   })
 
-  it('keeps a recognized DeepSeek Build session out of launch menus', () => {
-    expect(orderTabLaunchAgents(null, ['codex', 'dsb'])).toEqual(['codex'])
-  })
-
   it('labels DeepSeek Build without offering it in the launch catalog', () => {
     expect(getAgentLabel('dsb')).toBe('DeepSeek Build')
-    expect(getAgentCatalog().some((entry) => entry.id === 'dsb')).toBe(false)
+    expect(agentTypeToIconAgent('dsb')).toBe('dsb')
+    expect(agentKindForAgentType('dsb')).toBe('other')
+    expect(isTuiAgent('dsb')).toBe(false)
+    expect(Object.hasOwn(TUI_AGENT_CONFIG, 'dsb')).toBe(false)
+    expect(ALL_TUI_AGENTS).not.toContain('dsb')
+    expect(getAgentCatalog().map((entry) => entry.id)).not.toContain('dsb')
   })
-
   it('drops a disabled default agent instead of surfacing it first', () => {
     const ordered = orderTabLaunchAgents(
       'openclaude',

@@ -319,12 +319,6 @@ const TUI_AGENT_CONFIG_SOURCE: Record<TuiAgent, TuiAgentConfigSource> = {
     // window never settles; its composer box corner is the real "input is live" signal.
     draftPasteReadySignal: 'zcode-composer-prompt'
   },
-  dsb: {
-    detectCmd: 'dsb',
-    detectCmdAliases: ['deepseek-build'],
-    expectedProcess: 'dsb',
-    promptInjectionMode: 'stdin-after-start'
-  },
   devin: {
     detectCmd: 'devin',
     // Why: `devin -- <prompt>` auto-submits immediately (docs.devin.ai/cli), so start the REPL with no argv prompt.

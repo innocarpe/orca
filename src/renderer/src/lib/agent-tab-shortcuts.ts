@@ -3,7 +3,7 @@ import {
   type AgentTabActionId,
   type KeybindingOverrides
 } from '../../../shared/keybindings'
-import { TAB_LAUNCH_TUI_AGENTS } from '../../../shared/tui-agent-display-names'
+import { ALL_TUI_AGENTS } from '../../../shared/tui-agent-display-names'
 import { normalizeDisabledTuiAgents, pickTuiAgent } from '../../../shared/tui-agent-selection'
 import type { TuiAgent } from '../../../shared/tui-agent'
 
@@ -27,7 +27,7 @@ export function listBoundAgentTabActions(
   }
   const disabled = new Set(normalizeDisabledTuiAgents(disabledTuiAgents))
   const bound: BoundAgentTabAction[] = []
-  for (const agent of TAB_LAUNCH_TUI_AGENTS) {
+  for (const agent of ALL_TUI_AGENTS) {
     if (disabled.has(agent)) {
       continue
     }

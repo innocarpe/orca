@@ -31,10 +31,6 @@ describe('listBoundAgentTabActions', () => {
     expect(listBoundAgentTabActions(undefined, [])).toEqual([])
     expect(listBoundAgentTabActions({}, null)).toEqual([])
   })
-
-  it('ignores a saved DeepSeek Build launch shortcut', () => {
-    expect(listBoundAgentTabActions({ 'tab.newAgent.dsb': ['Mod+Alt+D'] }, [])).toEqual([])
-  })
 })
 
 describe('resolveDefaultAgentForNewTab', () => {

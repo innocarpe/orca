@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isDsbHeadlessOneShotCommand } from './dsb-headless-command'
 
-describe('DeepSeek Build process recognition', () => {
+describe('DeepSeek Build headless one-shot commands', () => {
   it('treats run as a one-shot and leaves the TUI interactive', () => {
     expect(isDsbHeadlessOneShotCommand(['dsb', 'run', 'explain this'])).toBe(true)
     expect(isDsbHeadlessOneShotCommand(['dsb', '--dogfood'])).toBe(false)

@@ -10,11 +10,6 @@ describe('pickTuiAgent', () => {
     expect(pickTuiAgent('codex', ['claude', 'codex'])).toBe('codex')
   })
 
-  it('does not auto-launch a recognized DeepSeek Build session', () => {
-    expect(pickTuiAgent('dsb', ['dsb', 'codex'])).toBe('codex')
-    expect(pickTuiAgent(null, ['dsb'])).toBeNull()
-  })
-
   it('falls back in desktop catalog order when the preference is absent or stale', () => {
     expect(pickTuiAgent(null, ['cursor', 'codex'])).toBe('codex')
     expect(pickTuiAgent('gemini', ['cursor', 'codex'])).toBe('codex')

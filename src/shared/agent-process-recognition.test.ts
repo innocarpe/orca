@@ -11,6 +11,15 @@ import {
 } from './agent-process-recognition'
 
 describe('agent process recognition', () => {
+  it.each([
+    '/usr/local/bin/dsb',
+    '/usr/bin/deepseek-build',
+    'C:\\Users\\dev\\bin\\dsb.cmd',
+    'C:\\Users\\dev\\bin\\deepseek-build-agent.exe'
+  ])('recognizes manually started DeepSeek Build at %s', (processName) => {
+    expect(recognizeAgentProcess(processName)?.agent).toBe('dsb')
+  })
+
   it('recognizes DeepSeek Build by binary name and its npm shim', () => {
     expect(recognizeAgentProcess('dsb')).toEqual({ agent: 'dsb', processName: 'dsb' })
     expect(recognizeAgentProcess('deepseek-build')).toEqual({

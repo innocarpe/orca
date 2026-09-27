@@ -1,4 +1,4 @@
-import { TAB_LAUNCH_TUI_AGENTS, TUI_AGENT_DISPLAY_NAMES } from '../tui-agent-display-names'
+import { ALL_TUI_AGENTS, TUI_AGENT_DISPLAY_NAMES } from '../tui-agent-display-names'
 import type {
   AgentTabActionId,
   KeybindingActionId,
@@ -16,7 +16,7 @@ export function agentTabActionId(agent: TuiAgent): AgentTabActionId {
 }
 
 function buildAgentTabKeybindingDefinitions(): KeybindingDefinition[] {
-  return TAB_LAUNCH_TUI_AGENTS.map((agent) => ({
+  return ALL_TUI_AGENTS.map((agent) => ({
     id: agentTabActionId(agent),
     title: `New ${TUI_AGENT_DISPLAY_NAMES[agent]} tab`,
     group: 'Agents',
