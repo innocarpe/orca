@@ -148,6 +148,9 @@ export const mobileSessionFrameStyles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden'
   },
+  terminalBottomInset: {
+    marginBottom: spacing.lg
+  },
   terminalPane: {
     ...StyleSheet.absoluteFillObject
   },

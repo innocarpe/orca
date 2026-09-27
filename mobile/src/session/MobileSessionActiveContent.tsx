@@ -1,4 +1,4 @@
-import { Animated, View, Text, Pressable, ActivityIndicator } from 'react-native'
+import { Animated, View, Text, Pressable, ActivityIndicator, Platform } from 'react-native'
 import { saveTerminalTextScale } from '../storage/preferences'
 import { MobileBrowserPane } from '../browser/MobileBrowserPane'
 import { TerminalPaneView } from './TerminalPaneView'
@@ -195,7 +195,7 @@ export function MobileSessionActiveContent({
     <View
       // Why: react-native-web observes onLayout only on a View that mounts with it; unkeyed, this reuses the loading View and never reports.
       key="terminal-frame"
-      style={styles.terminalFrame}
+      style={[styles.terminalFrame, Platform.OS === 'ios' && styles.terminalBottomInset]}
       onLayout={(e) => {
         terminalFrameHeightRef.current = e.nativeEvent.layout.height
         // Why: notify height imperatively so dock settling re-fits the PTY without rerendering SessionScreen.
