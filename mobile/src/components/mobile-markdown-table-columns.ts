@@ -140,16 +140,26 @@ function graphemeClusters(value: string, segmenter: GraphemeSegmenter | null): s
 function clusterColumns(cluster: string): number {
   if (cluster.includes('\u200d')) {
     let wide = false
+    let visibleBase = false
     for (const char of Array.from(cluster)) {
       if (char === '\u200d' || char === '\uFE0F') {
         continue
       }
       const codePoint = char.codePointAt(0)
-      if (codePoint !== undefined && isWideCodePoint(codePoint)) {
+      if (codePoint === undefined || (codePoint >= 0x0300 && codePoint <= 0x036f)) {
+        continue
+      }
+      visibleBase = true
+      if (isWideCodePoint(codePoint)) {
         wide = true
       }
     }
-    return wide ? 2 : 0
+    if (wide) {
+      return 2
+    }
+    // Why: a ZWJ cluster without a wide codepoint still draws a base glyph —
+    // Devanagari conjuncts and Latin joiners — so it costs 1, not 0.
+    return visibleBase ? 1 : 0
   }
   const codePoint = cluster.codePointAt(0)
   if (codePoint === undefined || (codePoint >= 0x0300 && codePoint <= 0x036f)) {

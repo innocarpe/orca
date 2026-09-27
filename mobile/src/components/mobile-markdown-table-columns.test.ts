@@ -90,6 +90,22 @@ describe('mobileMarkdownTableColumnWidths', () => {
     expect(mobileMarkdownGlyphColumns(family, null)).toBe(16)
   })
 
+  it('charges a narrow ZWJ cluster one column, not zero', () => {
+    const devanagariConjunct = 'क्\u200dष'
+
+    // The fallback cannot pull the virama cluster back under the consonant before
+    // it, so those two visible bases cost two columns there.
+    expect(mobileMarkdownGlyphColumns(devanagariConjunct, null)).toBe(2)
+    expect(mobileMarkdownGlyphColumns('a\u200db', null)).toBe(1)
+  })
+
+  it('charges a narrow ZWJ cluster one column with Intl.Segmenter', () => {
+    const devanagariConjunct = 'क्\u200dष'
+
+    expect(mobileMarkdownGlyphColumns(devanagariConjunct)).toBe(1)
+    expect(mobileMarkdownGlyphColumns('a\u200db')).toBe(2)
+  })
+
   it('counts a joined emoji once instead of once per UTF-16 unit', () => {
     const family = '👨‍👩‍👧‍👦'.repeat(8)
     const utf16Sized = 'a'.repeat(family.length)
