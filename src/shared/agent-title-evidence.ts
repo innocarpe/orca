@@ -269,8 +269,13 @@ function namesConsumedByAnchoredLabels(
   return consumed
 }
 
-function collectAnchoredNames(segments: readonly string[]): TerminalAgent[] {
+function collectAnchoredNames(
+  segments: readonly string[],
+  vendorMarkers: readonly TerminalAgent[]
+): TerminalAgent[] {
   const anchored = new Set<TerminalAgent>()
+  // Why: a native owner's task text can end with DSB's product-name suffix, including inside wrappers.
+  const allowDsbTitle = vendorMarkers.length === 0 && !segments.some(isOpenCodeNativeTitle)
 
   for (const segment of segments) {
     // Why anchored and not a bare marker: the native envelope owns the whole wrapped pane title.
@@ -278,7 +283,7 @@ function collectAnchoredNames(segments: readonly string[]): TerminalAgent[] {
     if (isOpenCodeNativeTitle(segment)) {
       anchored.add('opencode')
     }
-    if (isDeepSeekBuildTerminalTitle(segment)) {
+    if (allowDsbTitle && isDeepSeekBuildTerminalTitle(segment)) {
       anchored.add('dsb')
     }
 
@@ -336,7 +341,7 @@ export function collectAgentTitleEvidence(title: string): AgentTitleEvidence {
 
   const segments = getEvidenceTitleSegments(title)
   const vendorMarkers = collectVendorMarkers(segments)
-  const anchoredNames = collectAnchoredNames(segments)
+  const anchoredNames = collectAnchoredNames(segments, vendorMarkers)
   const anchoredSet = new Set(anchoredNames)
   const anchoredLabelNames = namesConsumedByAnchoredLabels(segments, anchoredSet)
   const freeTextNames = namesIn(title).filter(

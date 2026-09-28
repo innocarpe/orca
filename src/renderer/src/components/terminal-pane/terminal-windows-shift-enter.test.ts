@@ -5,6 +5,52 @@ import {
 } from './terminal-windows-shift-enter'
 
 describe('resolveWindowsShiftEnterEncoding', () => {
+  it.each([
+    { agent: 'dsb' as const, routingTrusted: true, shellForeground: false },
+    { agent: 'dsb' as const, routingConfirmationPending: true, shellForeground: false }
+  ])('keeps the generic encoding for recognition-only foreground evidence %j', (foreground) => {
+    expect(resolveWindowsShiftEnterEncoding({ foreground })).toBe('alt-enter')
+    expect(
+      resolveWindowsShiftEnterEncodingForPane(
+        {
+          paneForegroundAgentByPaneKey: { 'tab:pane': foreground },
+          agentLaunchConfigByPaneKey: {}
+        },
+        'tab:pane',
+        'DeepSeek Build'
+      )
+    ).toBe('alt-enter')
+  })
+
+  it.each(['DeepSeek Build', '⠋ Review Codex - DeepSeek Build'])(
+    'keeps title-derived recognition-only identity %j on the generic encoding',
+    (title) => {
+      expect(
+        resolveWindowsShiftEnterEncodingForPane(
+          { paneForegroundAgentByPaneKey: {}, agentLaunchConfigByPaneKey: {} },
+          'tab:pane',
+          title
+        )
+      ).toBe('alt-enter')
+      for (const foreground of [
+        { agent: 'dsb' as const, routingRevoked: true, shellForeground: false },
+        { agent: 'dsb' as const, shellForeground: true },
+        { agent: 'dsb' as const, routingTrusted: true, shellForeground: false }
+      ]) {
+        expect(
+          resolveWindowsShiftEnterEncodingForPane(
+            {
+              paneForegroundAgentByPaneKey: { 'tab:pane': foreground },
+              agentLaunchConfigByPaneKey: {}
+            },
+            'tab:pane',
+            'Pi ready'
+          )
+        ).toBe('alt-enter')
+      }
+    }
+  )
+
   it('uses CSI-u only for trusted Droid process evidence', () => {
     expect(
       resolveWindowsShiftEnterEncoding({
