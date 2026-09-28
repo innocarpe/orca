@@ -9,6 +9,13 @@ const WORKING = '⠼ - Waiting for response… - DeepSeek Build'
 const CLAUDE_MENTION = '⠋ Review DeepSeek Build integration'
 
 describe('DeepSeek Build terminal titles', () => {
+  it.each(['⠂', '⠐', '✦'])('keeps a native DSH %s title from becoming DSB', (prefix) => {
+    const title = `${prefix} 🐋 Review integration - DeepSeek Build`
+    expect(isDeepSeekBuildTerminalTitle(title)).toBe(false)
+    expect(resolveTerminalTitleAgentType(title)).toBe('dsh')
+    expect(collectAgentTitleEvidence(title).anchoredNames).not.toContain('dsb')
+  })
+
   it.each(['Codex', 'Gemini', 'Claude', 'OpenCode', 'Grok', 'Cursor', 'Pi', 'Hermes'])(
     'keeps the DeepSeek Build owner when task text mentions %s',
     (agent) => {

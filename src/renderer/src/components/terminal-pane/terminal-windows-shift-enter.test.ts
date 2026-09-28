@@ -5,6 +5,54 @@ import {
 } from './terminal-windows-shift-enter'
 
 describe('resolveWindowsShiftEnterEncoding', () => {
+  it.each(['dsb', 'codex'] as const)(
+    'keeps pending %s input encoding when a stale title names another agent',
+    (agent) => {
+      const state = {
+        paneForegroundAgentByPaneKey: {
+          'tab:pane': { agent, routingConfirmationPending: true, shellForeground: false }
+        },
+        agentLaunchConfigByPaneKey: {}
+      }
+      for (const title of ['Pi ready', 'OMP ready', 'Droid']) {
+        expect(resolveWindowsShiftEnterEncodingForPane(state, 'tab:pane', title)).toBe('alt-enter')
+      }
+    }
+  )
+
+  it.each(['pi', 'omp', 'droid'] as const)(
+    'keeps pending %s CSI-u capability through a conflicting title',
+    (agent) => {
+      expect(
+        resolveWindowsShiftEnterEncodingForPane(
+          {
+            paneForegroundAgentByPaneKey: {
+              'tab:pane': { agent, routingConfirmationPending: true, shellForeground: false }
+            },
+            agentLaunchConfigByPaneKey: {}
+          },
+          'tab:pane',
+          'DeepSeek Build'
+        )
+      ).toBe('csi-u')
+    }
+  )
+
+  it('recovers a title capability when pending confirmation has no foreground identity', () => {
+    expect(
+      resolveWindowsShiftEnterEncodingForPane(
+        {
+          paneForegroundAgentByPaneKey: {
+            'tab:pane': { agent: null, routingConfirmationPending: true, shellForeground: false }
+          },
+          agentLaunchConfigByPaneKey: {}
+        },
+        'tab:pane',
+        'Pi ready'
+      )
+    ).toBe('csi-u')
+  })
+
   it.each([
     { agent: 'dsb' as const, routingTrusted: true, shellForeground: false },
     { agent: 'dsb' as const, routingConfirmationPending: true, shellForeground: false }

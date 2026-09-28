@@ -58,6 +58,7 @@ describe('manually started DeepSeek Build terminals', () => {
     expect(JSON.parse(JSON.stringify(listing)).terminals[0].agentIdentity).toBe('dsb')
 
     const submission = runtime.sendTerminalAgentPrompt(terminal.handle, 'review this', {
+      inputKind: 'driving',
       leadLine: 'Please review'
     })
     await Promise.all([

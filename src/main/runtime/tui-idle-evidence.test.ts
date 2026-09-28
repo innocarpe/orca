@@ -255,6 +255,10 @@ describe('rest signal agrees with the lanes that can settle a wait', () => {
 })
 
 describe('nameOnlyIdleNeedsCorroboration', () => {
+  it('keeps recognition-only DSB titles outside managed idle-title policies', () => {
+    expect(nameOnlyIdleNeedsCorroboration(null, 'DeepSeek Build')).toBe(false)
+  })
+
   it('holds agents that announce rest with an explicit title, native or synthesized', () => {
     expect(nameOnlyIdleNeedsCorroboration('claude')).toBe(true)
     expect(nameOnlyIdleNeedsCorroboration('codex')).toBe(true)

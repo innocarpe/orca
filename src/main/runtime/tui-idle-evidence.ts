@@ -8,6 +8,7 @@ import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-type
 import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-title'
 import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import type { TuiAgent } from '../../shared/tui-agent'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import { getTuiAgentRestSignal } from '../../shared/tui-agent-rest-signal'
 import { detectExplicitIdleStatusFromTitle } from './terminal-wait-detection'
 import { isOmpIdleStateTitle } from './omp-terminal-readiness'
@@ -134,12 +135,12 @@ export function nameOnlyIdleNeedsCorroboration(
   // Why the title fallback: an adopted pane carries no launch metadata, but its
   // name-only title is exactly the thing that names the agent.
   const resolved = agent ?? (title ? resolveExplicitTerminalTitleAgentType(title) : null)
-  if (resolved === null) {
+  // A DeepSeek Build title resolves to `dsb`, which is recognized but has no launch config.
+  // Idle-title policy applies only to launchable TUI agents.
+  if (!isTuiAgent(resolved)) {
     return false
   }
-  return (
-    idleTitleRequiresQuiet(resolved) ?? getSyntheticAgentTerminalTitle(resolved, 'done') !== null
-  )
+  return idleTitleRequiresQuiet(resolved) ?? getSyntheticAgentTerminalTitle(resolved, 'done') !== null
 }
 
 /** Tier 3: a title-derived idle, usable only once the stream has also gone quiet. */

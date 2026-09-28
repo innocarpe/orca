@@ -57,6 +57,14 @@ export function resolveWindowsShiftEnterEncodingForPane(
   }
   // Why: strict pane-local titles recover Pi/Droid through process-scan gaps without overriding process or shell proof.
   const titleAgent = resolveCommittedTitleAgentType(terminalTitle)
+  // Why: pending confirmation retains the foreground identity; a stale title cannot switch agents.
+  if (
+    foreground?.routingConfirmationPending === true &&
+    foreground.agent != null &&
+    foreground.agent !== titleAgent
+  ) {
+    return encoding
+  }
   return isTuiAgent(titleAgent)
     ? (TUI_AGENT_CONFIG[titleAgent].windowsShiftEnterEncoding ?? 'alt-enter')
     : 'alt-enter'
