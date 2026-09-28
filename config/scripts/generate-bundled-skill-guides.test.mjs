@@ -97,6 +97,24 @@ describe('bundled skill guide generator', () => {
     }
   })
 
+  it('preserves the one-worker tab contract in both installed projections', async () => {
+    const artifacts = await buildArtifacts(projectDir)
+    for (const name of ['orca-cli', 'orchestration']) {
+      const projection = artifacts.find(
+        (artifact) => artifact.path === path.join(projectDir, 'skills', name, 'SKILL.md')
+      )
+      const text = projection.content.replace(/\s+/gu, ' ')
+
+      expect(text).toContain('existing idle launcher shell')
+      expect(text).toContain('Custom model/effort arguments do not justify another tab')
+      expect(text).toContain('Use `terminal create` only when the worktree has no terminal')
+      expect(text).toContain('older guide')
+      expect(text).toContain('terminal list --include-visual-layouts')
+      expect(text).toContain('`exited` or `screen-unavailable` does not prove a tab was removed')
+      expect(text).toContain('configured tabs running real commands')
+    }
+  })
+
   it('uses the exported recipe id variable in per-workspace environment examples', async () => {
     // The guide is a kernel plus conditional references, so the env-var contract is asserted over
     // the whole corpus while the name-building recipe is pinned in the file that now carries it.

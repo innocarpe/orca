@@ -118,7 +118,7 @@ describe('orca CLI skill guidance', () => {
     )
     expect(skill).toContain('Configured default tabs are materialized instead')
     expect(skill).toContain(
-      'only after `terminal list` or `terminal show` confirms it is an unused shell'
+      'otherwise reuse the idle launcher with `terminal send` as in Full Handoffs'
     )
     expect(skill).not.toContain('bare `worktree create` (no `--agent`) still opens')
     expect(skill).not.toContain('ends with **one** tab')
@@ -127,6 +127,44 @@ describe('orca CLI skill guidance', () => {
     expect(skill).toContain(
       "this checks the caller's inbox and does not remotely deliver input to another terminal"
     )
+  })
+
+  it('launches custom Codex in the existing handle before delivering the brief', () => {
+    const skill = readSkill()
+    const handoff = skill
+      .split('Custom Codex model/effort handoff:')[1]
+      .split('Existing-terminal handoff:')[0]
+    const recipes = [...handoff.matchAll(/```text\n([\s\S]*?)\n```/gu)].map((match) => match[1])
+    const commands = recipes[0].split('\n')
+
+    expect(commands.map((command) => command.split(' ').slice(1, 3).join(' '))).toEqual([
+      'worktree create',
+      'terminal list',
+      'terminal read',
+      'terminal send',
+      'terminal wait',
+      'terminal read',
+      'terminal send',
+      'terminal list'
+    ])
+    for (const command of commands.filter((line) => /terminal (read|send|wait) /u.test(line))) {
+      expect(command).toContain('--terminal <handle>')
+    }
+    expect(commands[3]).toContain('codex --model gpt-6-astra -c model_reasoning_effort="xhigh"')
+    expect(commands[6]).toContain('--text "<task brief>"')
+    expect(commands[1]).toContain('--include-visual-layouts')
+    expect(commands[7]).toBe(commands[1])
+    expect(handoff.replace(/\s+/gu, ' ')).toContain(
+      'only when the inventory has no terminal (`totalCount: 0`) and no terminal leaf in `visualLayouts`'
+    )
+    expect(recipes[1]).toMatch(/^ORCA terminal create /u)
+    expect(handoff).toContain('Send the command only after its screen confirms an idle shell')
+    expect(handoff).toContain(
+      'do not send an agent command into an active command or close its tab'
+    )
+    expect(handoff).toContain('`exited` or `screen-unavailable`')
+    expect(handoff).not.toContain('custom argv forces the two-step path')
+    expect(skill).not.toContain('This can leave a fallback shell')
   })
 
   it('requires full worktree ids across bundled agent guidance', () => {
@@ -178,6 +216,18 @@ describe('orca CLI skill guidance', () => {
 })
 
 describe('orca CLI install stub', () => {
+  it('keeps the one-worker rule ahead of older binary guidance', () => {
+    const stub = readSkill(stubPath).replace(/\s+/gu, ' ')
+
+    expect(stub).toContain('existing idle launcher shell through the same handle')
+    expect(stub).toContain('Custom model/effort arguments do not justify another tab')
+    expect(stub).toContain('Use `terminal create` only when the worktree has no terminal')
+    expect(stub).toContain('older guides that suggest adding a custom-command tab')
+    expect(stub).toContain('terminal list --include-visual-layouts')
+    expect(stub).toContain('`exited` or `screen-unavailable` does not prove a tab was removed')
+    expect(stub).toContain('configured tabs running real commands')
+  })
+
   it('points at the version-matched guide and preserves the safe resolver', () => {
     const stub = readSkill(stubPath)
 

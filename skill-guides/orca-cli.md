@@ -40,20 +40,32 @@ Use `--no-parent` and omit `--base-branch` for independent top-level handoffs un
 
 Custom Codex model/effort handoff:
 
-`worktree create --agent codex` uses Orca's configured launcher; it has no per-call model/effort flags or arbitrary Codex argument forwarding. For a request such as `gpt-6-astra xhigh`, create the worktree, launch Codex through `terminal create --command` with `--model` and `-c model_reasoning_effort=...`, wait for TUI readiness, then send the prompt. For a full handoff, stop after confirming the send was accepted.
+`worktree create --agent codex` uses Orca's configured launcher; it has no per-call model/effort flags or arbitrary Codex argument forwarding. Prefer agent-first create when that launcher supplies the requested arguments. Otherwise, for a request such as `gpt-6-astra xhigh`, inspect the new worktree's terminal inventory and screen, send the full Codex command into its existing idle launcher shell, wait for TUI readiness, then send the prompt through the same handle. For a full handoff, stop after confirming the send was accepted.
 
-**Extra first terminal:** when no repo default-terminal configuration supplies a primary terminal, bare `worktree create` (no `--agent`) opens a fallback shell before the later `terminal create --command ...` adds the agent. Configured default tabs are materialized instead and may run real commands. Prefer `--agent` whenever the built-in launcher is enough. When custom argv forces the two-step path, close a prior terminal only after `terminal list` or `terminal show` confirms it is an unused shell.
+**Reuse the launcher:** when no repo default-terminal configuration supplies a primary terminal, bare `worktree create` (no `--agent`) opens a fallback shell. Custom argv does not require another tab. Configured default tabs are materialized instead and may run real commands: do not send an agent command into an active command or close its tab. Preserve that ownership and report the configuration if no idle shell is available. Do not change global settings to force one tab.
 
 The create result's `worktree.id` already contains both pieces Orca needs: `<repoId>::<worktreePath>`. Copy that whole value into the next command; do not shorten it to the repo id.
 
 ```text
 ORCA worktree create --name <task-name> --no-parent --json
-ORCA terminal create --worktree id:<repoId>::<newWorktreePath> --title <task-name> --command 'codex --model gpt-6-astra -c model_reasoning_effort="xhigh"' --json
+ORCA terminal list --worktree id:<repoId>::<newWorktreePath> --include-visual-layouts --json
+ORCA terminal read --terminal <handle> --json
+ORCA terminal send --terminal <handle> --text 'codex --model gpt-6-astra -c model_reasoning_effort="xhigh"' --enter --json
 ORCA terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+ORCA terminal read --terminal <handle> --json
 ORCA terminal send --terminal <handle> --text "<task brief>" --enter --json
+ORCA terminal list --worktree id:<repoId>::<newWorktreePath> --include-visual-layouts --json
 ```
 
-Send only when the wait result reports `satisfied: true`. A timed-out `terminal wait` still prints a normal result, so read `wait.satisfied`, not the fact that something printed. On `satisfied: false`, re-run the wait once with a larger `--timeout-ms`. If it is still unsatisfied, report the handoff as not started and do not send. A prompt typed into a TUI that is still starting is lost.
+Take `<handle>` from the listed idle launcher shell and keep it for command, readiness, and brief delivery. Send the command only after its screen confirms an idle shell. Use `terminal create` only when the inventory has no terminal (`totalCount: 0`) and no terminal leaf in `visualLayouts`:
+
+```text
+ORCA terminal create --worktree id:<repoId>::<newWorktreePath> --title <task-name> --command 'codex --model gpt-6-astra -c model_reasoning_effort="xhigh"' --json
+```
+
+In that empty-inventory case, continue from the readiness wait with the returned handle. Send only when the wait result reports `satisfied: true`. A timed-out `terminal wait` still prints a normal result, so read `wait.satisfied`, not the fact that something printed. On `satisfied: false`, re-run the wait once with a larger `--timeout-ms`. If it is still unsatisfied, report the handoff as not started and do not send. Check the ready screen for the requested model/effort before sending the brief. A prompt typed into a TUI that is still starting is lost.
+
+Verify the final `totalCount` and the actual tabs and terminal leaves in `visualLayouts`; the default one-worker case must retain the same single tab and handle. `exited` or `screen-unavailable` describes a process or screen, not removal of a durable tab. Report configured tabs running real commands separately and preserve them. Do not use later cleanup as the normal way to obtain one worker tab.
 
 Existing-terminal handoff:
 
@@ -116,13 +128,13 @@ ORCA worktree create --name task --run-hooks --json
 ```
 
 - `--agent <id>` launches that agent **in the first terminal** (Orca docs: _"`--agent` launches the selected agent in the first terminal"_); `--prompt <text>` sends initial work to it. Known ids include `claude`, `codex`, `omp`, `pi`, `grok`, and other installed TUI agents.
-- **Prefer agent-first create for agent workers.** `ORCA worktree create --agent <id> --prompt "..."` puts the agent in the first terminal with no extra fallback shell. Repo setup or default-terminal settings may still add tabs or splits. A bare create's fallback shell plus a later `terminal create --command <agent>` is the anti-pattern; use `--agent`. Configured default tabs are intentional; never close one without verifying it is an unused shell.
+- **Prefer agent-first create for agent workers.** `ORCA worktree create --agent <id> --prompt "..."` puts the agent in the first terminal with no extra fallback shell. Repo setup or default-terminal settings may still add tabs or splits. A bare create's fallback shell plus a later `terminal create --command <agent>` is the anti-pattern; use `--agent` when it supplies the requested arguments, otherwise reuse the idle launcher with `terminal send` as in Full Handoffs. Preserve configured tabs running real commands.
 - Address the agent through exactly one handle. Use `startupTerminal.handle` as the sole agent handle when create returns it; otherwise take the match from `ORCA terminal list --worktree id:<repoId>::<newWorktreePath> --json`. Handles are runtime-scoped: after an Orca restart or a `terminal_handle_stale` error, re-list and continue with the replacement only; never dual-send to old and replacement handles. `--agent` already owns the first terminal, so do not `terminal create` that agent again.
 - `--setup run|skip|inherit` controls repo setup hooks. Default is `inherit`, which follows the repo's setup policy.
 - `--run-hooks` is a legacy alias for `--setup run`; it also reveals/activates the new worktree.
 - `--activate` and `--run-hooks` reveal the new worktree. `--agent` alone stays in the background.
 - Let Orca choose setup terminal placement from repo settings, including tab vs split behavior.
-- If an older installed CLI rejects `--agent`, `--prompt`, or `--setup`, create the worktree normally, then run `ORCA terminal create --worktree <selector> --command "<requested-agent>"` and `ORCA terminal send` if a prompt is needed. This can leave a fallback shell when no default tabs are configured; close it only after confirming it is unused.
+- If an older installed CLI rejects `--agent`, `--prompt`, or `--setup`, create the worktree normally, then inspect its terminal inventory and screen and reuse the idle launcher with `terminal send` as in Full Handoffs. Create a terminal only if the inventory has no terminal. Keep the readiness and single-tab checks; do not append an agent tab beside the fallback shell.
 - `worktree create` makes a new checkout. For a fresh agent in the **current** checkout, use `ORCA terminal create --worktree active --command "codex" --json`.
 
 ## Worktree Comments
@@ -170,6 +182,7 @@ Terminal rules:
 - A bulk close fails when the execution host cannot confirm every PTY stopped. Treat that as `unverifiable`; do not report the processes as exited or retry against another host.
 - Use workspace Sleep, not close, when the terminals and agent sessions should resume later. `terminal stop` is legacy compatibility plumbing and should not be used in new agent workflows.
 - `terminal list --json` omits `visualLayouts` to keep the common agent payload bounded. Add `--include-visual-layouts` only when tab and pane topology is required.
+- Process `exited` or `screen-unavailable` does not prove a tab was removed. Confirm tab removal with `terminal list --include-visual-layouts`; preserve terminals whose execution host is `unverifiable`.
 - Use `terminal read` before `terminal send` unless the next input is obvious.
 - Use `terminal send` only for direct terminal input or one-off prompts where no task state, inbox, or reply tracking is needed.
 - `accepted: true` proves input acceptance, not a started turn. Use the receipt's `turn_started` stage when submission proof is needed; never resend on silence.

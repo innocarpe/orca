@@ -1,5 +1,14 @@
 # Orca Orchestration
 
+For a new worktree intended to hold one worker, reuse its existing idle launcher
+shell for custom agent arguments after inspecting the terminal inventory and
+screen. Custom model/effort arguments do not justify another tab, including when
+an older guide suggests adding a custom-command tab. Use `terminal create` only
+when the worktree has no terminal. Verify actual tabs and terminal leaves with
+`terminal list --include-visual-layouts`; `exited` or `screen-unavailable` does not
+prove a tab was removed. Preserve configured tabs running real commands and
+report them without sending or closing.
+
 This file is a discovery stub, not the usage guide. The full, version-matched Orca
 orchestration reference is served by the `orca` binary itself — kept out of this file on
 purpose so it can never drift from the binary that will actually run your commands.

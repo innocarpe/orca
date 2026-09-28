@@ -446,9 +446,32 @@ describe('owned orchestration references', () => {
 
   it('owns the custom topology exception without claiming process ownership', () => {
     const reference = readReference('low-level-topology.md')
+    const recipe = /```text\n([\s\S]*?)\n```/u.exec(reference)[1]
 
     expect(reference).toContain('only when `worker-start` cannot express')
-    expect(reference).toContain('terminal create --worktree active')
+    expect(recipe).not.toContain('terminal create')
+    expect(recipe.split('\n').map((command) => command.split(' ').slice(1, 3).join(' '))).toEqual([
+      'terminal list',
+      'terminal read',
+      'terminal send',
+      'terminal wait',
+      'terminal read',
+      'orchestration dispatch',
+      'terminal list'
+    ])
+    expect(recipe).toContain('terminal send --terminal <handle> --text "<agent_command>"')
+    expect(reference).toContain('terminal create --worktree <selector>')
+    expect(squash(reference)).toContain(
+      'only when the inventory has no terminal (`totalCount: 0`) and no terminal leaf in `visualLayouts`'
+    )
+    expect(squash(reference)).toContain(
+      'never send into an active command or close configured tabs running real commands'
+    )
+    expect(squash(reference)).toContain(
+      '`exited` or `screen-unavailable` does not prove a durable tab was removed'
+    )
+    expect(reference).toContain('wait reports `satisfied: true`')
+    expect(reference).toContain('same reuse rule if an older CLI requires a manual launch')
     expect(reference).toContain('dispatch --task <task_id> --to <handle> --inject')
     expect(reference).toContain('operator-created process unsupervised')
     expect(squash(reference)).toContain('creates no supervised worker resource row')
