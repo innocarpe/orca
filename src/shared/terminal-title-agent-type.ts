@@ -7,7 +7,6 @@ import {
 } from './agent-name-token-match'
 import {
   containsAgentSpinnerGlyph,
-  hasGeminiStatusGlyph,
   isCursorAgentTitle,
   isDshTerminalTitle
 } from './agent-title-core'
@@ -183,8 +182,8 @@ function computeAgentLabel(title: string): string | null {
   if (isQoderTerminalTitle(title)) {
     return title.includes('Qoder CLI CN') ? 'Qoder CLI CN' : 'Qoder CLI'
   }
-  // Why: task text can name other agents; preserve vendor glyphs before the product suffix.
-  if (isDeepSeekBuildTerminalTitle(title) && !hasGeminiStatusGlyph(title)) {
+  // Why: the DSB matcher distinguishes native prefixes from glyphs inside task text.
+  if (isDeepSeekBuildTerminalTitle(title)) {
     return 'DeepSeek Build'
   }
   if (isGeminiTerminalTitle(title)) {

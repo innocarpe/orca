@@ -25,7 +25,7 @@ describe('collectAgentTitleEvidence', () => {
     ['Wrapper | ✳ Review Codex - DeepSeek Build', 'claude'],
     ['OC | Review Codex - DeepSeek Build', 'opencode'],
     ['Wrapper | OC | Review Codex - DeepSeek Build', 'opencode'],
-    ['⠋ Review Codex - DeepSeek Build', 'dsb'],
+    ['⠋ - Review Codex - DeepSeek Build', 'dsb'],
     ['DeepSeek Build', 'dsb']
   ] as const)(
     'preserves the native owner of %j through canonical and published identity',

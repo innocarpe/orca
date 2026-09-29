@@ -17,7 +17,7 @@ describe('hasCtrlEnterCsiUAuthorityForPane', () => {
     ).toBe(false)
   })
 
-  it.each(['DeepSeek Build', '⠋ Review Codex - DeepSeek Build'])(
+  it.each(['DeepSeek Build', '⠋ - Review Codex - DeepSeek Build'])(
     'keeps title-derived recognition-only identity %j off CSI-u',
     (title) => {
       expect(

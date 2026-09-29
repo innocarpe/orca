@@ -43,6 +43,24 @@ describe('agent process recognition', () => {
     expect(recognizeAgentProcessFromCommandLine('dsb run "explain this"')).toBeNull()
   })
 
+  it.each([
+    '-r ./preload.js',
+    '--require "./preload path.js"',
+    '--import ./preload.mjs',
+    '--loader ./loader.mjs',
+    '--experimental-loader ./loader.mjs',
+    '--require=./preload.js',
+    '--import=./preload.mjs'
+  ])('excludes a one-shot DSB npm shim after Node options %s', (options) => {
+    const shim = `node ${options} /usr/lib/node_modules/@innocarpe/deepseek-build/npm/bin/dsb.js`
+    expect(recognizeAgentProcessFromCommandLine(`${shim} run "task"`)).toBeNull()
+    expect(
+      recognizeAgentProcessFromCommandLine(`${shim} run "task"`, { includeHeadlessOneShot: true })
+        ?.agent
+    ).toBe('dsb')
+    expect(recognizeAgentProcessFromCommandLine(`${shim} agent`)?.agent).toBe('dsb')
+  })
+
   it('recognizes packaged Codex foreground process names', () => {
     expect(recognizeAgentProcess('codex-aarch64-ap')).toEqual({
       agent: 'codex',

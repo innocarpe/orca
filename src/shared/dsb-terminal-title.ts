@@ -1,10 +1,43 @@
-import { isDshTerminalTitle } from './agent-title-core'
+import {
+  CLAUDE_IDLE,
+  GEMINI_IDLE,
+  GEMINI_PERMISSION,
+  GEMINI_SILENT_WORKING,
+  GEMINI_WORKING,
+  containsAgentSpinnerGlyph,
+  isDshTerminalTitle
+} from './agent-title-core'
+import { getWrapperTitleSegments } from './terminal-title-wrapper-segments'
 
-// Why: the product name is its own final segment. A Claude task that only
-// mentions DeepSeek Build does not end on that segment.
 const DSB_TITLE_RE = /(?:^| - )deepseek build$/i
+// Why: DSB separates its spinner with " - "; a Claude task can end on the same suffix.
+const DSB_WORKING_TITLE_RE =
+  /^(?:⚠ Action Required - )?[\u2800-\u28ff]+\s+-\s+[\s\S]+?\s-\s+deepseek build$/i
+const NATIVE_VENDOR_PREFIXES = [
+  `${CLAUDE_IDLE} `,
+  '. ',
+  '* ',
+  GEMINI_IDLE,
+  GEMINI_PERMISSION,
+  GEMINI_SILENT_WORKING,
+  GEMINI_WORKING
+]
 
 export function isDeepSeekBuildTerminalTitle(title: string): boolean {
-  // Why: DSH's native marker owns its title, including product names in its task.
-  return !isDshTerminalTitle(title) && DSB_TITLE_RE.test(title.trim())
+  const segments = getWrapperTitleSegments(title.trim())
+  // Why: native owner markers must win even inside a wrapper; task glyphs are not markers.
+  if (
+    segments.some(
+      (segment) =>
+        isDshTerminalTitle(segment) ||
+        NATIVE_VENDOR_PREFIXES.some((prefix) => segment.startsWith(prefix))
+    )
+  ) {
+    return false
+  }
+  return segments.some(
+    (segment) =>
+      DSB_TITLE_RE.test(segment) &&
+      (!containsAgentSpinnerGlyph(segment) || DSB_WORKING_TITLE_RE.test(segment))
+  )
 }

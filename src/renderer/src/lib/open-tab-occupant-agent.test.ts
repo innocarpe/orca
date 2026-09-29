@@ -83,7 +83,7 @@ function resolve(
 
 describe('resolveOpenTabOccupantAgent', () => {
   it('recognizes a manually started DeepSeek Build tab whose task names Codex', () => {
-    expect(resolve({ title: '⠋ Review Codex integration - DeepSeek Build' })).toBe('dsb')
+    expect(resolve({ title: '⠋ - Review Codex integration - DeepSeek Build' })).toBe('dsb')
     expect(
       resolve({
         title: 'Terminal',

@@ -39,7 +39,7 @@ describe('manually started DeepSeek Build terminals', () => {
       write: (_ptyId, data) => {
         writes.push(data)
         if (data === '\r') {
-          runtime.onPtyData('pty-dsb', '\x1b]0;⠋ Review Codex - DeepSeek Build\x07', Date.now())
+          runtime.onPtyData('pty-dsb', '\x1b]0;⠋ - Review Codex - DeepSeek Build\x07', Date.now())
         }
         return true
       },

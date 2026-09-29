@@ -1,3 +1,9 @@
+import {
+  comparablePath,
+  findInterpreterEntrypointToken,
+  isInterpreterProcessName
+} from './agent-command-line-entrypoint'
+
 function isDsbScriptEntrypoint(token: string): boolean {
   const base = token.split(/[\\/]/).pop()?.toLowerCase() ?? ''
   return (
@@ -5,15 +11,27 @@ function isDsbScriptEntrypoint(token: string): boolean {
   )
 }
 
-// Why: `dsb run` exits after one message. Bare `dsb` and `dsb agent` stay in the TUI.
-// The npm shim is `node …/dsb.js`, so the script path sits ahead of the subcommand.
+// Why: `dsb run` exits after one message; Node preload arguments precede the npm shim.
 export function isDsbHeadlessOneShotCommand(tokens: readonly string[]): boolean {
-  for (let index = 1; index < tokens.length; index += 1) {
+  const command =
+    comparablePath(tokens[0] ?? '')
+      .split('/')
+      .pop()
+      ?.replace(/\.(?:exe|cmd|bat|ps1)$/i, '') ?? ''
+  let commandIndex = 0
+  if (isInterpreterProcessName(command)) {
+    const entrypoint = findInterpreterEntrypointToken([...tokens], command)
+    if (!entrypoint || !isDsbScriptEntrypoint(entrypoint)) {
+      return false
+    }
+    commandIndex = tokens.indexOf(entrypoint, 1)
+  }
+  for (let index = commandIndex + 1; index < tokens.length; index += 1) {
     const token = tokens[index]
     if (!token || token === '--') {
       return false
     }
-    if (token.startsWith('-') || isDsbScriptEntrypoint(token)) {
+    if (token.startsWith('-')) {
       continue
     }
     return token === 'run'

@@ -56,7 +56,7 @@ describe('buildTitleDerivedAgentRows', () => {
       retained: [],
       runtimePaneTitlesByTabId: {
         'tab-1': {
-          1: '⠼ Review Codex integration - DeepSeek Build',
+          1: '⠼ - Review Codex integration - DeepSeek Build',
           2: '⠋ Review DeepSeek Build integration'
         }
       },

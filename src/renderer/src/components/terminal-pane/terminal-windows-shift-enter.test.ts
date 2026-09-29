@@ -70,7 +70,7 @@ describe('resolveWindowsShiftEnterEncoding', () => {
     ).toBe('alt-enter')
   })
 
-  it.each(['DeepSeek Build', '⠋ Review Codex - DeepSeek Build'])(
+  it.each(['DeepSeek Build', '⠋ - Review Codex - DeepSeek Build'])(
     'keeps title-derived recognition-only identity %j on the generic encoding',
     (title) => {
       expect(
