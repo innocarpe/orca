@@ -101,7 +101,11 @@ export function MobileHomeAccountUsageCards(props: {
                   <Text style={styles.email} numberOfLines={1}>
                     {t('home.accountUsageCards.deepSeekTitle', 'DeepSeek API')}
                   </Text>
-                  <Text style={styles.providerStatus} numberOfLines={1}>
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={styles.providerStatus}
+                    numberOfLines={1}
+                  >
                     {deepSeekUsage.balanceLabel
                       ? t('home.accountUsageCards.deepSeekBalance', 'Balance {{balance}}', {
                           balance: deepSeekUsage.balanceLabel
@@ -109,7 +113,11 @@ export function MobileHomeAccountUsageCards(props: {
                       : deepSeekUsage.statusLabel}
                   </Text>
                   {deepSeekUsage.balanceLabel && deepSeekUsage.status !== 'available' ? (
-                    <Text style={styles.providerStatus} numberOfLines={1}>
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={styles.providerStatus}
+                      numberOfLines={1}
+                    >
                       {deepSeekUsage.statusLabel}
                     </Text>
                   ) : null}
