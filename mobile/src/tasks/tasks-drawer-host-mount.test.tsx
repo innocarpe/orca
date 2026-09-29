@@ -18,24 +18,16 @@ vi.mock('react-native', async () => {
 })
 
 function Stack({ openCount }: { openCount: number }) {
-  return createElement(TasksDrawerModalHost, {
-    openCount,
-    onRequestClose: () => {},
-    children: [
-      createElement(BottomDrawer, {
-        key: 'top',
-        visible: openCount > 1,
-        onClose: () => {},
-        children: createElement('Top')
-      }),
-      createElement(BottomDrawer, {
-        key: 'base',
-        visible: openCount > 0,
-        onClose: () => {},
-        children: createElement('Base')
-      })
-    ]
-  })
+  return (
+    <TasksDrawerModalHost openCount={openCount} onRequestClose={() => {}}>
+      <BottomDrawer visible={openCount > 1} onClose={() => {}}>
+        {createElement('Top')}
+      </BottomDrawer>
+      <BottomDrawer visible={openCount > 0} onClose={() => {}}>
+        {createElement('Base')}
+      </BottomDrawer>
+    </TasksDrawerModalHost>
+  )
 }
 
 function renderHost(openCount: number): ReactTestRenderer {
