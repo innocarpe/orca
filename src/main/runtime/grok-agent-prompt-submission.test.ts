@@ -153,32 +153,59 @@ describe('Grok prompt delivery', () => {
     }
   )
 
-  it('keeps cached Grok formatting for a degraded wrapper lookup', async () => {
+  it('rejects ambiguous wrapper identity instead of trusting a stale Grok cache', async () => {
     vi.useFakeTimers()
     const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'claude')
     runtime['ptysById'].get('pty-prompt')!.foregroundAgent = 'grok'
     setForegroundController(runtime, writes, async () => 'python')
-    await submit(runtime, handle)
-    expect(writes).toEqual(['line one\nline two\nlast', '\r'])
+    const result = runtime.sendTerminalAgentPrompt(handle, 'stale wrapper', {
+      inputKind: 'driving'
+    })
+    const rejected = expect(result).rejects.toThrow('agent_prompt_foreground_unavailable')
+    await vi.runAllTimersAsync()
+    await rejected
+    expect(writes).toEqual([])
   })
 
-  it('falls back within a separate inspection budget when the host probe never answers', async () => {
+  it('accepts a restored Grok process whose inspection takes longer than 250 ms', async () => {
+    vi.useFakeTimers()
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+    const pty = runtime['ptysById'].get('pty-prompt')!
+    pty.launchAgent = null
+    pty.foregroundAgent = null
+    setForegroundController(
+      runtime,
+      writes,
+      () => new Promise<string>((resolve) => setTimeout(() => resolve('grok'), 500))
+    )
+    const result = runtime.sendTerminalAgentPrompt(handle, 'slow restored', {
+      inputKind: 'driving',
+      acceptQueued: true,
+      requestId: 'slow-restored'
+    })
+    await vi.advanceTimersByTimeAsync(499)
+    expect(writes).toEqual([])
+    await vi.runAllTimersAsync()
+    await result
+    expect(writes).toEqual(['slow restored', '\r'])
+  })
+
+  it('rejects without writing when the separate inspection budget expires', async () => {
     vi.useFakeTimers()
     const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
     const read = vi.fn(() => new Promise<string | null>(() => {}))
     setForegroundController(runtime, writes, read)
-    const result = runtime.sendTerminalAgentPrompt(handle, 'bounded fallback', {
+    const result = runtime.sendTerminalAgentPrompt(handle, 'bounded inspection', {
       inputKind: 'driving',
       acceptQueued: true,
       requestId: 'bounded-probe'
     })
-    await vi.advanceTimersByTimeAsync(249)
+    const rejected = expect(result).rejects.toThrow('agent_prompt_foreground_unavailable')
+    await vi.advanceTimersByTimeAsync(1_999)
     expect(writes).toEqual([])
     await vi.advanceTimersByTimeAsync(1)
-    expect(writes).toEqual(['bounded fallback'])
-    await vi.runAllTimersAsync()
-    await result
-    expect(writes).toEqual(['bounded fallback', '\r'])
+    await rejected
+    expect(writes).toEqual([])
     expect(read).toHaveBeenCalledOnce()
   })
 

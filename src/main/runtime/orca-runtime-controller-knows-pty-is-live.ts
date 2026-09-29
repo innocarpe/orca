@@ -22,7 +22,7 @@ import {
   buildAgentPromptBodyBytes
 } from '../../shared/agent-prompt-injection'
 
-const AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS = 250
+const AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS = 2_000
 
 export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithResolveTerminalPane {
   private lastProvenAbsentLeafPtyVerdictPruneAt: number | undefined
@@ -174,8 +174,11 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     try {
       if (read) {
         // Inspection must not inherit the relay's much longer RPC timeout on a writable PTY.
-        const expired = new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS)
+        const expired = new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('agent_prompt_foreground_unavailable')),
+            AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS
+          )
         })
         result = await waitForAgentPromptPromise(Promise.race([read, expired]), signal)
       }
@@ -186,6 +189,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     if (controller !== this.ptyController || (result && result.controller !== controller)) {
       throw new Error('terminal_not_writable')
     }
+    const fallback = pty?.foregroundAgent ?? pty?.launchAgent ?? null
     if (result?.available && result.process) {
       const recognized = recognizeAgentProcess(result.process)?.agent
       if (recognized) {
@@ -194,8 +198,12 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       if (!isAgentForegroundWrapperProcess(result.process)) {
         return null
       }
+      // A generic wrapper cannot prove that Grok still owns the terminal's unframed input.
+      if (fallback === 'grok') {
+        throw new Error('agent_prompt_foreground_unavailable')
+      }
     }
-    return pty?.foregroundAgent ?? pty?.launchAgent ?? null
+    return fallback
   }
 
   async sendTerminalAgentPrompt(
