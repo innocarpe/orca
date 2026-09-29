@@ -94,13 +94,21 @@ export function MobileHomeAccountUsageCards(props: {
                   <Text style={styles.email} numberOfLines={1}>
                     DeepSeek API
                   </Text>
-                  <Text style={styles.providerStatus} numberOfLines={1}>
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={styles.providerStatus}
+                    numberOfLines={1}
+                  >
                     {deepSeekUsage.balanceLabel
                       ? `Balance ${deepSeekUsage.balanceLabel}`
                       : deepSeekUsage.statusLabel}
                   </Text>
                   {deepSeekUsage.balanceLabel && deepSeekUsage.status !== 'available' ? (
-                    <Text style={styles.providerStatus} numberOfLines={1}>
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={styles.providerStatus}
+                      numberOfLines={1}
+                    >
                       {deepSeekUsage.statusLabel}
                     </Text>
                   ) : null}
