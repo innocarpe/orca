@@ -15,6 +15,10 @@ function mobileTasksDrawerLayers(model: ConnectionPresentationModel): DrawerLaye
   const creating = model.workspaceCreateDraft != null
   return [
     {
+      open: ready && model.projectRepoNotInOrca != null,
+      dismiss: () => model.setProjectRepoNotInOrca(null)
+    },
+    {
       open: ready && model.pendingHostedStateChange != null,
       dismiss: () => model.setPendingHostedStateChange(null)
     },
@@ -189,10 +193,6 @@ function mobileTasksDrawerLayers(model: ConnectionPresentationModel): DrawerLaye
     {
       open: ready && model.projectRowItem != null,
       dismiss: () => model.setProjectRowItem(null)
-    },
-    {
-      open: ready && model.projectRepoNotInOrca != null,
-      dismiss: () => model.setProjectRepoNotInOrca(null)
     }
   ]
 }

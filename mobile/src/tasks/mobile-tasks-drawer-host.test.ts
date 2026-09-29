@@ -9,6 +9,7 @@ import {
 type DrawerTestOverrides = {
   actionItem?: { key: string }
   projectRowItem?: { id: string }
+  projectRepoNotInOrca?: { owner: string; repo: string; url: null }
   pendingHostedStateChange?: { source: 'task' | 'project'; nextState: 'closed' }
   workspaceCreateDraft?: { item: { key: string } }
   workspaceSparseDraft?: { mode: 'new' }
@@ -23,6 +24,7 @@ function model(overrides: DrawerTestOverrides = {}): ConnectionPresentationModel
     setPendingHostedStateChange: vi.fn(),
     setActionItem: vi.fn(),
     setProjectRowItem: vi.fn(),
+    setProjectRepoNotInOrca: vi.fn(),
     setWorkspaceCreateDraft: vi.fn(),
     setWorkspaceSparseDraft: vi.fn(),
     setShowCreateTargetPicker: vi.fn(),
@@ -83,6 +85,17 @@ describe('mobile tasks drawer host', () => {
     dismissTopMobileTasksDrawer(current)
 
     expect(current.setProjectRowItem).toHaveBeenCalledWith(null)
+  })
+
+  it('dismisses the missing-repository warning before project detail', () => {
+    const current = model({
+      projectRowItem: { id: 'row-1' },
+      projectRepoNotInOrca: { owner: 'stablyai', repo: 'orca', url: null }
+    })
+    expect(mobileTasksOpenDrawerCount(current)).toBe(2)
+    dismissTopMobileTasksDrawer(current)
+    expect(current.setProjectRepoNotInOrca).toHaveBeenCalledWith(null)
+    expect(current.setProjectRowItem).not.toHaveBeenCalled()
   })
 
   it('closes the create-target picker before the create form', () => {

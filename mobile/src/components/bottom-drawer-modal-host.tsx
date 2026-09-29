@@ -2,6 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 import { Modal } from 'react-native'
 import {
   BottomDrawerHostAfterCloseContext,
+  BottomDrawerHostCloseStartedContext,
   BottomDrawerHostCloseCancelledContext
 } from './bottom-drawer-host-after-close'
 
@@ -17,6 +18,7 @@ type Props = {
   visible: boolean
   onRequestClose: () => void
   onChildAfterClose?: () => void
+  onChildCloseStarted?: () => void
   onChildCloseCancelled?: () => void
   children: ReactNode
 }
@@ -30,6 +32,7 @@ export function BottomDrawerModalHost({
   visible,
   onRequestClose,
   onChildAfterClose,
+  onChildCloseStarted,
   onChildCloseCancelled,
   children
 }: Props) {
@@ -46,9 +49,11 @@ export function BottomDrawerModalHost({
     >
       <BottomDrawerModalHostContext.Provider value={true}>
         <BottomDrawerHostCloseCancelledContext.Provider value={onChildCloseCancelled ?? null}>
-          <BottomDrawerHostAfterCloseContext.Provider value={onChildAfterClose ?? null}>
-            {children}
-          </BottomDrawerHostAfterCloseContext.Provider>
+          <BottomDrawerHostCloseStartedContext.Provider value={onChildCloseStarted ?? null}>
+            <BottomDrawerHostAfterCloseContext.Provider value={onChildAfterClose ?? null}>
+              {children}
+            </BottomDrawerHostAfterCloseContext.Provider>
+          </BottomDrawerHostCloseStartedContext.Provider>
         </BottomDrawerHostCloseCancelledContext.Provider>
       </BottomDrawerModalHostContext.Provider>
     </Modal>

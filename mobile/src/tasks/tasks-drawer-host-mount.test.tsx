@@ -30,6 +30,19 @@ function Stack({ openCount }: { openCount: number }) {
   )
 }
 
+function SwappingStack({ first, second }: { first: boolean; second: boolean }) {
+  return (
+    <TasksDrawerModalHost openCount={Number(first) + Number(second)} onRequestClose={() => {}}>
+      <BottomDrawer visible={first} onClose={() => {}}>
+        {createElement('First')}
+      </BottomDrawer>
+      <BottomDrawer visible={second} onClose={() => {}}>
+        {createElement('Second')}
+      </BottomDrawer>
+    </TasksDrawerModalHost>
+  )
+}
+
 function renderHost(openCount: number): ReactTestRenderer {
   let renderer: ReactTestRenderer | null = null
   act(() => {
@@ -39,6 +52,23 @@ function renderHost(openCount: number): ReactTestRenderer {
     throw new Error('drawer host did not render')
   }
   return renderer
+}
+
+function renderSwappingStack(first: boolean, second: boolean): ReactTestRenderer {
+  let renderer: ReactTestRenderer | null = null
+  act(() => {
+    renderer = create(createElement(SwappingStack, { first, second }))
+  })
+  if (!renderer) {
+    throw new Error('drawer host did not render')
+  }
+  return renderer
+}
+
+function setSwappingStack(renderer: ReactTestRenderer, first: boolean, second: boolean): void {
+  act(() => {
+    renderer.update(createElement(SwappingStack, { first, second }))
+  })
 }
 
 function setOpenCount(renderer: ReactTestRenderer, openCount: number): void {
@@ -133,6 +163,29 @@ describe('TasksDrawerModalHost close', () => {
       mountedDrawers(renderer)[0]?.props.onHidden()
     })
 
+    expect(hostModals(renderer)).toHaveLength(0)
+  })
+
+  it('keeps the host while a swapped-in sheet is still closing', () => {
+    const renderer = renderSwappingStack(true, false)
+
+    setSwappingStack(renderer, false, true)
+    expect(mountedDrawers(renderer)).toHaveLength(2)
+    expect(mountedDrawers(renderer).map((drawer) => drawer.props.visible)).toEqual([false, true])
+
+    setSwappingStack(renderer, false, false)
+    const firstClosing = mountedDrawers(renderer)[0]
+    act(() => {
+      firstClosing?.props.onHidden()
+    })
+
+    expect(hostModals(renderer)).toHaveLength(1)
+    expect(mountedDrawers(renderer)).toHaveLength(1)
+    expect(mountedDrawers(renderer)[0]?.props.visible).toBe(false)
+
+    act(() => {
+      mountedDrawers(renderer)[0]?.props.onHidden()
+    })
     expect(hostModals(renderer)).toHaveLength(0)
   })
 })

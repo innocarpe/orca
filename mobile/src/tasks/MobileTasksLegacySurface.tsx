@@ -250,11 +250,11 @@ export function MobileTasksLegacySurface({ model }: { model: ConnectionPresentat
 
         {renderMobileTasksOrcaYamlTrustDrawer(model)}
 
-        {renderMobileTasksProjectMissingRepoDrawer(model)}
-
         {renderMobileTasksProjectDetailDrawer(model)}
 
         {renderMobileTasksItemDetailDrawer(model)}
+
+        {renderMobileTasksProjectMissingRepoDrawer(model)}
 
         <ActionSheetModal
           visible={taskUiReady && mergeMethodProjectRow != null}
