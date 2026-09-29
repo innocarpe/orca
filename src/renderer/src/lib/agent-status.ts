@@ -154,7 +154,10 @@ export function agentTypeToIconAgent(
   if (!agentType || agentType === 'unknown') {
     return null
   }
-  return Object.hasOwn(ICONABLE_AGENT_TYPES, agentType) ? (agentType as TerminalAgent) : null
+  if (agentType === 'dsb') {
+    return 'dsb'
+  }
+  return isTuiAgent(agentType) && Object.hasOwn(ICONABLE_AGENT_TYPES, agentType) ? agentType : null
 }
 
 // Why: shared resolver so all send paths stamp identical agent_kind on agent_prompt_sent telemetry.

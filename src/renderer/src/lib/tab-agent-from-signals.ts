@@ -11,6 +11,7 @@ import { isOpenCodeNativeTitle } from '../../../shared/opencode-terminal-title'
 import { resolvePaneAgentOwnerRecord } from '../../../shared/pane-agent-owner'
 import type { TerminalAgent } from '../../../shared/terminal-agent'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { agentTypeToIconAgent } from './agent-status'
 
 /**
  * Resolves wrapper-compatible signal identity against the pane owner.
@@ -23,8 +24,9 @@ function resolveSignalAgentForLaunchOwner(
   if (!signalAgent) {
     return null
   }
-  return (resolveCompatibleAgentTypeForOwner(signalAgent, ownerAgent, { ownerIsLaunch }) ??
-    signalAgent) as TerminalAgent
+  return agentTypeToIconAgent(
+    resolveCompatibleAgentTypeForOwner(signalAgent, ownerAgent, { ownerIsLaunch }) ?? signalAgent
+  )
 }
 
 /**
@@ -82,7 +84,7 @@ export function resolveTabAgentFromSignals(args: {
     completedHookAgent: args.focusedCompletedHookAgent,
     sleepingSessionAgent: args.sleepingSessionAgent
   })
-  const owner = (ownerRecord?.agent ?? null) as TerminalAgent | null
+  const owner = agentTypeToIconAgent(ownerRecord?.agent)
   const ownerIsLaunch = ownerRecord?.ownerIsLaunch === true
 
   // The live/idle split governs title override; siblings normalize against launch intent only.

@@ -31,6 +31,7 @@ describe('manually started DeepSeek Build terminals', () => {
 
   it('publishes observed DSB identity and sends a prompt with generic input behavior', async () => {
     vi.useFakeTimers()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture supplies the store subset exercised by terminal recognition and prompt submission.
     const runtime = new OrcaRuntimeService(makeStore() as never)
     const writes: string[] = []
     runtime.setPtyController({

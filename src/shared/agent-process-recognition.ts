@@ -1,4 +1,4 @@
-import { getTuiAgentDetectCommands, TUI_AGENT_CONFIG } from './tui-agent-config'
+import { getTuiAgentDetectCommands, isTuiAgent, TUI_AGENT_CONFIG } from './tui-agent-config'
 import { EXACT_NODE_ENTRYPOINT_IDENTITIES } from './agent-node-entrypoint-identities'
 import { NODE_PACKAGE_SCRIPT_ENTRYPOINTS } from './agent-node-package-entrypoints'
 import type { AgentType } from './agent-status-types'
@@ -43,12 +43,12 @@ const PROCESS_TO_AGENT = new Map<string, TerminalAgent>([
   ['deepseek-build', 'dsb'],
   ['deepseek-build-agent', 'dsb']
 ])
-const AGENT_TYPE_IDS = new Set<TerminalAgent>(['dsb'])
+const AGENT_TYPE_IDS = new Set<string>(['dsb'])
 
-for (const [agent, config] of Object.entries(TUI_AGENT_CONFIG) as [
-  keyof typeof TUI_AGENT_CONFIG,
-  (typeof TUI_AGENT_CONFIG)[keyof typeof TUI_AGENT_CONFIG]
-][]) {
+for (const [agent, config] of Object.entries(TUI_AGENT_CONFIG)) {
+  if (!isTuiAgent(agent)) {
+    continue
+  }
   AGENT_TYPE_IDS.add(agent)
   for (const candidate of [
     config.expectedProcess,
@@ -235,7 +235,7 @@ export function isRecognizedAgentType(agentType: AgentType | null | undefined): 
     return false
   }
   return (
-    AGENT_TYPE_IDS.has(agentType as TerminalAgent) ||
+    AGENT_TYPE_IDS.has(agentType) ||
     agentForNormalizedProcess(normalizeProcessName(agentType)) !== undefined
   )
 }

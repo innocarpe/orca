@@ -22,6 +22,7 @@ import { resolvePaneAgentOwner } from '../../../shared/pane-agent-owner'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import type { TerminalAgent } from '../../../shared/terminal-agent'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import { agentTypeToIconAgent } from './agent-status'
 
 // A shell name or the tab's neutral default title (where inferred-interrupt reset parks it); blank titles are no evidence.
 function titleShowsNoAgent(title: string, defaultTitle?: string): boolean {
@@ -39,8 +40,9 @@ function resolveSignalAgentForLaunchOwner(
   if (!signalAgent) {
     return null
   }
-  return (resolveCompatibleAgentTypeForOwner(signalAgent, launchAgent) ??
-    signalAgent) as TerminalAgent
+  return agentTypeToIconAgent(
+    resolveCompatibleAgentTypeForOwner(signalAgent, launchAgent) ?? signalAgent
+  )
 }
 
 /**
@@ -88,12 +90,14 @@ export function resolveTabAgentFromSignals(args: {
 }): TerminalAgent | null {
   const launchAgent = args.launchAgent ?? null
   // Durable focused-pane owner (launch intent → hook → session); focused-pane-scoped so a sibling can't re-own the focused title (would mislabel a Pi pane as OMP).
-  const owner = resolvePaneAgentOwner({
-    launchAgent,
-    hookAgent: args.hookAgent,
-    completedHookAgent: args.focusedCompletedHookAgent,
-    sleepingSessionAgent: args.sleepingSessionAgent
-  }) as TerminalAgent | null
+  const owner = agentTypeToIconAgent(
+    resolvePaneAgentOwner({
+      launchAgent,
+      hookAgent: args.hookAgent,
+      completedHookAgent: args.focusedCompletedHookAgent,
+      sleepingSessionAgent: args.sleepingSessionAgent
+    })
+  )
 
   // The live/idle split governs title override; siblings normalize against launch intent only.
   const liveFocusedIdentity = resolveSignalAgentForLaunchOwner(args.hookAgent, owner)
