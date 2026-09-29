@@ -1,8 +1,23 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { Text } from 'react-native'
+import { act, create, type ReactTestRenderer } from 'react-test-renderer'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { decodeAccountsSnapshot } from './accounts-snapshot'
+vi.mock('react-native', () => ({
+  Text: 'Text',
+  View: 'View',
+  Pressable: 'Pressable',
+  ActivityIndicator: 'ActivityIndicator',
+  StyleSheet: { create: (styles: Record<string, unknown>) => styles }
+}))
+vi.mock('lucide-react-native', () => ({ Wallet: 'Wallet' }))
+vi.mock('./AgentIcons', () => ({ ClaudeIcon: 'ClaudeIcon', OpenAIIcon: 'OpenAIIcon' }))
+
+import { decodeAccountsSnapshot, type AccountsSnapshot } from './accounts-snapshot'
 import { getDeepSeekAccountUsage, hasDeepSeekAccountUsage } from './deepseek-account-usage'
+import { DeepSeekAccountUsageSection } from '../accounts/DeepSeekAccountUsageSection'
+import { MobileHomeAccountUsageCards } from '../home/MobileHomeAccountUsageCards'
 
 function deepSeekLimits(overrides: Record<string, unknown> = {}) {
   return {
@@ -129,19 +144,96 @@ describe('getDeepSeekAccountUsage', () => {
     expect(snapshot.rateLimits.claude?.status).toBe('ok')
     expect(getDeepSeekAccountUsage(snapshot)).toMatchObject({
       balanceLabel: null,
-      status: 'loading'
+      status: 'unavailable',
+      statusLabel: 'Balance unavailable'
     })
   })
 })
 
 describe('DeepSeek usage surfaces', () => {
-  it('includes DeepSeek-only hosts on Home and mounts its read-only Accounts section', () => {
+  let mounted: ReactTestRenderer | null = null
+
+  afterEach(async () => {
+    await act(async () => mounted?.unmount())
+    mounted = null
+  })
+
+  it.each([
+    { name: 'pending', raw: undefined, text: 'Checking balance…', balance: null },
+    { name: 'malformed', raw: { provider: 'claude' }, text: 'Balance unavailable', balance: null },
+    {
+      name: 'available',
+      raw: deepSeekLimits({ monthly: balanceWindow(0, 'USD 72.00') }),
+      text: null,
+      balance: 'USD 72.00'
+    },
+    {
+      name: 'depleted',
+      raw: deepSeekLimits({ monthly: balanceWindow(100, 'USD 0.00') }),
+      text: 'No balance remaining',
+      balance: 'USD 0.00'
+    },
+    {
+      name: 'refresh error',
+      raw: deepSeekLimits({ status: 'error', monthly: balanceWindow(0, 'USD 72.00') }),
+      text: 'Balance refresh failed',
+      balance: 'USD 72.00'
+    }
+  ])('renders the $name balance on Home and Accounts', async ({ raw, text, balance }) => {
+    const snapshot = decode({ deepseekAuthConfigured: true, deepseek: raw })
+    const tree = await renderSurfaces(snapshot)
+    const texts = tree.root.findAll((node) => node.type === Text)
+    const shown = texts.map((node) => node.children.join(''))
+    expect(shown.filter((value) => value === 'DeepSeek API')).toHaveLength(2)
+    if (balance) {
+      expect(shown).toContain(`Balance ${balance}`)
+      expect(shown).toContain(balance)
+    }
+    if (text) {
+      expect(shown.filter((value) => value === text)).toHaveLength(2)
+      expect(
+        texts
+          .filter((node) => node.children.join('') === text)
+          .map((node) => node.props.accessibilityLiveRegion)
+      ).toEqual(['polite', 'polite'])
+    }
+  })
+
+  async function renderSurfaces(snapshot: AccountsSnapshot): Promise<ReactTestRenderer> {
+    await act(async () => {
+      mounted = create(
+        createElement(
+          'root',
+          null,
+          createElement(MobileHomeAccountUsageCards, {
+            items: [
+              {
+                host: {
+                  id: 'host',
+                  name: 'Host',
+                  endpoint: 'ws://host',
+                  deviceToken: 'token',
+                  publicKeyB64: 'key',
+                  lastConnected: 1
+                },
+                snapshot
+              }
+            ],
+            onOpen: () => {}
+          }),
+          createElement(DeepSeekAccountUsageSection, { snapshot })
+        )
+      )
+    })
+    if (!mounted) {
+      throw new Error('usage surfaces did not mount')
+    }
+    return mounted
+  }
+
+  it('keeps DeepSeek-only host inclusion and Accounts route wiring', () => {
     const homeData = readFileSync(
       new URL('../home/use-mobile-home-data.ts', import.meta.url),
-      'utf8'
-    )
-    const homeCards = readFileSync(
-      new URL('../home/MobileHomeAccountUsageCards.tsx', import.meta.url),
       'utf8'
     )
     const accounts = readFileSync(
@@ -150,7 +242,10 @@ describe('DeepSeek usage surfaces', () => {
     )
 
     expect(homeData).toContain('hasDeepSeekAccountUsage(snapshot)')
-    expect(homeCards).toContain('getDeepSeekAccountUsage(snapshot)')
     expect(accounts).toContain('<DeepSeekAccountUsageSection snapshot={snapshot} />')
   })
 })
+
+function balanceWindow(usedPercent: number, resetDescription: string) {
+  return { usedPercent, windowMinutes: 43_200, resetsAt: null, resetDescription }
+}
