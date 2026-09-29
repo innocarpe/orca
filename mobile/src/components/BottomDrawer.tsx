@@ -1,5 +1,8 @@
-import { type ReactNode, useCallback } from 'react'
-import { useBottomDrawerHostAfterClose } from './bottom-drawer-host-after-close'
+import { type ReactNode, useCallback, useEffect, useRef } from 'react'
+import {
+  useBottomDrawerHostAfterClose,
+  useBottomDrawerHostCloseCancelled
+} from './bottom-drawer-host-after-close'
 import { KeyedBottomDrawer } from './keyed-bottom-drawer'
 
 type Props = {
@@ -24,7 +27,21 @@ const sheetKey = () => SHOWN
 
 export function BottomDrawer({ visible, onClose, onAfterClose, children, ...drawerProps }: Props) {
   const hostAfterClose = useBottomDrawerHostAfterClose()
+  const hostCloseCancelled = useBottomDrawerHostCloseCancelled()
+  const visibleRef = useRef(visible)
+  const closePendingRef = useRef(false)
+  useEffect(() => {
+    if (visibleRef.current && !visible) {
+      closePendingRef.current = true
+    } else if (!visibleRef.current && visible && closePendingRef.current) {
+      // The keyed drawer cancels this hide; balance the host without waiting for onHidden.
+      closePendingRef.current = false
+      hostCloseCancelled?.()
+    }
+    visibleRef.current = visible
+  }, [visible, hostCloseCancelled])
   const handleAfterClose = useCallback(() => {
+    closePendingRef.current = false
     onAfterClose?.()
     hostAfterClose?.()
   }, [onAfterClose, hostAfterClose])

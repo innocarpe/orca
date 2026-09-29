@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BottomDrawer } from '../components/BottomDrawer'
@@ -8,10 +8,10 @@ vi.mock('../components/mounted-bottom-drawer', () => ({
   MountedBottomDrawer: 'MountedBottomDrawer'
 }))
 
-vi.mock('react-native', () => {
-  const react = require('react') as typeof import('react')
+vi.mock('react-native', async () => {
+  const react = await vi.importActual<typeof import('react')>('react')
   return {
-    Modal: ({ children }: { children?: unknown }) => react.createElement('Modal', null, children)
+    Modal: ({ children }: { children?: ReactNode }) => react.createElement('Modal', null, children)
   }
 })
 

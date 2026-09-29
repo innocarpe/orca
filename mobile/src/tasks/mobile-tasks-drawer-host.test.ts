@@ -6,8 +6,19 @@ import {
   mobileTasksOpenDrawerCount
 } from './mobile-tasks-drawer-host'
 
-function model(overrides: Partial<ConnectionPresentationModel> = {}): ConnectionPresentationModel {
-  return {
+type DrawerTestOverrides = {
+  actionItem?: { key: string }
+  projectRowItem?: { id: string }
+  pendingHostedStateChange?: { source: 'task' | 'project'; nextState: 'closed' }
+  workspaceCreateDraft?: { item: { key: string } }
+  workspaceSparseDraft?: { mode: 'new' }
+  workspaceSparseSaving?: boolean
+  showCreateTask?: boolean
+  showCreateTargetPicker?: boolean
+}
+
+function model(overrides: DrawerTestOverrides = {}): ConnectionPresentationModel {
+  const fixture = {
     taskUiReady: true,
     setPendingHostedStateChange: vi.fn(),
     setActionItem: vi.fn(),
@@ -19,7 +30,9 @@ function model(overrides: Partial<ConnectionPresentationModel> = {}): Connection
     workspaceSparseSaving: false,
     linearConnectState: 'idle',
     ...overrides
-  } as ConnectionPresentationModel
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture exercises only drawer presence and dismiss callbacks; inner item data is never read and omitted drawers remain closed.
+  return fixture as ConnectionPresentationModel
 }
 
 describe('mobile tasks drawer host', () => {
@@ -28,16 +41,16 @@ describe('mobile tasks drawer host', () => {
   })
 
   it('opens for the issue detail sheet alone', () => {
-    expect(mobileTasksDrawerHostOpen(model({ actionItem: { key: 'issue-1' } as never }))).toBe(true)
-    expect(mobileTasksOpenDrawerCount(model({ actionItem: { key: 'issue-1' } as never }))).toBe(1)
+    expect(mobileTasksDrawerHostOpen(model({ actionItem: { key: 'issue-1' } }))).toBe(true)
+    expect(mobileTasksOpenDrawerCount(model({ actionItem: { key: 'issue-1' } }))).toBe(1)
   })
 
   it('counts a follow-up sheet stacked on the detail sheet', () => {
     expect(
       mobileTasksOpenDrawerCount(
         model({
-          actionItem: { key: 'issue-1' } as never,
-          pendingHostedStateChange: { source: 'task', nextState: 'closed' } as never
+          actionItem: { key: 'issue-1' },
+          pendingHostedStateChange: { source: 'task', nextState: 'closed' }
         })
       )
     ).toBe(2)
@@ -45,8 +58,8 @@ describe('mobile tasks drawer host', () => {
 
   it('stays open while a follow-up confirm is stacked on the detail sheet', () => {
     const current = model({
-      actionItem: { key: 'issue-1' } as never,
-      pendingHostedStateChange: { source: 'task', nextState: 'closed' } as never
+      actionItem: { key: 'issue-1' },
+      pendingHostedStateChange: { source: 'task', nextState: 'closed' }
     })
 
     expect(mobileTasksDrawerHostOpen(current)).toBe(true)
@@ -54,8 +67,8 @@ describe('mobile tasks drawer host', () => {
 
   it('closes the confirm before the issue detail', () => {
     const current = model({
-      actionItem: { key: 'issue-1' } as never,
-      pendingHostedStateChange: { source: 'project', nextState: 'closed' } as never
+      actionItem: { key: 'issue-1' },
+      pendingHostedStateChange: { source: 'project', nextState: 'closed' }
     })
 
     dismissTopMobileTasksDrawer(current)
@@ -65,7 +78,7 @@ describe('mobile tasks drawer host', () => {
   })
 
   it('closes the issue detail when it is the only sheet', () => {
-    const current = model({ projectRowItem: { id: 'row-1' } as never })
+    const current = model({ projectRowItem: { id: 'row-1' } })
 
     dismissTopMobileTasksDrawer(current)
 
@@ -83,8 +96,8 @@ describe('mobile tasks drawer host', () => {
 
   it('does not dismiss a sparse preset draft while it is saving', () => {
     const current = model({
-      workspaceCreateDraft: { item: { key: 'issue-1' } } as never,
-      workspaceSparseDraft: { mode: 'new' } as never,
+      workspaceCreateDraft: { item: { key: 'issue-1' } },
+      workspaceSparseDraft: { mode: 'new' },
       workspaceSparseSaving: true
     })
 
