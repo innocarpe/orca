@@ -31,8 +31,8 @@ function model(overrides: DrawerTestOverrides = {}): ConnectionPresentationModel
     linearConnectState: 'idle',
     ...overrides
   }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture exercises only drawer presence and dismiss callbacks; inner item data is never read and omitted drawers remain closed.
-  return fixture as ConnectionPresentationModel
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This partial fixture supplies the presence flags and dismiss callbacks under test; opaque non-null item sentinels are never read and omitted drawers remain closed.
+  return fixture as unknown as ConnectionPresentationModel
 }
 
 describe('mobile tasks drawer host', () => {

@@ -1,7 +1,9 @@
 import { createElement, type ReactNode } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Modal } from 'react-native'
 import { BottomDrawer } from '../components/BottomDrawer'
+import { MountedBottomDrawer } from '../components/mounted-bottom-drawer'
 import { TasksDrawerModalHost } from './tasks-drawer-host-mount'
 
 vi.mock('../components/mounted-bottom-drawer', () => ({
@@ -16,20 +18,24 @@ vi.mock('react-native', async () => {
 })
 
 function Stack({ openCount }: { openCount: number }) {
-  return createElement(
-    TasksDrawerModalHost,
-    { openCount, onRequestClose: () => {} },
-    createElement(
-      BottomDrawer,
-      { visible: openCount > 1, onClose: () => {} },
-      createElement('Top')
-    ),
-    createElement(
-      BottomDrawer,
-      { visible: openCount > 0, onClose: () => {} },
-      createElement('Base')
-    )
-  )
+  return createElement(TasksDrawerModalHost, {
+    openCount,
+    onRequestClose: () => {},
+    children: [
+      createElement(BottomDrawer, {
+        key: 'top',
+        visible: openCount > 1,
+        onClose: () => {},
+        children: createElement('Top')
+      }),
+      createElement(BottomDrawer, {
+        key: 'base',
+        visible: openCount > 0,
+        onClose: () => {},
+        children: createElement('Base')
+      })
+    ]
+  })
 }
 
 function renderHost(openCount: number): ReactTestRenderer {
@@ -50,11 +56,11 @@ function setOpenCount(renderer: ReactTestRenderer, openCount: number): void {
 }
 
 function mountedDrawers(renderer: ReactTestRenderer) {
-  return renderer.root.findAllByType('MountedBottomDrawer')
+  return renderer.root.findAllByType(MountedBottomDrawer)
 }
 
 function hostModals(renderer: ReactTestRenderer) {
-  return renderer.root.findAllByType('Modal')
+  return renderer.root.findAllByType(Modal)
 }
 
 describe('TasksDrawerModalHost close', () => {
