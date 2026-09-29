@@ -17,6 +17,7 @@ import {
 export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithResolveTerminalPane {
   private lastProvenAbsentLeafPtyVerdictPruneAt: number | undefined
   private terminalInputTails = new Map<string, Promise<void>>()
+  private promptReplyWindows = new Map<string, Set<Promise<RuntimeTerminalSend>>>()
 
   protected async serializeTerminalInput<T>(
     ptyId: string,
@@ -163,10 +164,20 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       })
       return { handle, accepted: true, bytesWritten: Buffer.byteLength(payload, 'utf8') }
     }
-    // Terminal protocol replies must reach a composer while its prompt write waits for rendering.
-    return options.inputKind === 'query-reply'
-      ? write()
-      : this.serializeTerminalInput(ptyId, generation, write)
+    const replies =
+      options.inputKind === 'query-reply'
+        ? this.promptReplyWindows.get(`${ptyId}\u0000${generation}`)
+        : undefined
+    if (replies) {
+      const reply = write()
+      replies.add(reply)
+      void reply.then(
+        () => replies.delete(reply),
+        () => replies.delete(reply)
+      )
+      return reply
+    }
+    return this.serializeTerminalInput(ptyId, generation, write)
   }
 
   async sendTerminalAgentPrompt(
@@ -174,81 +185,60 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     prompt: string,
     options: RuntimeAgentPromptWriteOptions
   ): Promise<RuntimeTerminalSend> {
-    // Why the consuming agent: the foreground process reads the bytes; launchAgent covers startup.
-    const payloadFor = (ptyId: string): string => {
-      const pty = this.ptysById.get(ptyId)
-      const agent = pty?.foregroundAgent ?? pty?.launchAgent
-      return buildAgentPromptPasteBytes(
-        prompt,
-        agentPromptTakesLeadLine(agent) ? options.leadLine : undefined
-      )
-    }
     const pty = this.getLivePtyForHandle(handle)
-    if (pty) {
-      if (!pty.pty.connected) {
-        throw new Error('terminal_not_writable')
-      }
-      const payload = payloadFor(pty.pty.ptyId)
-      const generation = this.getPtyLifecycleGeneration(pty.pty.ptyId)
-      const delivery = await this.serializeAgentPromptSubmission(pty.pty.ptyId, generation, () =>
-        this.serializeTerminalInput(pty.pty.ptyId, generation, async (release) => {
-          await assertTerminalInputWithinLimitWithYield(payload)
-          this.assertLiveTerminalHandleTargetsPty(handle, pty.pty.ptyId)
-          this.assertAgentPromptGeneration(pty.pty.ptyId, generation)
-          return await this.writeTerminalAgentPrompt(
-            handle,
-            pty.pty.ptyId,
-            generation,
-            payload,
-            {
-              ...options,
-              promptForSchedule: prompt
-            },
-            release
-          )
-        })
-      )
-      const bytesWritten = Buffer.byteLength(payload, 'utf8') + delivery.submits
-      return {
-        handle,
-        accepted: true,
-        bytesWritten,
-        ...(delivery.prompt ? { prompt: delivery.prompt } : {})
-      }
-    }
-
-    const { leaf } = this.getLiveLeafForHandle(handle)
-    if (!leaf.writable || !leaf.ptyId) {
+    const leaf = pty ? null : this.getLiveLeafForHandle(handle).leaf
+    const ptyId = pty?.pty.ptyId ?? leaf?.ptyId
+    if (!ptyId || (pty ? !pty.pty.connected : !leaf?.writable)) {
       throw new Error('terminal_not_writable')
     }
-    const payload = payloadFor(leaf.ptyId)
-    const generation = this.getPtyLifecycleGeneration(leaf.ptyId)
-    const delivery = await this.serializeAgentPromptSubmission(leaf.ptyId, generation, () =>
-      this.serializeTerminalInput(leaf.ptyId!, generation, async (release) => {
+    const generation = this.getPtyLifecycleGeneration(ptyId)
+    const agent = this.ptysById.get(ptyId)?.foregroundAgent ?? this.ptysById.get(ptyId)?.launchAgent
+    const payload = buildAgentPromptPasteBytes(
+      prompt,
+      agentPromptTakesLeadLine(agent) ? options.leadLine : undefined
+    )
+    // Reserve input order before waiting for an earlier prompt's receipt observation.
+    const delivery = await this.serializeTerminalInput(ptyId, generation, (release) =>
+      this.serializeAgentPromptSubmission(ptyId, generation, async () => {
         await assertTerminalInputWithinLimitWithYield(payload)
-        if (await this.isLeafPtyProvenAbsent(leaf.ptyId!)) {
+        if (leaf && (await this.isLeafPtyProvenAbsent(ptyId))) {
           throw new Error('terminal_not_writable')
         }
-        this.assertLiveTerminalHandleTargetsPty(handle, leaf.ptyId!)
-        this.assertAgentPromptGeneration(leaf.ptyId!, generation)
-        return await this.writeTerminalAgentPrompt(
-          handle,
-          leaf.ptyId!,
-          generation,
-          payload,
-          {
-            ...options,
-            promptForSchedule: prompt
-          },
-          release
-        )
+        this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
+        this.assertAgentPromptGeneration(ptyId, generation)
+        // Only an active prompt needs protocol replies while awaiting composer rendering.
+        const key = `${ptyId}\u0000${generation}`
+        const replies = new Set<Promise<RuntimeTerminalSend>>()
+        this.promptReplyWindows.set(key, replies)
+        let drained: Promise<void> | undefined
+        const closeReplies = (): Promise<void> => {
+          if (!drained) {
+            this.promptReplyWindows.delete(key)
+            drained = Promise.allSettled(replies).then(() => undefined)
+          }
+          return drained
+        }
+        try {
+          return await this.writeTerminalAgentPrompt(
+            handle,
+            ptyId,
+            generation,
+            payload,
+            { ...options, promptForSchedule: prompt },
+            async () => {
+              await closeReplies()
+              release()
+            }
+          )
+        } finally {
+          await closeReplies()
+        }
       })
     )
-    const bytesWritten = Buffer.byteLength(payload, 'utf8') + delivery.submits
     return {
       handle,
       accepted: true,
-      bytesWritten,
+      bytesWritten: Buffer.byteLength(payload, 'utf8') + delivery.submits,
       ...(delivery.prompt ? { prompt: delivery.prompt } : {})
     }
   }
