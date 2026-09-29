@@ -51,6 +51,7 @@ describe('Grok prompt delivery', () => {
   it('writes plain normalized text and one scheduled Enter for a Grok launch', async () => {
     vi.useFakeTimers()
     const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+    setForegroundController(runtime, writes, async () => 'grok')
     await submit(runtime, handle)
     expect(writes).toEqual(['line one\nline two\nlast', '\r'])
   })
@@ -190,25 +191,55 @@ describe('Grok prompt delivery', () => {
     expect(writes).toEqual(['slow restored', '\r'])
   })
 
-  it('keeps known cached Grok delivery when foreground inspection exceeds its budget', async () => {
-    vi.useFakeTimers()
-    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
-    setForegroundController(runtime, writes, () => new Promise<string | null>(() => {}))
-    const result = runtime
-      .sendTerminalAgentPrompt(handle, 'known cached', {
-        inputKind: 'driving',
-        acceptQueued: true,
-        requestId: 'known-cached'
+  it.each(['grok', 'claude'] as const)(
+    'rejects a timed-out probe instead of selecting a format from cached %s identity',
+    async (agent) => {
+      vi.useFakeTimers()
+      const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, agent)
+      setForegroundController(runtime, writes, () => new Promise<string | null>(() => {}))
+      const result = runtime
+        .sendTerminalAgentPrompt(handle, 'must not execute\nsecond line', {
+          inputKind: 'driving',
+          acceptQueued: true,
+          requestId: 'stale-cached'
+        })
+        .then(
+          () => null,
+          (error: unknown) => (error instanceof Error ? error.message : String(error))
+        )
+      await vi.advanceTimersByTimeAsync(1_999)
+      expect(writes).toEqual([])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(writes).toEqual([])
+      await vi.runAllTimersAsync()
+      expect(await result).toBe('agent_prompt_foreground_unavailable')
+    }
+  )
+
+  it.each(['empty', 'failed'] as const)(
+    'rejects a cached Grok identity after an %s foreground lookup',
+    async (lookup) => {
+      vi.useFakeTimers()
+      const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+      setForegroundController(runtime, writes, async () => {
+        if (lookup === 'failed') {
+          throw new Error('foreground unavailable')
+        }
+        return null
       })
-      .catch(() => null)
-    await vi.advanceTimersByTimeAsync(1_999)
-    expect(writes).toEqual([])
-    await vi.advanceTimersByTimeAsync(1)
-    expect(writes).toEqual(['known cached'])
-    await vi.runAllTimersAsync()
-    expect(await result).toMatchObject({ accepted: true })
-    expect(writes).toEqual(['known cached', '\r'])
-  })
+      const result = runtime
+        .sendTerminalAgentPrompt(handle, 'must not execute\nsecond line', {
+          inputKind: 'driving'
+        })
+        .then(
+          () => null,
+          (error: unknown) => (error instanceof Error ? error.message : String(error))
+        )
+      await vi.runAllTimersAsync()
+      expect(writes).toEqual([])
+      expect(await result).toBe('agent_prompt_foreground_unavailable')
+    }
+  )
 
   it('rejects an unhinted restored terminal when the separate inspection budget expires', async () => {
     vi.useFakeTimers()

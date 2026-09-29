@@ -187,7 +187,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       throw new Error('terminal_not_writable')
     }
     const fallback = pty?.foregroundAgent ?? pty?.launchAgent ?? null
-    if (read && !result && !fallback) {
+    if (read && !result) {
       throw new Error('agent_prompt_foreground_unavailable')
     }
     if (result?.available && result.process) {
@@ -198,10 +198,11 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       if (!isAgentForegroundWrapperProcess(result.process)) {
         return null
       }
-      // A generic wrapper cannot prove that Grok still owns the terminal's unframed input.
-      if (fallback === 'grok') {
-        throw new Error('agent_prompt_foreground_unavailable')
-      }
+    }
+    // Unframed Grok input can execute as shell commands after an agent exits. A cache,
+    // generic wrapper, empty lookup, or failed inspection cannot authorize those bytes.
+    if (fallback === 'grok') {
+      throw new Error('agent_prompt_foreground_unavailable')
     }
     return fallback
   }
