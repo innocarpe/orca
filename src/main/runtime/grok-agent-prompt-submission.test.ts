@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAgentPromptSubmissionRuntime } from './agent-prompt-submission-runtime-test-fixture'
 import type { OrcaRuntimeService } from './orca-runtime'
+import type { RuntimeTerminalSend } from '../../shared/runtime-types'
 import { buildAgentPromptPasteBytes } from '../../shared/agent-prompt-injection'
 
 vi.mock('../git/worktree', () => {
@@ -33,7 +34,7 @@ async function submit(
   runtime: OrcaRuntimeService,
   handle: string,
   text = 'line one\r\nline two\rlast'
-): Promise<void> {
+): Promise<RuntimeTerminalSend> {
   const result = runtime.sendTerminalAgentPrompt(handle, text, {
     inputKind: 'driving',
     acceptQueued: true,
@@ -41,7 +42,7 @@ async function submit(
     observationTimeoutMs: 0
   })
   await vi.runAllTimersAsync()
-  await result
+  return await result
 }
 
 describe('Grok prompt delivery', () => {
@@ -134,6 +135,68 @@ describe('Grok prompt delivery', () => {
     setForegroundController(runtime, writes, async () => 'bash')
     await submit(runtime, handle, 'unknown')
     expect(writes).toEqual([buildAgentPromptPasteBytes('unknown'), '\r'])
+  })
+
+  it.each(['node', 'python', 'python3', 'python3.12'])(
+    'keeps a cached Codex receipt for a degraded wrapper process %s',
+    async (process) => {
+      vi.useFakeTimers()
+      const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(
+        () => {},
+        'claude'
+      )
+      runtime['ptysById'].get('pty-prompt')!.foregroundAgent = 'codex'
+      setForegroundController(runtime, writes, async () => process)
+      const result = await submit(runtime, handle, 'cached agent')
+      expect(writes).toEqual([buildAgentPromptPasteBytes('cached agent'), '\r'])
+      expect(result.prompt).toMatchObject({ provider: 'codex', observation: 'supported' })
+    }
+  )
+
+  it('keeps cached Grok formatting for a degraded wrapper lookup', async () => {
+    vi.useFakeTimers()
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'claude')
+    runtime['ptysById'].get('pty-prompt')!.foregroundAgent = 'grok'
+    setForegroundController(runtime, writes, async () => 'python')
+    await submit(runtime, handle)
+    expect(writes).toEqual(['line one\nline two\nlast', '\r'])
+  })
+
+  it('falls back within a separate inspection budget when the host probe never answers', async () => {
+    vi.useFakeTimers()
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+    const read = vi.fn(() => new Promise<string | null>(() => {}))
+    setForegroundController(runtime, writes, read)
+    const result = runtime.sendTerminalAgentPrompt(handle, 'bounded fallback', {
+      inputKind: 'driving',
+      acceptQueued: true,
+      requestId: 'bounded-probe'
+    })
+    await vi.advanceTimersByTimeAsync(249)
+    expect(writes).toEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(writes).toEqual(['bounded fallback'])
+    await vi.runAllTimersAsync()
+    await result
+    expect(writes).toEqual(['bounded fallback', '\r'])
+    expect(read).toHaveBeenCalledOnce()
+  })
+
+  it('cancels promptly while foreground inspection remains unanswered', async () => {
+    vi.useFakeTimers()
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+    setForegroundController(runtime, writes, () => new Promise<string | null>(() => {}))
+    const controller = new AbortController()
+    const result = runtime.sendTerminalAgentPrompt(handle, 'cancelled', {
+      inputKind: 'driving',
+      signal: controller.signal
+    })
+    const rejected = expect(result).rejects.toThrow('request_aborted')
+    await vi.advanceTimersByTimeAsync(0)
+    controller.abort()
+    await vi.advanceTimersByTimeAsync(0)
+    await rejected
+    expect(writes).toEqual([])
   })
 
   it('rejects a generation change while its foreground probe is pending', async () => {

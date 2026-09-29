@@ -1,12 +1,18 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithResolveTerminalPane } from './orca-runtime-resolve-terminal-pane'
-import { PROVEN_ABSENT_LEAF_PTY_TTL_MS } from './orca-runtime-core'
+import { PROVEN_ABSENT_LEAF_PTY_TTL_MS, waitForAgentPromptPromise } from './orca-runtime-core'
 import { pruneExpiredProvenAbsentLeafPtyVerdicts } from './proven-absent-leaf-pty-verdicts'
 import type { RuntimeTerminalSend } from '../../shared/runtime-types'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
-import type { RuntimeAgentPromptWriteOptions } from './runtime-terminal-contracts'
+import type {
+  PtyForegroundProcessRead,
+  RuntimeAgentPromptWriteOptions
+} from './runtime-terminal-contracts'
 import type { TuiAgent } from '../../shared/tui-agent'
-import { recognizeAgentProcess } from '../../shared/agent-process-recognition'
+import {
+  isAgentForegroundWrapperProcess,
+  recognizeAgentProcess
+} from '../../shared/agent-process-recognition'
 import {
   assertTerminalInputWithinLimitWithYield,
   buildTerminalSendPayload
@@ -15,6 +21,8 @@ import {
   agentPromptTakesLeadLine,
   buildAgentPromptBodyBytes
 } from '../../shared/agent-prompt-injection'
+
+const AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS = 250
 
 export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithResolveTerminalPane {
   private lastProvenAbsentLeafPtyVerdictPruneAt: number | undefined
@@ -155,19 +163,37 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
 
   private async resolveAgentPromptConsumer(
     ptyId: string,
-    generation: number
+    generation: number,
+    signal?: AbortSignal
   ): Promise<TuiAgent | null> {
     const pty = this.ptysById.get(ptyId)
-    const result = await this.readPtyForegroundProcessFromController(
-      ptyId,
-      pty?.lastOscTitleAt ?? 0
-    )
+    const controller = this.ptyController
+    const read = this.readPtyForegroundProcessFromController(ptyId, pty?.lastOscTitleAt ?? 0)
+    let result: PtyForegroundProcessRead | null = null
+    let timer: NodeJS.Timeout | undefined
+    try {
+      if (read) {
+        // Inspection must not inherit the relay's much longer RPC timeout on a writable PTY.
+        const expired = new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS)
+        })
+        result = await waitForAgentPromptPromise(Promise.race([read, expired]), signal)
+      }
+    } finally {
+      clearTimeout(timer)
+    }
     this.assertAgentPromptGeneration(ptyId, generation)
-    if (result && result.controller !== this.ptyController) {
+    if (controller !== this.ptyController || (result && result.controller !== controller)) {
       throw new Error('terminal_not_writable')
     }
     if (result?.available && result.process) {
-      return recognizeAgentProcess(result.process)?.agent ?? null
+      const recognized = recognizeAgentProcess(result.process)?.agent
+      if (recognized) {
+        return recognized
+      }
+      if (!isAgentForegroundWrapperProcess(result.process)) {
+        return null
+      }
     }
     return pty?.foregroundAgent ?? pty?.launchAgent ?? null
   }
@@ -192,7 +218,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
         throw new Error('terminal_not_writable')
       }
       // Probe when the queued prompt is ready: its consumer can differ from the original launcher.
-      const agent = await this.resolveAgentPromptConsumer(ptyId, generation)
+      const agent = await this.resolveAgentPromptConsumer(ptyId, generation, options.signal)
       payload = buildAgentPromptBodyBytes(
         prompt,
         agent,
