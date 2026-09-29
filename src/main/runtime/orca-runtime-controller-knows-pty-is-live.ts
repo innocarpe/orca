@@ -16,6 +16,33 @@ import {
 
 export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithResolveTerminalPane {
   private lastProvenAbsentLeafPtyVerdictPruneAt: number | undefined
+  private terminalInputTails = new Map<string, Promise<void>>()
+
+  protected async serializeTerminalInput<T>(
+    ptyId: string,
+    generation: number,
+    write: (release: () => void) => Promise<T>
+  ): Promise<T> {
+    const key = `${ptyId}\u0000${generation}`
+    const previous = this.terminalInputTails.get(key) ?? Promise.resolve()
+    let release = (): void => {}
+    const written = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tail = previous.then(() => written)
+    this.terminalInputTails.set(key, tail)
+    void tail.then(() => {
+      if (this.terminalInputTails.get(key) === tail) {
+        this.terminalInputTails.delete(key)
+      }
+    })
+    try {
+      await previous
+      return await write(release)
+    } finally {
+      release()
+    }
+  }
 
   private pruneExpiredLeafPtyVerdicts(now: number): void {
     const lastPruneAt = this.lastProvenAbsentLeafPtyVerdictPruneAt
@@ -108,47 +135,38 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     }
   ): Promise<RuntimeTerminalSend> {
     const pty = this.getLivePtyForHandle(handle)
-    if (pty) {
-      if (!pty.pty.connected) {
-        throw new Error('terminal_not_writable')
-      }
-      const payload = buildTerminalSendPayload(action)
-      if (payload === null) {
-        throw new Error('invalid_terminal_send')
-      }
-      await assertTerminalInputWithinLimitWithYield(action.text)
-      await this.writeTerminalAction(pty.pty.ptyId, action, payload, options)
-      return {
-        handle,
-        accepted: true,
-        bytesWritten: Buffer.byteLength(payload, 'utf8')
-      }
-    }
-
-    const { leaf } = this.getLiveLeafForHandle(handle)
-    if (!leaf.writable || !leaf.ptyId) {
+    const leaf = pty ? null : this.getLiveLeafForHandle(handle).leaf
+    const ptyId = pty?.pty.ptyId ?? leaf?.ptyId
+    if (!ptyId || (pty ? !pty.pty.connected : !leaf?.writable)) {
       throw new Error('terminal_not_writable')
     }
     const payload = buildTerminalSendPayload(action)
     if (payload === null) {
       throw new Error('invalid_terminal_send')
     }
-    await assertTerminalInputWithinLimitWithYield(action.text)
-    // Why: leaf.writable mirrors the renderer graph, which can still answer for
-    // a prior process's ptyId — and provider writes to unknown ids are accepted
-    // no-ops. Only controller-proven absence rejects; unknown proceeds (a
-    // restored daemon session takes writes before its pane remounts).
-    if (await this.isLeafPtyProvenAbsent(leaf.ptyId)) {
-      throw new Error('terminal_not_writable')
+    const generation = this.getPtyLifecycleGeneration(ptyId)
+    // Reserve the PTY turn before validation or liveness checks can yield.
+    const write = async (): Promise<RuntimeTerminalSend> => {
+      await assertTerminalInputWithinLimitWithYield(action.text)
+      this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
+      this.assertAgentPromptGeneration(ptyId, generation)
+      if (leaf && (await this.isLeafPtyProvenAbsent(ptyId))) {
+        throw new Error('terminal_not_writable')
+      }
+      await this.writeTerminalAction(ptyId, action, payload, {
+        ...options,
+        beforeWrite: async (targetPtyId) => {
+          this.assertAgentPromptGeneration(ptyId, generation)
+          await options.beforeWrite?.(targetPtyId)
+          this.assertAgentPromptGeneration(ptyId, generation)
+        }
+      })
+      return { handle, accepted: true, bytesWritten: Buffer.byteLength(payload, 'utf8') }
     }
-
-    await this.writeTerminalAction(leaf.ptyId, action, payload, options)
-
-    return {
-      handle,
-      accepted: true,
-      bytesWritten: Buffer.byteLength(payload, 'utf8')
-    }
+    // Terminal protocol replies must reach a composer while its prompt write waits for rendering.
+    return options.inputKind === 'query-reply'
+      ? write()
+      : this.serializeTerminalInput(ptyId, generation, write)
   }
 
   async sendTerminalAgentPrompt(
@@ -171,19 +189,24 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
         throw new Error('terminal_not_writable')
       }
       const payload = payloadFor(pty.pty.ptyId)
-      await assertTerminalInputWithinLimitWithYield(payload)
       const generation = this.getPtyLifecycleGeneration(pty.pty.ptyId)
-      const delivery = await this.serializeAgentPromptSubmission(
-        pty.pty.ptyId,
-        generation,
-        async () => {
+      const delivery = await this.serializeAgentPromptSubmission(pty.pty.ptyId, generation, () =>
+        this.serializeTerminalInput(pty.pty.ptyId, generation, async (release) => {
+          await assertTerminalInputWithinLimitWithYield(payload)
           this.assertLiveTerminalHandleTargetsPty(handle, pty.pty.ptyId)
           this.assertAgentPromptGeneration(pty.pty.ptyId, generation)
-          return await this.writeTerminalAgentPrompt(handle, pty.pty.ptyId, generation, payload, {
-            ...options,
-            promptForSchedule: prompt
-          })
-        }
+          return await this.writeTerminalAgentPrompt(
+            handle,
+            pty.pty.ptyId,
+            generation,
+            payload,
+            {
+              ...options,
+              promptForSchedule: prompt
+            },
+            release
+          )
+        })
       )
       const bytesWritten = Buffer.byteLength(payload, 'utf8') + delivery.submits
       return {
@@ -199,21 +222,28 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       throw new Error('terminal_not_writable')
     }
     const payload = payloadFor(leaf.ptyId)
-    await assertTerminalInputWithinLimitWithYield(payload)
-    // Why: same absence gate as sendTerminal — a stale graph mirror must not
-    // accept a prompt into a void; unknown liveness still proceeds.
-    if (await this.isLeafPtyProvenAbsent(leaf.ptyId)) {
-      throw new Error('terminal_not_writable')
-    }
     const generation = this.getPtyLifecycleGeneration(leaf.ptyId)
-    const delivery = await this.serializeAgentPromptSubmission(leaf.ptyId, generation, async () => {
-      this.assertLiveTerminalHandleTargetsPty(handle, leaf.ptyId!)
-      this.assertAgentPromptGeneration(leaf.ptyId!, generation)
-      return await this.writeTerminalAgentPrompt(handle, leaf.ptyId!, generation, payload, {
-        ...options,
-        promptForSchedule: prompt
+    const delivery = await this.serializeAgentPromptSubmission(leaf.ptyId, generation, () =>
+      this.serializeTerminalInput(leaf.ptyId!, generation, async (release) => {
+        await assertTerminalInputWithinLimitWithYield(payload)
+        if (await this.isLeafPtyProvenAbsent(leaf.ptyId!)) {
+          throw new Error('terminal_not_writable')
+        }
+        this.assertLiveTerminalHandleTargetsPty(handle, leaf.ptyId!)
+        this.assertAgentPromptGeneration(leaf.ptyId!, generation)
+        return await this.writeTerminalAgentPrompt(
+          handle,
+          leaf.ptyId!,
+          generation,
+          payload,
+          {
+            ...options,
+            promptForSchedule: prompt
+          },
+          release
+        )
       })
-    })
+    )
     const bytesWritten = Buffer.byteLength(payload, 'utf8') + delivery.submits
     return {
       handle,
