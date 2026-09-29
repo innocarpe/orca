@@ -174,11 +174,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     try {
       if (read) {
         // Inspection must not inherit the relay's much longer RPC timeout on a writable PTY.
-        const expired = new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(
-            () => reject(new Error('agent_prompt_foreground_unavailable')),
-            AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS
-          )
+        const expired = new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), AGENT_PROMPT_FOREGROUND_PROBE_TIMEOUT_MS)
         })
         result = await waitForAgentPromptPromise(Promise.race([read, expired]), signal)
       }
@@ -190,6 +187,9 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       throw new Error('terminal_not_writable')
     }
     const fallback = pty?.foregroundAgent ?? pty?.launchAgent ?? null
+    if (read && !result && !fallback) {
+      throw new Error('agent_prompt_foreground_unavailable')
+    }
     if (result?.available && result.process) {
       const recognized = recognizeAgentProcess(result.process)?.agent
       if (recognized) {

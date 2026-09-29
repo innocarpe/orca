@@ -190,9 +190,32 @@ describe('Grok prompt delivery', () => {
     expect(writes).toEqual(['slow restored', '\r'])
   })
 
-  it('rejects without writing when the separate inspection budget expires', async () => {
+  it('keeps known cached Grok delivery when foreground inspection exceeds its budget', async () => {
     vi.useFakeTimers()
     const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+    setForegroundController(runtime, writes, () => new Promise<string | null>(() => {}))
+    const result = runtime
+      .sendTerminalAgentPrompt(handle, 'known cached', {
+        inputKind: 'driving',
+        acceptQueued: true,
+        requestId: 'known-cached'
+      })
+      .catch(() => null)
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(writes).toEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(writes).toEqual(['known cached'])
+    await vi.runAllTimersAsync()
+    expect(await result).toMatchObject({ accepted: true })
+    expect(writes).toEqual(['known cached', '\r'])
+  })
+
+  it('rejects an unhinted restored terminal when the separate inspection budget expires', async () => {
+    vi.useFakeTimers()
+    const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(() => {}, 'grok')
+    const pty = runtime['ptysById'].get('pty-prompt')!
+    pty.launchAgent = null
+    pty.foregroundAgent = null
     const read = vi.fn(() => new Promise<string | null>(() => {}))
     setForegroundController(runtime, writes, read)
     const result = runtime.sendTerminalAgentPrompt(handle, 'bounded inspection', {
