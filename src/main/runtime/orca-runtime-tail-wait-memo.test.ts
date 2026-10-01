@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { computeTerminalTailWaitState } from './terminal-wait-tail-state'
+import {
+  computeTerminalTailWaitState,
+  resolveWaitBlockedAt,
+  tailSettledReadyClearsBlockedWait
+} from './terminal-wait-tail-state'
 
 describe('terminal tail wait state', () => {
   it('computeTerminalTailWaitState reports fromTail and blocked signals', () => {
@@ -33,5 +37,29 @@ describe('terminal tail wait state', () => {
     } finally {
       lastIndexOf.mockRestore()
     }
+  })
+
+  it('clears a blocked stamp only for a settled ready tail', () => {
+    const ready = {
+      waitText:
+        '╭───╮\n│ >_ openai codex (v0.157.0) │\n│ model: gpt-5 │\n│ directory: ~/repo │\n╰───╯',
+      signal: null,
+      fromTail: true
+    }
+    const blocked = {
+      waitText: 'Hooks need review\nPress enter to confirm',
+      signal: { reason: 'agent-hooks-review-prompt' as const, index: 0 },
+      fromTail: true
+    }
+    const preview = { ...ready, fromTail: false }
+    const inconclusive = { ...ready, waitText: 'ordinary output' }
+
+    expect(tailSettledReadyClearsBlockedWait(ready)).toBe(true)
+    expect(resolveWaitBlockedAt(12, false, ready, 99)).toBeNull()
+    expect(resolveWaitBlockedAt(12, true, ready, 99)).toBe(99)
+    expect(resolveWaitBlockedAt(12, false, blocked, 99)).toBe(12)
+    expect(resolveWaitBlockedAt(12, false, preview, 99)).toBe(12)
+    expect(resolveWaitBlockedAt(12, false, inconclusive, 99)).toBe(12)
+    expect(resolveWaitBlockedAt(null, false, ready, 99)).toBeNull()
   })
 })
