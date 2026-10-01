@@ -18,6 +18,7 @@ import {
   placeClosedEditorSnapshot,
   rememberKeptUntitledEditor
 } from './remember-kept-untitled-editor'
+import { mapWithConcurrency } from '../../../../../../shared/map-with-concurrency'
 import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../../shared/layout-owner-switch'
 import { afterPendingTabs, hasPendingEntityTab } from '@/runtime/layout-owner-pending-tabs'
@@ -26,30 +27,6 @@ import type { AppState } from '../../../types'
 // Why: files.stat waits up to 15s, but the runtime drops calls once 256 are
 // pending. Four at a time still overlaps the slow checks without filling that queue.
 const UNTITLED_CLOSE_STAT_CONCURRENCY = 4
-
-async function mapAtConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  run: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = []
-  let cursor = 0
-  async function worker(): Promise<void> {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      const item = items[index]
-      if (item === undefined) {
-        return
-      }
-      results[index] = await run(item)
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(Math.max(limit, 0), items.length) }, () => worker())
-  )
-  return results
-}
 
 export function createRecentlyClosedEditorTabs(
   set: EditorSet,
@@ -298,8 +275,10 @@ export function createRecentlyClosedEditorTabs(
             // runtime rejects calls past its pending-request cap, and a rejected
             // check looks like a kept file. Stay under that cap.
             const files = [...untitledToDelete].toReversed().filter((file) => !kept.has(file.id))
-            const deleted = await mapAtConcurrency(files, UNTITLED_CLOSE_STAT_CONCURRENCY, (file) =>
-              deleteUntouchedUntitledFile(get, file)
+            const deleted = await mapWithConcurrency(
+              files,
+              UNTITLED_CLOSE_STAT_CONCURRENCY,
+              (file) => deleteUntouchedUntitledFile(get, file)
             )
             files.forEach((file, index) => {
               if (deleted[index]) {
