@@ -1,6 +1,8 @@
 import type { ProviderRateLimits } from '../../shared/rate-limit-types'
+import { withClaudeManagedCredentialRotation } from '../claude-accounts/managed-credential-rotation'
 import {
   isOauthTokenExpiring,
+  readRefreshToken,
   refreshClaudeOauthCredentials
 } from '../claude-accounts/oauth-refresh'
 import {
@@ -24,14 +26,10 @@ import {
 } from './claude-usage-result'
 
 function noClaudeManagedCredentialsResult(): ProviderRateLimits {
-  return {
-    provider: 'claude',
-    session: null,
-    weekly: null,
-    updatedAt: Date.now(),
-    error: 'No credentials',
-    status: 'error'
-  }
+  return makeClaudeUsageResult('error', 'No credentials', {
+    attemptedSources: ['oauth'],
+    failureKind: 'missing-credentials'
+  })
 }
 
 export async function fetchInactiveClaudeAccountUsage(
@@ -54,7 +52,7 @@ export async function fetchInactiveClaudeAccountUsage(
   let refreshedThisCall = false
   if (isOauthTokenExpiring(credentialsJson)) {
     refreshedThisCall = true
-    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson)
+    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson, false)
     if (options.signal?.aborted) {
       return abortedClaudeRateLimitResult()
     }
@@ -76,7 +74,7 @@ export async function fetchInactiveClaudeAccountUsage(
     oauthLimits.usageMetadata?.failureKind === 'stale-token' &&
     !refreshedThisCall
   ) {
-    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson)
+    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson, true)
     if (options.signal?.aborted) {
       return abortedClaudeRateLimitResult()
     }
@@ -125,18 +123,32 @@ export async function fetchInactiveClaudeAccountUsage(
 
 async function persistRefreshedInactiveCredentials(
   location: NonNullable<ReturnType<typeof resolveClaudeManagedCredentialsLocation>>,
-  credentialsJson: string
+  credentialsJson: string,
+  refreshWhenCurrent: boolean
 ): Promise<string | null> {
-  const refreshed = await refreshClaudeOauthCredentials(credentialsJson)
-  if (!refreshed) {
-    return null
-  }
-  try {
-    await writeClaudeManagedCredentialsJson(location, refreshed)
-  } catch {
-    // Keep the refreshed token for this fetch; a later poll can persist it.
-  }
-  return refreshed
+  return withClaudeManagedCredentialRotation(async () => {
+    const latest = await readClaudeManagedCredentialsJson(location)
+    const source = latest ?? credentialsJson
+    const sourceRefresh = readRefreshToken(source)
+    const inputRefresh = readRefreshToken(credentialsJson)
+    // Why: selection won the rotation. Its persisted blob is the one to read.
+    if (sourceRefresh && inputRefresh && sourceRefresh !== inputRefresh) {
+      return source
+    }
+    if (!refreshWhenCurrent && !isOauthTokenExpiring(source)) {
+      return source
+    }
+    const refreshed = await refreshClaudeOauthCredentials(source)
+    if (!refreshed) {
+      return null
+    }
+    try {
+      await writeClaudeManagedCredentialsJson(location, refreshed)
+    } catch {
+      // Keep the refreshed token for this fetch; a later poll can persist it.
+    }
+    return refreshed
+  })
 }
 
 // Why: a failed OAuth read used to throw out of the inactive batch. The service

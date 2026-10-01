@@ -42,7 +42,20 @@ export function createElectronMock() {
 export function createOauthRefreshMock() {
   return {
     isOauthTokenExpiring: vi.fn(() => false),
-    refreshClaudeOauthCredentials: vi.fn(async () => null)
+    refreshClaudeOauthCredentials: vi.fn(async () => null),
+    // Why: selection compares the stored refresh token inside the shared
+    // rotation queue. Leaving this off the mock makes that comparison throw.
+    readRefreshToken(credentialsJson: string): string | null {
+      try {
+        const parsed = JSON.parse(credentialsJson) as {
+          claudeAiOauth?: { refreshToken?: unknown }
+        }
+        const token = parsed.claudeAiOauth?.refreshToken
+        return typeof token === 'string' && token.trim() !== '' ? token.trim() : null
+      } catch {
+        return null
+      }
+    }
   }
 }
 

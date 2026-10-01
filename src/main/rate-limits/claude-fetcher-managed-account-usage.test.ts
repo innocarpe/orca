@@ -102,7 +102,8 @@ describe('fetchClaudeRateLimits', () => {
     ).resolves.toMatchObject({
       provider: 'claude',
       status: 'error',
-      error: 'No credentials'
+      error: 'No credentials',
+      usageMetadata: { failureKind: 'missing-credentials' }
     })
 
     expect(netFetchMock).not.toHaveBeenCalled()
@@ -531,5 +532,72 @@ describe('fetchClaudeRateLimits', () => {
     expect(fetchViaPty).not.toHaveBeenCalled()
     const persisted = JSON.parse(readFileSync(credentialsPath, 'utf-8'))
     expect(persisted.claudeAiOauth.accessToken).toBe('fresh-access')
+  })
+
+  it('keeps a refresh token selection already rotated during a stale 401', async () => {
+    setPlatform('linux')
+    tempDir = mkdtempSync(join(tmpdir(), 'orca-claude-fetcher-'))
+    appGetPathMock.mockReturnValue(tempDir)
+    const ownedAuthPath = join(tempDir, 'claude-accounts', 'account-1', 'auth')
+    mkdirSync(ownedAuthPath, { recursive: true })
+    writeFileSync(join(ownedAuthPath, '.orca-managed-claude-auth'), 'account-1\n', 'utf-8')
+    const credentialsPath = join(ownedAuthPath, '.credentials.json')
+    writeFileSync(
+      credentialsPath,
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: 'soon-stale-access',
+          refreshToken: 'still-valid-refresh',
+          expiresAt: Date.now() + 60 * 60 * 1000,
+          scopes: ['user:inference', 'user:profile']
+        }
+      }),
+      'utf-8'
+    )
+    const rotatedBySelection = JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'rotated-by-selection',
+        refreshToken: 'rotated-by-selection-refresh',
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+        scopes: ['user:inference', 'user:profile']
+      }
+    })
+    let usageCalls = 0
+    netFetchMock.mockImplementation(async (url: unknown) => {
+      const target = String(url)
+      if (!target.includes('/api/oauth/usage')) {
+        throw new Error(`token endpoint must not be called: ${target}`)
+      }
+      usageCalls += 1
+      if (usageCalls === 1) {
+        writeFileSync(credentialsPath, rotatedBySelection, 'utf-8')
+        return new Response(
+          JSON.stringify({
+            error: { message: 'OAuth access token has expired. Re-authenticate to continue.' }
+          }),
+          { status: 401 }
+        )
+      }
+      return {
+        ok: true,
+        json: async () => ({ five_hour: { utilization: 11 }, seven_day: { utilization: 22 } })
+      }
+    })
+
+    const result = await fetchManagedAccountUsage({
+      id: 'account-1',
+      managedAuthPath: ownedAuthPath
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.session?.usedPercent).toBe(11)
+    expect(result.weekly?.usedPercent).toBe(22)
+    expect(usageCalls).toBe(2)
+    const secondUsage = netFetchMock.mock.calls.find(
+      ([url], index) => String(url).includes('/api/oauth/usage') && index > 0
+    )
+    expect(secondUsage?.[1]?.headers?.Authorization).toBe('Bearer rotated-by-selection')
+    expect(fetchViaPty).not.toHaveBeenCalled()
+    expect(readFileSync(credentialsPath, 'utf-8')).toBe(rotatedBySelection)
   })
 })
