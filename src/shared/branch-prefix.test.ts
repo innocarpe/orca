@@ -117,10 +117,13 @@ describe('selectBranchPrefixInput', () => {
     expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'EurFelux')).toBe('eurfelux')
   })
 
-  it('keeps the original login when lowercasing would make the prefix a rejected ref', () => {
-    expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'Alice.LOCK')).toBe(
-      'Alice.LOCK'
-    )
+  it('drops a mixed-case login whose lowercase form git rejects', () => {
+    expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'Alice.LOCK')).toBeNull()
+  })
+
+  it('returns an already-lowercase invalid login so settings can warn', () => {
+    expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'alice.lock')).toBe('alice.lock')
+    expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'team x')).toBe('team x')
   })
 
   it('leaves a custom prefix in the case the user typed', () => {

@@ -13,8 +13,9 @@ export type BranchPrefixSettings = {
  *
  * A git username is lowercased so a mixed-case login cannot collide with an
  * existing lowercase ref directory on a case-insensitive filesystem. When that
- * lowercase form is a ref git rejects (`Alice.LOCK` becomes `alice.lock`), keep
- * the original login if it is still valid so worktree creation does not drop it.
+ * lowercase form is a ref git rejects (`Alice.LOCK` becomes `alice.lock`), drop
+ * the prefix. Keeping the original login creates `refs/heads/Alice.LOCK/`, which
+ * occupies the `alice.lock` lockfile path on a case-insensitive filesystem.
  */
 export function selectBranchPrefixInput(
   settings: BranchPrefixSettings,
@@ -29,8 +30,13 @@ export function selectBranchPrefixInput(
       if (getBranchPrefixIssue(lower) === null) {
         return lower
       }
+      // The original can pass git's case-sensitive check while its lowercase
+      // form is `*.lock`. Keeping that original still collides on a
+      // case-insensitive filesystem, so the prefix is omitted. An
+      // already-lowercase invalid login is returned unchanged so settings can
+      // show the rejection instead of pretending no username was configured.
       if (lower !== gitUsername && getBranchPrefixIssue(gitUsername) === null) {
-        return gitUsername
+        return null
       }
       return lower
     }

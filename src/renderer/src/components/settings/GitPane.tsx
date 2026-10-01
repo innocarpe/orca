@@ -231,10 +231,15 @@ export function GitPane({
             }}
             placeholder={
               settings.branchPrefix === 'git-username'
-                ? translate(
-                    'auto.components.settings.GitPane.aefa1ecb59',
-                    'No git username configured'
-                  )
+                ? displayedGitUsername.trim()
+                  ? translate(
+                      'auto.components.settings.BranchPrefixFeedback.808f9a726e',
+                      'No prefix will be applied'
+                    )
+                  : translate(
+                      'auto.components.settings.GitPane.aefa1ecb59',
+                      'No git username configured'
+                    )
                 : translate('auto.components.settings.GitPane.b559bf9899', 'e.g. feature')
             }
             className="max-w-xs"

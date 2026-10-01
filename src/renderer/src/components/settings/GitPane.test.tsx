@@ -78,9 +78,10 @@ describe('GitPane branch prefix feedback', () => {
     expect(html).not.toContain('EurFelux')
   })
 
-  it('keeps a mixed-case username in the preview when its lowercase form is not a valid ref', () => {
+  it('does not preview a git username whose lowercase form is not a valid ref', () => {
     const html = renderGitPane(gitUsernamePrefixSettings(), 'Alice.LOCK')
-    expect(html).toContain('Alice.LOCK/feature')
+    expect(html).toContain('No prefix will be applied')
+    expect(html).not.toContain('Alice.LOCK')
     expect(html).not.toContain('alice.lock')
   })
 })
