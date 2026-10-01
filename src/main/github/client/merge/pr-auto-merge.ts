@@ -68,14 +68,14 @@ export async function runPRAutoMergeCommand(
   })
 }
 
-export async function shouldUseMergeQueueAutoMerge(
+async function mergeQueueEnqueueDecision(
   pr: PRAutoMergeIdentity,
   ownerRepo: GitHubApiRepository | null,
   ghOptions: GhExecOptions,
   executionScope?: string
-): Promise<boolean> {
+): Promise<'enqueue' | 'auto' | 'skip'> {
   if (!ownerRepo || !pr.baseRefName) {
-    return false
+    return 'skip'
   }
   const mergeMetadata = await detectRepositoryMergeMetadata(
     ownerRepo,
@@ -83,25 +83,12 @@ export async function shouldUseMergeQueueAutoMerge(
     ghOptions,
     executionScope
   )
-  return mergeMetadata.mergeQueueRequired === true
-}
-
-async function mergeQueueDisallowsAutoMerge(
-  pr: PRAutoMergeIdentity,
-  ownerRepo: GitHubApiRepository | null,
-  ghOptions: GhExecOptions,
-  executionScope?: string
-): Promise<boolean> {
-  if (!ownerRepo || !pr.baseRefName) {
-    return false
+  if (mergeMetadata.mergeQueueRequired !== true) {
+    return 'skip'
   }
-  const mergeMetadata = await detectRepositoryMergeMetadata(
-    ownerRepo,
-    pr.baseRefName,
-    ghOptions,
-    executionScope
-  )
-  return mergeMetadata.mergeQueueRequired === true && mergeMetadata.autoMergeAllowed === false
+  // A required queue that disallows auto-merge must be enqueued. The mutation
+  // does not set autoMergeRequest, so callers have to say it was queued.
+  return mergeMetadata.autoMergeAllowed === false ? 'enqueue' : 'auto'
 }
 
 async function enqueuePullRequest(
@@ -133,7 +120,7 @@ export async function enablePRAutoMerge(
   ownerRepo: GitHubApiRepository | null,
   ghOptions: GhExecOptions,
   executionScope?: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; enqueued?: true } | { ok: false; error: string }> {
   if (ownerRepo) {
     try {
       const restData = await getRestPRByNumber(ownerRepo, prNumber, ghOptions)
@@ -151,15 +138,17 @@ export async function enablePRAutoMerge(
   if (!pr?.id) {
     return { ok: false, error: 'Could not resolve GitHub pull request ID' }
   }
-  const useMergeQueue = await shouldUseMergeQueueAutoMerge(pr, ownerRepo, ghOptions, executionScope)
-  if (
-    useMergeQueue &&
-    (await mergeQueueDisallowsAutoMerge(pr, ownerRepo, ghOptions, executionScope))
-  ) {
+  const mergeQueueDecision = await mergeQueueEnqueueDecision(
+    pr,
+    ownerRepo,
+    ghOptions,
+    executionScope
+  )
+  if (mergeQueueDecision === 'enqueue') {
     await enqueuePullRequest(pr, ghOptions)
-    return { ok: true }
+    return { ok: true, enqueued: true }
   }
-  if (useMergeQueue) {
+  if (mergeQueueDecision === 'auto') {
     await runPRAutoMergeCommand(prNumber, method, ownerRepo, ghOptions)
     return { ok: true }
   }
@@ -201,7 +190,7 @@ export async function setPRAutoMerge(
   connectionId?: string | null,
   prRepo?: GitHubApiRepository | null,
   localGitOptions: LocalGitExecOptions = {}
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; enqueued?: true } | { ok: false; error: string }> {
   const { ownerRepo, ghOptions } = await resolveGitHubRepoExecution(
     repoPath,
     prRepo,

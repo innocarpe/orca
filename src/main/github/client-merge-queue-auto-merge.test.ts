@@ -329,7 +329,7 @@ describe('GitHub GraphQL rate-limit guard', () => {
         repo: 'orca',
         host: 'github.com'
       })
-    ).resolves.toEqual({ ok: true })
+    ).resolves.toEqual({ ok: true, enqueued: true })
 
     expect(ghExecFileAsyncMock).toHaveBeenNthCalledWith(
       4,
