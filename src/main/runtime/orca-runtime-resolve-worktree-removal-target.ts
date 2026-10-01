@@ -214,7 +214,7 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
       // Why: a manual rename must outrank later agent OSC title updates (which
       // win by timestamp), so stamp it as the freshest title.
       pty.pty.titleUpdatedAt = Date.now()
-      this.touchMobileSessionSnapshotsForPty(pty.pty.ptyId)
+      this.rememberManualTerminalTitle(pty.pty.ptyId, pty.pty.worktreeId, title)
       // Why: without a renderer the rename only lived on the live pty and was
       // lost on restart. Persist customTitle so a headless rebuild keeps it.
       if (!this.notifier?.renameTerminal && pty.pty.tabId) {
@@ -236,8 +236,27 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     }
     this.assertGraphReady()
     const { leaf } = this.getLiveLeafForHandle(handle)
+    this.rememberManualTerminalTitle(leaf.ptyId, leaf.worktreeId, title)
     this.notifier?.renameTerminal(leaf.tabId, title)
     return { handle, tabId: leaf.tabId, title }
+  }
+
+  /** Hold a user rename above live OSC until the renderer snapshot echoes it. */
+  protected rememberManualTerminalTitle(
+    ptyId: string | null,
+    worktreeId: string | null,
+    title: string | null
+  ): void {
+    const normalized = title?.trim() ? title.trim() : null
+    const pty = ptyId ? this.ptysById.get(ptyId) : null
+    if (pty) {
+      pty.manualTitle = normalized
+    }
+    if (worktreeId) {
+      this.touchMobileSessionTabsForWorktree(worktreeId, { immediate: true })
+    } else if (ptyId) {
+      this.touchMobileSessionSnapshotsForPty(ptyId, { immediate: true })
+    }
   }
 
   protected async resolveAgentTerminalCreateOptions(

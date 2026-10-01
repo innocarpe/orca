@@ -16,6 +16,7 @@ import {
   renewRuntimeMobileAgentStatusFromPtyTitle,
   selectRuntimeHookAgentRowForPane
 } from './runtime-mobile-agent-status-projection'
+import { readStickyMobileTerminalTitle } from './mobile-session-custom-title'
 import { finalizeRuntimeMobileSessionTabsResult } from './runtime-mobile-session-result-finalization'
 import type { RuntimeMobileSessionProjectionHost } from './runtime-mobile-session-projection-contract'
 import {
@@ -179,11 +180,21 @@ export function projectRuntimeMobileSessionTabs(
     const ownerAgent =
       ownerRecord?.agent ?? liveLeafPty?.foregroundAgent ?? pty?.foregroundAgent ?? null
     const ownerOptions = { ownerIsLaunch: ownerRecord?.ownerIsLaunch === true }
-    const title = normalizeCompatibleAgentTitleForOwner(
-      trackerOnlyTitle ?? leafTitle ?? ptyTitle ?? syncedTab?.title ?? tab.title,
-      ownerAgent,
-      ownerOptions
-    )
+    // Why: the desktop draws `customTitle` directly, so a rename survives OSC.
+    // Mobile only sees this projection. A user rename has to outrank the live
+    // leaf title or the next agent frame puts the old name back.
+    const sticky = readStickyMobileTerminalTitle(tab, liveLeafPty ?? pty)
+    const oscTitle = leafTitle ?? ptyTitle
+    const title =
+      sticky.kind === 'sticky'
+        ? sticky.title
+        : normalizeCompatibleAgentTitleForOwner(
+            sticky.kind === 'cleared'
+              ? (oscTitle ?? 'Terminal')
+              : (trackerOnlyTitle ?? oscTitle ?? syncedTab?.title ?? tab.title),
+            ownerAgent,
+            ownerOptions
+          )
     const liveTitleEvidence = leafTitle ?? ptyTitle
     // Why: renderer status can precede hook session identity, leaving native chat with no transcript address.
     const rendererStatusAgent =
