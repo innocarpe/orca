@@ -10,7 +10,6 @@ const OPEN_TIMEOUT_MS = 250
 // Why: node:sqlite's timeout only bounds a lock wait. Opening a multi-GB WAL
 // replays it on the main thread before the first prepare returns (#24360).
 export const CURSOR_DESKTOP_WAL_SKIP_BYTES = 32 * 1024 * 1024
-const WAL_TOO_LARGE_ERROR = 'Cursor desktop login database is too large to open here'
 
 export type CursorDesktopProfile = {
   accessToken: string | null
@@ -22,6 +21,7 @@ export type CursorDesktopProfile = {
 export type CursorDesktopProfileReadResult =
   | { status: 'missing' }
   | { status: 'error'; error: string }
+  | { status: 'skipped'; reason: 'wal-too-large' | 'wal-unreadable' }
   | { status: 'ok'; profile: CursorDesktopProfile }
 
 const rowsSchema = z.array(z.object({ key: z.unknown(), value: z.unknown() }).partial())
@@ -36,22 +36,31 @@ function valueAsString(value: unknown): string | null {
   return null
 }
 
-/** Reads the Cursor IDE's stored session. Opens read-only in place; state.vscdb can be multi-GB. */
-function cursorDesktopWalBytes(dbPath: string): number {
+function isMissingPath(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
+}
+
+/** Size of the sibling `-wal` file. A missing file is 0. Any other stat failure is unreadable. */
+function cursorDesktopWalBytes(dbPath: string): number | null {
   try {
     const stat = statSync(`${dbPath}-wal`)
     return stat.isFile() ? stat.size : 0
-  } catch {
-    return 0
+  } catch (error) {
+    return isMissingPath(error) ? 0 : null
   }
 }
 
+/** Reads the Cursor IDE's stored session. Opens read-only in place; state.vscdb can be multi-GB. */
 export function readCursorDesktopProfile(dbPath: string): CursorDesktopProfileReadResult {
   if (!existsSync(dbPath)) {
     return { status: 'missing' }
   }
-  if (cursorDesktopWalBytes(dbPath) > CURSOR_DESKTOP_WAL_SKIP_BYTES) {
-    return { status: 'error', error: WAL_TOO_LARGE_ERROR }
+  const walBytes = cursorDesktopWalBytes(dbPath)
+  if (walBytes === null) {
+    return { status: 'skipped', reason: 'wal-unreadable' }
+  }
+  if (walBytes > CURSOR_DESKTOP_WAL_SKIP_BYTES) {
+    return { status: 'skipped', reason: 'wal-too-large' }
   }
   let db: SyncDatabase | null = null
   try {
