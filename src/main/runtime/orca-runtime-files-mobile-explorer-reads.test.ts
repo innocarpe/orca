@@ -224,6 +224,7 @@ describe('RuntimeFileCommands', () => {
     })
     vi.mocked(getSshFilesystemProvider).mockReturnValue({
       stat: vi.fn().mockResolvedValue({ type: 'directory', size: 0, mtime: 0 })
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the command only reads `stat`.
     } as never)
 
     await expect(commands.openMobileFile('id:wt-1', 'docs/notes.pdf')).rejects.toThrow(
