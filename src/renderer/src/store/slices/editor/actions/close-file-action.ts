@@ -9,6 +9,7 @@ import {
   shouldDeleteUntouchedUntitledFile
 } from '../tabs/untitled-file-cleanup'
 import { unifiedTabsKeepWorktreeSelected } from './unified-tabs-keep-worktree-selected'
+import { rememberKeptUntitledEditor } from './remember-kept-untitled-editor'
 
 export function createCloseFileAction(
   set: EditorSet,
@@ -21,6 +22,10 @@ export function createCloseFileAction(
       // Why: also check editorDrafts — isDirty is set by a debounced callback, so a draft can exist before isDirty flushes; a draft means the user typed something.
       const hasDraft = !!get().editorDrafts[fileId]
       const shouldDeleteFromDisk = shouldDeleteUntouchedUntitledFile(preClose, hasDraft)
+      const reopenPosition =
+        shouldDeleteFromDisk && preClose?.worktreeId
+          ? getRecentlyClosedTabPosition(get(), preClose.worktreeId, fileId)
+          : undefined
 
       // Why: mirrored tabs are host-owned, so the host must close its copy or its next snapshot re-mirrors the file and the tab reopens.
       notifyHostOfMirroredEditorClose(get(), preClose?.worktreeId, fileId)
@@ -200,7 +205,12 @@ export function createCloseFileAction(
 
       // Why: untitled unedited files exist on disk only because createUntitledMarkdownFile() eagerly writes a bindable path; delete the clutter (fire-and-forget).
       if (shouldDeleteFromDisk && preClose && typeof window !== 'undefined') {
-        deleteUntouchedUntitledFile(get(), preClose)
+        void deleteUntouchedUntitledFile(get(), preClose).then((deleted) => {
+          // Why: the placeholder is only omitted from reopen when the delete actually removes it (#23771).
+          if (!deleted) {
+            rememberKeptUntitledEditor(set, preClose, reopenPosition)
+          }
+        })
       }
 
       // Why: route editor/diff closes through the unified close path (MRU + visual-neighbor fallback) so they match terminal/browser tab-close behavior.

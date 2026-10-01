@@ -144,6 +144,7 @@ describe('createEditorSlice untitled cleanup routing', () => {
       })
     })
     expect(localDeletePathMock).not.toHaveBeenCalled()
+    expect(store.getState().recentlyClosedEditorTabsByWorktree['wt-1'] ?? []).toEqual([])
   })
 
   it('closeAllFiles deletes untouched remote untitled files through runtime file RPC', async () => {
@@ -203,6 +204,9 @@ describe('createEditorSlice untitled cleanup routing', () => {
       expect.objectContaining({ method: 'files.delete' })
     )
     expect(localDeletePathMock).not.toHaveBeenCalled()
+    expect(
+      store.getState().recentlyClosedEditorTabsByWorktree['wt-1']?.map((entry) => entry.filePath)
+    ).toEqual(['/remote/wt/untitled.md'])
   })
 
   it('closeFile does not delete when worktree ownership metadata is missing', async () => {
