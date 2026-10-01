@@ -136,6 +136,15 @@ describe('getUsageRosterRowState', () => {
 
   it('offers sign-in only for confirmed signed-out failures', () => {
     expect(
+      getUsageRosterRowState(provider({ status: 'error', error: 'No credentials' }), false)
+    ).toEqual({ kind: 'sign-in', statusLabel: 'not signed in' })
+    expect(
+      previewInactiveAccountUsage({
+        isFetching: false,
+        rateLimits: provider({ status: 'error', error: 'No credentials' })
+      })
+    ).toMatchObject({ kind: 'sign-in', label: 'not signed in' })
+    expect(
       getUsageRosterRowState(
         provider({ status: 'error', usageMetadata: { failureKind: 'missing-credentials' } }),
         false
