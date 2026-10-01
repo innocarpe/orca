@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+import type { editor } from 'monaco-editor'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { DiffEditor, type DiffOnMount } from '@monaco-editor/react'
@@ -10,7 +12,10 @@ import { translate } from '@/i18n/i18n'
 import { LargeDiffFallback } from './LargeDiffFallback'
 import { LargeDiffLoadPrompt } from './LargeDiffLoadPrompt'
 import { buildDiffEditorWhitespaceOptions } from './diff-editor-whitespace-options'
-import { buildDiffEditorWordWrapOptions } from './diff-editor-word-wrap-options'
+import {
+  buildDiffEditorWordWrapOptions,
+  syncDiffEditorOriginalWordWrap
+} from './diff-editor-word-wrap-options'
 import { monacoFindOptions } from './monaco-find-options'
 import { installDiffEditorShiftWheelScroll } from './diff-editor-shift-wheel-scroll'
 
@@ -58,11 +63,30 @@ export function DiffSectionBody({
   onMount
 }: DiffSectionBodyProps): React.JSX.Element {
   const renderLimit = section.largeDiffRenderLimit?.limited ? section.largeDiffRenderLimit : null
-  const handleEditorMount: DiffOnMount = (editor, monaco) => {
-    const cleanupShiftWheelScroll = installDiffEditorShiftWheelScroll(editor)
-    editor.onDidDispose(cleanupShiftWheelScroll)
-    onMount(editor, monaco)
+  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
+  const handleEditorMount: DiffOnMount = (diffEditor, monaco) => {
+    diffEditorRef.current = diffEditor
+    const cleanupShiftWheelScroll = installDiffEditorShiftWheelScroll(diffEditor)
+    diffEditor.onDidDispose(() => {
+      cleanupShiftWheelScroll()
+      if (diffEditorRef.current === diffEditor) {
+        diffEditorRef.current = null
+      }
+    })
+    // Why: Monaco applies the inline-layout wrap override after mount, once width is known.
+    requestAnimationFrame(() => {
+      syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+    })
+    onMount(diffEditor, monaco)
   }
+
+  useEffect(() => {
+    const diffEditor = diffEditorRef.current
+    if (!diffEditor) {
+      return
+    }
+    syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+  }, [diffWordWrap, sideBySide])
 
   return (
     <div

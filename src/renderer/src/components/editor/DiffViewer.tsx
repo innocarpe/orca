@@ -21,7 +21,10 @@ import { useDiffViewerFirstChangeAutoScroll } from './useDiffViewerFirstChangeAu
 import { getDiffViewerLargeDiffSaveAction } from './diff-viewer-large-diff-save-action'
 import type { DiffViewerProps } from './diff-viewer-props'
 import { buildDiffEditorWhitespaceOptions } from './diff-editor-whitespace-options'
-import { buildDiffEditorWordWrapOptions } from './diff-editor-word-wrap-options'
+import {
+  buildDiffEditorWordWrapOptions,
+  syncDiffEditorOriginalWordWrap
+} from './diff-editor-word-wrap-options'
 import { buildDiffEditorHideUnchangedOptions } from './diff-editor-hide-unchanged-options'
 import { useDiffEditorRegistration } from './diff-navigation-context'
 import { preserveDiffViewStateAcrossModelSwaps } from './diff-model-swap-view-state'
@@ -67,6 +70,7 @@ export default function DiffViewer({
   )
   const terminalFontSize = settings?.terminalFontSize ?? 13,
     diffEditorFontSize = computeDiffEditorFontSize(terminalFontSize, editorFontZoomLevel)
+  const diffWordWrap = settings?.diffWordWrap
 
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
   const { registerDiffEditor, unregisterDiffEditor } = useDiffEditorRegistration()
@@ -193,6 +197,10 @@ export default function DiffViewer({
     (diffEditor, monaco) => {
       diffEditorRef.current = diffEditor
       registerDiffEditor(diffEditor)
+      // Why: Monaco applies the inline-layout wrap override after mount, once width is known.
+      requestAnimationFrame(() => {
+        syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+      })
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
 
@@ -246,7 +254,16 @@ export default function DiffViewer({
         setModifiedEditor(null)
       })
     },
-    [editable, setupCopy, modelKey, filePath, sideBySide, registerDiffEditor, unregisterDiffEditor]
+    [
+      diffWordWrap,
+      editable,
+      setupCopy,
+      modelKey,
+      filePath,
+      sideBySide,
+      registerDiffEditor,
+      unregisterDiffEditor
+    ]
   )
 
   // Why: snapshot view state on deactivation (layoutEffect cleanup fires before unmount), not on scroll.
@@ -269,11 +286,12 @@ export default function DiffViewer({
     }
     lineNumberOptionsSubRef.current?.dispose()
     lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
+    syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
     return () => {
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = null
     }
-  }, [sideBySide])
+  }, [diffWordWrap, sideBySide])
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
