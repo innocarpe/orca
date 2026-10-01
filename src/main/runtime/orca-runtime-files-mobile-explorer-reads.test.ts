@@ -163,6 +163,22 @@ describe('RuntimeFileCommands', () => {
     })
   })
 
+  it('answers a PDF as an unopened binary when the caller would activate the file tab', async () => {
+    const openFile = vi.fn()
+    const { commands } = createRuntimeFileCommands({ openFile })
+
+    const result = await commands.openMobileFile('id:wt-1', 'docs/example.pdf', undefined, false)
+
+    expect(openFile).not.toHaveBeenCalled()
+    expect(statMock).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      worktree: 'wt-1',
+      relativePath: 'docs/example.pdf',
+      kind: 'binary',
+      opened: false
+    })
+  })
+
   it('leaves non-previewable binaries unavailable on mobile', async () => {
     const openFile = vi.fn()
     const { commands } = createRuntimeFileCommands({ openFile })

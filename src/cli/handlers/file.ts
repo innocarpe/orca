@@ -7,6 +7,7 @@ import type { CommandHandler, HandlerContext } from '../dispatch'
 import { getOptionalStringFlag, getRequiredStringFlag } from '../flags'
 import { printResult } from '../format'
 import { RuntimeClientError } from '../runtime-client'
+import { RuntimeClientError as ReportedRuntimeClientError } from '../runtime/types'
 import { getOptionalWorktreeSelector, resolveCurrentWorktreeSelector } from '../selectors'
 
 type FileOpenMode = 'edit' | 'diff'
@@ -213,6 +214,11 @@ export const FILE_HANDLERS: Record<string, CommandHandler> = {
       relativePath,
       navigation: getFileOpenNavigation(ctx.flags)
     })
+    // Why: printResult keeps ok:true. Agents read that as success, so a binary the runtime
+    // declined must be a real error here. file diff and file open-changed keep the skipped row.
+    if (!result.result.opened) {
+      throw new ReportedRuntimeClientError('unsupported-type', formatFileOpen(result.result))
+    }
     printResult(result, ctx.json, formatFileOpen)
   },
   'file diff': async (ctx) => {

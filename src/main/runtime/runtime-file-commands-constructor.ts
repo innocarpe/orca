@@ -164,7 +164,10 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
   async openMobileFile(
     worktreeSelector: string,
     relativePath: string,
-    navigation?: RuntimeNavigationTarget
+    navigation?: RuntimeNavigationTarget,
+    // Why: the RPC layer passes false for a negotiated client that still activates a file tab
+    // when opened is true. In-process callers and clients that advertise the capability omit it.
+    pdfDesktopOpen = true
   ): Promise<RuntimeFileOpenResult> {
     const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
     const { worktree } = target
@@ -182,8 +185,10 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
           : isMobileMarkdownPath(relativePath)
             ? 'markdown'
             : 'text'
-    if (kind === 'binary') {
-      return { worktree: worktree.id, relativePath, kind, opened: false }
+    // A client that predates the desktop PDF open classified .pdf as binary and did not open it.
+    // Sending opened:true would make that client files.read the new tab.
+    if (kind === 'binary' || (kind === 'pdf' && !pdfDesktopOpen)) {
+      return { worktree: worktree.id, relativePath, kind: 'binary', opened: false }
     }
     const filePath = joinWorktreeRelativePath(worktree.path, relativePath)
     // Why: CLI/agents treat opened:true as success; stat first so missing paths fail the RPC instead of opening a ghost tab.
