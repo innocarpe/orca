@@ -140,6 +140,29 @@ describe('RuntimeFileCommands', () => {
     )
   })
 
+  it('opens a PDF through the same renderer host as the desktop viewer', async () => {
+    const openFile = vi.fn()
+    const { commands } = createRuntimeFileCommands({ openFile })
+    resolveAuthorizedPathMock.mockResolvedValue('/repo/docs/example.pdf')
+    statMock.mockResolvedValue({ isDirectory: () => false })
+
+    const result = await commands.openMobileFile('id:wt-1', 'docs/example.pdf')
+
+    expect(openFile).toHaveBeenCalledWith(
+      'wt-1',
+      '/repo/docs/example.pdf',
+      'docs/example.pdf',
+      undefined,
+      undefined
+    )
+    expect(result).toEqual({
+      worktree: 'wt-1',
+      relativePath: 'docs/example.pdf',
+      kind: 'pdf',
+      opened: true
+    })
+  })
+
   it('leaves non-previewable binaries unavailable on mobile', async () => {
     const openFile = vi.fn()
     const { commands } = createRuntimeFileCommands({ openFile })

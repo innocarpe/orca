@@ -27,6 +27,13 @@ import { resolveAuthorizedPath } from '../ipc/filesystem-auth'
 import { isENOENT } from '../ipc/filesystem-path-containment'
 import { runtimeFileRouteForTarget, type RuntimeFileRoute } from './runtime-file-command-target'
 
+function isRuntimePreviewablePdfPath(relativePath: string): boolean {
+  const basename = basenameFromRelativePath(relativePath)
+  const dotIndex = basename.lastIndexOf('.')
+  // Why: `.pdf` is already a desktop preview (PdfViewer). A leading dot is not an extension.
+  return dotIndex > 0 && basename.slice(dotIndex).toLowerCase() === '.pdf'
+}
+
 export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithActiveRuntimeTextSearches {
   constructor(private readonly host: RuntimeFileCommandHost) {
     super()
@@ -164,14 +171,17 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     if (!isSafeMobileRelativePath(relativePath)) {
       throw new Error('invalid_relative_path')
     }
-    // Previewable images open like text (mobile renders via files.readPreview); other binaries stay unavailable on mobile.
+    // Previewable images open like text (mobile renders via files.readPreview).
+    // PDFs open the same desktop viewer the file explorer uses. Other binaries stay unavailable.
     const kind = isMobilePreviewableImagePath(relativePath)
       ? 'image'
-      : isMobileBinaryPath(relativePath)
-        ? 'binary'
-        : isMobileMarkdownPath(relativePath)
-          ? 'markdown'
-          : 'text'
+      : isRuntimePreviewablePdfPath(relativePath)
+        ? 'pdf'
+        : isMobileBinaryPath(relativePath)
+          ? 'binary'
+          : isMobileMarkdownPath(relativePath)
+            ? 'markdown'
+            : 'text'
     if (kind === 'binary') {
       return { worktree: worktree.id, relativePath, kind, opened: false }
     }
