@@ -8,12 +8,11 @@ import {
   resolveOwnedClaudeManagedAuthPath,
   writeClaudeManagedAuthFile
 } from '../managed-auth-path'
-import { withClaudeManagedCredentialRotation } from '../managed-credential-rotation'
 import {
-  isOauthTokenExpiring,
-  readRefreshToken,
-  refreshClaudeOauthCredentials
-} from '../oauth-refresh'
+  storedOauthCredentialDiffers,
+  withClaudeManagedCredentialRotation
+} from '../managed-credential-rotation'
+import { isOauthTokenExpiring, refreshClaudeOauthCredentials } from '../oauth-refresh'
 import {
   readManagedClaudeKeychainCredentials,
   writeManagedClaudeKeychainCredentials
@@ -59,9 +58,9 @@ export class ClaudeRuntimeAuthManagedCredentials extends ClaudeRuntimeAuthCreden
    * call should keep the snapshot it already captured.
    *
    * Inactive usage previews rotate the same single-use token outside this
-   * service's mutation queue. Re-read inside the shared rotation queue and, when
-   * that blob already has a different refresh token, materialize it instead of
-   * refreshing the stale snapshot.
+   * service's mutation queue. Re-read inside that account's rotation queue and,
+   * when the stored access or refresh token already differs, materialize that
+   * blob instead of refreshing the stale snapshot.
    */
   protected async refreshManagedAccountTokenIfNeeded(
     account: ClaudeManagedAccount,
@@ -70,18 +69,18 @@ export class ClaudeRuntimeAuthManagedCredentials extends ClaudeRuntimeAuthCreden
     // Why: an inactive preview may already have rotated this single-use token.
     // Re-read inside the shared queue and materialize that blob instead of
     // refreshing the snapshot this call captured earlier.
-    return withClaudeManagedCredentialRotation(async () => {
+    return withClaudeManagedCredentialRotation(account.id, async () => {
       const latest = await this.readManagedCredentials(account)
       const source = latest && this.isValidCredentialsJsonObject(latest) ? latest : credentialsJson
-      const rotatedBySomeoneElse =
-        readRefreshToken(source) !== null &&
-        readRefreshToken(source) !== readRefreshToken(credentialsJson)
+      // Why: a refresh can replace the access token and keep the same refresh
+      // token. Comparing only the refresh token drops that newer access token.
+      const replacedBySomeoneElse = storedOauthCredentialDiffers(source, credentialsJson)
       if (!isOauthTokenExpiring(source)) {
-        return rotatedBySomeoneElse ? source : null
+        return replacedBySomeoneElse ? source : null
       }
       const refreshed = await refreshClaudeOauthCredentials(source)
       if (!refreshed || !this.isValidCredentialsJsonObject(refreshed)) {
-        return rotatedBySomeoneElse ? source : null
+        return replacedBySomeoneElse ? source : null
       }
       try {
         await this.writeManagedCredentials(account, refreshed)

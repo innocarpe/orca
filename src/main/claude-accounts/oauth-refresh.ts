@@ -67,6 +67,13 @@ export function readRefreshToken(credentialsJson: string): string | null {
   return typeof token === 'string' && token.trim() !== '' ? token.trim() : null
 }
 
+/** Read a stored access token, or null when absent/blank. */
+export function readAccessToken(credentialsJson: string): string | null {
+  const oauth = parseClaudeOauthBlob(credentialsJson)
+  const token = oauth?.accessToken
+  return typeof token === 'string' && token.trim() !== '' ? token.trim() : null
+}
+
 /**
  * Whether the stored access token is expired or within the refresh buffer.
  *

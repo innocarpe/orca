@@ -1,8 +1,10 @@
 import type { ProviderRateLimits } from '../../shared/rate-limit-types'
-import { withClaudeManagedCredentialRotation } from '../claude-accounts/managed-credential-rotation'
+import {
+  storedOauthCredentialDiffers,
+  withClaudeManagedCredentialRotation
+} from '../claude-accounts/managed-credential-rotation'
 import {
   isOauthTokenExpiring,
-  readRefreshToken,
   refreshClaudeOauthCredentials
 } from '../claude-accounts/oauth-refresh'
 import {
@@ -52,7 +54,12 @@ export async function fetchInactiveClaudeAccountUsage(
   let refreshedThisCall = false
   if (isOauthTokenExpiring(credentialsJson)) {
     refreshedThisCall = true
-    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson, false)
+    const refreshed = await persistRefreshedInactiveCredentials(
+      account.id,
+      location,
+      credentialsJson,
+      false
+    )
     if (options.signal?.aborted) {
       return abortedClaudeRateLimitResult()
     }
@@ -74,7 +81,12 @@ export async function fetchInactiveClaudeAccountUsage(
     oauthLimits.usageMetadata?.failureKind === 'stale-token' &&
     !refreshedThisCall
   ) {
-    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson, true)
+    const refreshed = await persistRefreshedInactiveCredentials(
+      account.id,
+      location,
+      credentialsJson,
+      true
+    )
     if (options.signal?.aborted) {
       return abortedClaudeRateLimitResult()
     }
@@ -122,17 +134,17 @@ export async function fetchInactiveClaudeAccountUsage(
 }
 
 async function persistRefreshedInactiveCredentials(
+  accountId: string,
   location: NonNullable<ReturnType<typeof resolveClaudeManagedCredentialsLocation>>,
   credentialsJson: string,
   refreshWhenCurrent: boolean
 ): Promise<string | null> {
-  return withClaudeManagedCredentialRotation(async () => {
+  return withClaudeManagedCredentialRotation(accountId, async () => {
     const latest = await readClaudeManagedCredentialsJson(location)
     const source = latest ?? credentialsJson
-    const sourceRefresh = readRefreshToken(source)
-    const inputRefresh = readRefreshToken(credentialsJson)
-    // Why: selection won the rotation. Its persisted blob is the one to read.
-    if (sourceRefresh && inputRefresh && sourceRefresh !== inputRefresh) {
+    // Why: selection may already have stored a new access token while keeping
+    // the same refresh token. Refreshing again would discard that access token.
+    if (storedOauthCredentialDiffers(source, credentialsJson)) {
       return source
     }
     if (!refreshWhenCurrent && !isOauthTokenExpiring(source)) {
