@@ -48,7 +48,7 @@ async function bootBridge(
   }
 ): Promise<{
   publish: (mutate: (state: StoreLike) => void) => void
-  waitForSnapshot: () => Promise<void>
+  waitForSnapshot: (paneKey?: string) => Promise<void>
   dispose: () => void
   registerReplacement: () => { dispose: () => void }
 }> {

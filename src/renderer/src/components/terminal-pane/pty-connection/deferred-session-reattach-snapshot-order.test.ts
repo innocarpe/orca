@@ -131,7 +131,7 @@ describe('deferred reattach waits for the startup status snapshot', () => {
     const { session, connect, buildStartup } = buildSession()
     buildStartup.mockReturnValue(RESUME)
     startDeferredSessionReattach(session, SESSION_ID)
-    session.deps.paneTransportsRef.current.set('pane-1', { connect: vi.fn() } as never)
+    session.deps.paneTransportsRef.current.set(session.pane.id, { connect: vi.fn() } as never)
 
     settleAgentStatusStartupSnapshot(epoch)
     await Promise.resolve()
