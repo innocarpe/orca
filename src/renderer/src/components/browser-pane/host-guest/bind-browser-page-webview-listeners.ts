@@ -13,6 +13,34 @@ import { createBrowserPageWebviewGuestSession } from './browser-page-webview-gue
 import { createBrowserPageWebviewLoadingHandlers } from './browser-page-webview-loading-handlers'
 import { createBrowserPageWebviewNavigationHandlers } from './browser-page-webview-navigation-handlers'
 
+type BrowserGuestFocusTarget = {
+  addEventListener(type: 'focus', listener: () => void): void
+  removeEventListener(type: 'focus', listener: () => void): void
+}
+
+/** Registers one focus callback and returns the cleanup that removes that same function. */
+export function bindBrowserGuestFocus(input: {
+  webview: BrowserGuestFocusTarget
+  dismissAddressBarSuggestions: () => void
+  worktreeId: string
+  workspaceId: string
+}): () => void {
+  // Why: the guest does not bubble focus to the overlay, so the owning split
+  // stays stale and Ctrl+Tab targets the previous group (#22144).
+  const handleGuestFocus = (): void => {
+    input.dismissAddressBarSuggestions()
+    const state = useAppStore.getState()
+    focusOwningGroupForBrowserGuest({
+      worktreeId: input.worktreeId,
+      workspaceId: input.workspaceId,
+      unifiedTabsByWorktree: state.unifiedTabsByWorktree,
+      focusGroup: state.focusGroup
+    })
+  }
+  input.webview.addEventListener('focus', handleGuestFocus)
+  return () => input.webview.removeEventListener('focus', handleGuestFocus)
+}
+
 export function bindBrowserPageWebviewListeners({
   container,
   webview,
@@ -149,20 +177,13 @@ export function bindBrowserPageWebviewListeners({
   webview.addEventListener('dom-ready', handleDomReady)
   webview.addEventListener('render-process-gone', guestRecovery.recoverRenderer)
   webview.addEventListener('destroyed', handleGuestDestroyed)
-  // Why: the guest does not bubble focus to the overlay, so the owning split
-  // stays stale and Ctrl+Tab targets the previous group (#22144). The same
-  // function is removed on cleanup; the webview outlives detach.
-  const handleGuestFocus = (): void => {
-    dismissAddressBarSuggestions()
-    const state = useAppStore.getState()
-    focusOwningGroupForBrowserGuest({
-      worktreeId,
-      workspaceId,
-      unifiedTabsByWorktree: state.unifiedTabsByWorktree,
-      focusGroup: state.focusGroup
-    })
-  }
-  webview.addEventListener('focus', handleGuestFocus)
+  // The same function is removed on cleanup; the webview outlives detach.
+  const removeGuestFocus = bindBrowserGuestFocus({
+    webview,
+    dismissAddressBarSuggestions,
+    worktreeId,
+    workspaceId
+  })
   webview.addEventListener('did-start-loading', handleDidStartLoading)
   webview.addEventListener('did-start-navigation', handleDidStartNavigation)
   webview.addEventListener('did-redirect-navigation', handleDidRedirectNavigation)
@@ -200,7 +221,7 @@ export function bindBrowserPageWebviewListeners({
     webview.removeEventListener('dom-ready', handleDomReady)
     webview.removeEventListener('render-process-gone', guestRecovery.recoverRenderer)
     webview.removeEventListener('destroyed', handleGuestDestroyed)
-    webview.removeEventListener('focus', handleGuestFocus)
+    removeGuestFocus()
     webview.removeEventListener('did-start-loading', handleDidStartLoading)
     webview.removeEventListener('did-start-navigation', handleDidStartNavigation)
     webview.removeEventListener('did-redirect-navigation', handleDidRedirectNavigation)
