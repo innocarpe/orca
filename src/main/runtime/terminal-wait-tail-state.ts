@@ -119,8 +119,29 @@ export function resolveWaitBlockedAt(
   if (gainedNewerBlockedReason) {
     return at
   }
-  if (tailSettledReadyClearsBlockedWait(next)) {
+  // A null stamp has nothing to clear. Skip the ready-prompt scan on that hot path.
+  if (current !== null && tailSettledReadyClearsBlockedWait(next)) {
     return null
   }
   return current
+}
+
+/** The deferred check already cleared the PTY stamp. Leaves that share its tail
+ *  must drop the copy, or a quiet pane keeps the stamp with no further output. */
+export function clearMirroredLeafWaitStamps<
+  T extends { tailBuffer: unknown; waitBlockedAt: number | null }
+>(
+  ptyWaitBlockedAt: number | null,
+  nextBlockedAt: number | null,
+  ptyTailBuffer: unknown,
+  leaves: readonly T[]
+): void {
+  if (ptyWaitBlockedAt === null || nextBlockedAt !== null) {
+    return
+  }
+  for (const leaf of leaves) {
+    if (leaf.tailBuffer === ptyTailBuffer) {
+      leaf.waitBlockedAt = null
+    }
+  }
 }

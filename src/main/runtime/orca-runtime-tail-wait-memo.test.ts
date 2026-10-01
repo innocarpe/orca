@@ -7,6 +7,7 @@ import {
   type TerminalTailWaitState
 } from './orca-runtime'
 import {
+  clearMirroredLeafWaitStamps,
   resolveWaitBlockedAt,
   tailSettledReadyClearsBlockedWait
 } from './terminal-wait-tail-state'
@@ -234,10 +235,34 @@ describe('onPtyData tail wait memoization', () => {
     expect(memoized).toEqual([1, 1, 1, null, 5, 5])
   })
 
+  it('clears a mirrored leaf stamp on the deferred check without another chunk', () => {
+    const tail = ['OpenAI Codex']
+    const otherTail = ['other']
+    const matching = { tailBuffer: tail, waitBlockedAt: 4 }
+    const other = { tailBuffer: otherTail, waitBlockedAt: 4 }
+
+    clearMirroredLeafWaitStamps(4, null, tail, [matching, other])
+
+    expect(matching.waitBlockedAt).toBeNull()
+    expect(other.waitBlockedAt).toBe(4)
+    clearMirroredLeafWaitStamps(null, null, tail, [other])
+    expect(other.waitBlockedAt).toBe(4)
+  })
+
+  it('leaves a clear stamp clear and clears a set stamp on a settled ready tail', () => {
+    const settled = {
+      waitText: 'OpenAI Codex\nmodel: gpt\ndirectory: /repo',
+      signal: null,
+      fromTail: true
+    } as const
+    expect(resolveWaitBlockedAt(null, false, settled, 9)).toBeNull()
+    expect(resolveWaitBlockedAt(3, false, settled, 9)).toBeNull()
+  })
+
   it('does not treat an empty, preview, plain, or still-blocked tail as settled ready', () => {
-    expect(
-      tailSettledReadyClearsBlockedWait({ waitText: '', signal: null, fromTail: true })
-    ).toBe(false)
+    expect(tailSettledReadyClearsBlockedWait({ waitText: '', signal: null, fromTail: true })).toBe(
+      false
+    )
     expect(
       tailSettledReadyClearsBlockedWait({
         waitText: 'OpenAI Codex\nmodel: gpt\ndirectory: /repo',
