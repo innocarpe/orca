@@ -20,6 +20,7 @@ import { useCombinedDiffSectionRevalidation } from './load-sections/use-combined
 import { useCombinedDiffViewPersist } from './remember-view/use-combined-diff-view-persist'
 import { useCombinedDiffViewRestore } from './remember-view/use-combined-diff-view-restore'
 import { useCombinedDiffDirectScrollInput } from './scroll-viewport/use-combined-diff-direct-scroll-input'
+import { pinScrollAnchorWhenCollapsingSection } from './scroll-viewport/combined-diff-collapse-scroll-anchor'
 import { useCombinedDiffScrollAnchors } from './scroll-viewport/use-combined-diff-scroll-anchors'
 import { useCombinedDiffScrollPersistence } from './scroll-viewport/use-combined-diff-scroll-persistence'
 import { useCombinedDiffScrollbar } from './scroll-viewport/use-combined-diff-scrollbar'
@@ -163,7 +164,11 @@ export default function CombinedDiffViewer({
 
   const toggleSection = useCallback(
     (index: number) => {
-      const shouldLoadAfterExpand = registry.sectionsRef.current[index]?.collapsed ?? false
+      const section = registry.sectionsRef.current[index]
+      const shouldLoadAfterExpand = section?.collapsed ?? false
+      // Why: zero the within-section offset before the collapsed flag flips, so the
+      // structural restore that follows pins this header instead of a body offset.
+      pinScrollAnchorWhenCollapsingSection(restore.scrollAnchorRef.current, section)
       setSections((prev) =>
         prev.map((s, i) => (i === index ? { ...s, collapsed: !s.collapsed } : s))
       )
@@ -171,7 +176,7 @@ export default function CombinedDiffViewer({
         registry.loadSchedulerRef.current.request(index)
       }
     },
-    [registry.loadSchedulerRef, registry.sectionsRef]
+    [registry.loadSchedulerRef, registry.sectionsRef, restore.scrollAnchorRef]
   )
 
   const treeNavigation = useCombinedDiffTreeNavigation({
