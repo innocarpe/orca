@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { releaseEchoedManualTerminalTitles } from '../mobile-session-custom-title'
 import { preserveTerminalRetirementProofs } from '../mobile-session-terminal-retirement-proof'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../shared/layout-owner-switch'
 import { startedMainTerminalSurfaces } from '../terminal/surface/main-terminal-surfaces'
@@ -131,6 +132,11 @@ export abstract class OrcaRuntimeWithRuntimeId extends RuntimeConstructionServic
       snapshot = merged
     }
     snapshot = preserveTerminalRetirementProofs(snapshot, existing)
+    // Why: `manualTitle` only bridges the gap until the renderer snapshot echoes
+    // the same custom title. Releasing it earlier lets a stale frame win.
+    if (this.ptysById && this.leaves) {
+      releaseEchoedManualTerminalTitles(snapshot, this.ptysById, this.leaves.values())
+    }
     const snapshotVersion = existing
       ? Math.max(snapshot.snapshotVersion, existing.snapshotVersion + 1)
       : snapshot.snapshotVersion
