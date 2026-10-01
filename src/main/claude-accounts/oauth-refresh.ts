@@ -150,7 +150,7 @@ function uniqueScopes(scopes: string[]): string[] {
 function claudeCodeRefreshPlan(credentialsJson: string): {
   refreshToken: string
   clientId: string
-  scopes: string[]
+  scopes: string[] | null
   storedScopeFallback: string[] | null
 } | null {
   const refreshToken = readRefreshToken(credentialsJson)
@@ -173,16 +173,19 @@ function claudeCodeRefreshPlan(credentialsJson: string): {
     ...CLAUDE_CODE_REFRESH_SCOPES,
     ...CLAUDE_CODE_PROJECT_SCOPES.filter((scope) => storedScopes.includes(scope))
   ])
-  const scopes = expand
+  // Why: a third-party client with no stored scopes must not be handed the first-party list.
+  // Omitting scope asks the server to keep the grant that client already has.
+  const scopes: string[] | null = expand
     ? expanded
     : storedScopes.length > 0
       ? storedScopes
-      : [...CLAUDE_CODE_REFRESH_SCOPES]
-  const storedScopeFallback =
-    expand && hasInference && storedScopes.join(' ') !== scopes.join(' ')
-      ? storedScopes.length > 0
-        ? storedScopes
+      : storedClientId
+        ? null
         : [...CLAUDE_CODE_REFRESH_SCOPES]
+  const requested = scopes ?? []
+  const storedScopeFallback =
+    expand && storedScopes.length > 0 && storedScopes.join(' ') !== requested.join(' ')
+      ? storedScopes
       : null
   return {
     refreshToken,
@@ -218,17 +221,20 @@ function oauthErrorCode(body: unknown): string | null {
 async function postClaudeRefreshGrant(input: {
   refreshToken: string
   clientId: string
-  scopes: string[]
+  scopes: string[] | null
 }): Promise<RefreshPostResult> {
+  const body: Record<string, string> = {
+    grant_type: 'refresh_token',
+    refresh_token: input.refreshToken,
+    client_id: input.clientId
+  }
+  if (input.scopes && input.scopes.length > 0) {
+    body.scope = input.scopes.join(' ')
+  }
   const res = await net.fetch(OAUTH_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: input.refreshToken,
-      client_id: input.clientId,
-      scope: input.scopes.join(' ')
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS)
   })
   if (res.ok) {

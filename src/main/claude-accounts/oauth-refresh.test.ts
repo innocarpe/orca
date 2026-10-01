@@ -222,6 +222,47 @@ describe('refreshClaudeOauthCredentials', () => {
     expect(netFetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('omits scope for a third-party client that stored none', async () => {
+    netFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'fresh-access', expires_in: 3600 })
+    })
+
+    await refreshClaudeOauthCredentials(
+      credentials({ clientId: 'third-party-client', scopes: [] }),
+      NOW
+    )
+
+    const body = JSON.parse(netFetchMock.mock.calls[0][1].body)
+    expect(body.client_id).toBe('third-party-client')
+    expect(body).not.toHaveProperty('scope')
+    expect(netFetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a subscription login with its stored scopes when the expanded list is rejected', async () => {
+    netFetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'invalid_scope' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'fresh-access', expires_in: 3600 })
+      })
+
+    await refreshClaudeOauthCredentials(
+      credentials({
+        scopes: ['user:profile'],
+        subscriptionType: 'pro'
+      }),
+      NOW
+    )
+
+    expect(netFetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(netFetchMock.mock.calls[1][1].body).scope).toBe('user:profile')
+  })
+
   it('returns null on a non-ok response and logs the status for diagnosability', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     netFetchMock.mockResolvedValue({ ok: false, status: 429, json: async () => ({}) })
