@@ -234,6 +234,59 @@ export function codexSessionAliasKey(session: AiVaultSession): string | null {
   return `${session.executionHostId}\0${codexPathExecutionNamespace(session.filePath)}\0${session.sessionId}\0${fileName}`
 }
 
+// Codex Esc-revert writes rollout-<ts>-<sessionId>_<suffixUuid>.jsonl beside the base log.
+const CODEX_REVERT_CONTINUATION_SUFFIX =
+  /_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+
+/** True when the filename is a revert continuation of this parsed session id. */
+export function isCodexRevertContinuationPath(filePath: string, sessionId: string): boolean {
+  if (!sessionId) {
+    return false
+  }
+  const fileName = lastPathSegment(filePath)
+  const suffix = fileName.match(CODEX_REVERT_CONTINUATION_SUFFIX)
+  if (!suffix) {
+    return false
+  }
+  const stem = fileName.slice(0, -suffix[0].length)
+  return stem.endsWith(sessionId)
+}
+
+export function codexRevertIdentityKey(session: AiVaultSession): string | null {
+  if (session.agent !== 'codex' || !session.sessionId) {
+    return null
+  }
+  return `${session.executionHostId}\0${codexPathExecutionNamespace(session.filePath)}\0${session.sessionId}`
+}
+
+/** Same host, namespace, and session, with at least one revert continuation filename. */
+export function codexRevertPeers(left: AiVaultSession, right: AiVaultSession): boolean {
+  const leftKey = codexRevertIdentityKey(left)
+  if (!leftKey || leftKey !== codexRevertIdentityKey(right)) {
+    return false
+  }
+  return (
+    isCodexRevertContinuationPath(left.filePath, left.sessionId) ||
+    isCodexRevertContinuationPath(right.filePath, right.sessionId)
+  )
+}
+
+/** Continuation files win; two continuations fall back to the alias ranking. */
+export function codexRevertContinuationBeats(
+  candidate: AiVaultSession,
+  best: AiVaultSession
+): boolean {
+  const candidateContinuation = isCodexRevertContinuationPath(
+    candidate.filePath,
+    candidate.sessionId
+  )
+  const bestContinuation = isCodexRevertContinuationPath(best.filePath, best.sessionId)
+  if (candidateContinuation !== bestContinuation) {
+    return candidateContinuation
+  }
+  return codexSessionAliasBeats(candidate, best)
+}
+
 export function codexSessionAliasBeats(candidate: AiVaultSession, best: AiVaultSession): boolean {
   const candidateRank = codexSessionRootRank(candidate.codexHome)
   const bestRank = codexSessionRootRank(best.codexHome)
