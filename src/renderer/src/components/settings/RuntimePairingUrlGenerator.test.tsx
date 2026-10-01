@@ -154,6 +154,46 @@ describe('RuntimePairingUrlGenerator', () => {
     )
   })
 
+  it('restores the saved address when discovery returns no interfaces', async () => {
+    runtimePairingLinkCache.selectedAddress = ''
+    mocks.settings = {
+      runtimePairingAdvertisedInterfaceName: 'bridge0',
+      runtimePairingAdvertisedAddress: '10.99.88.1'
+    }
+    mocks.listNetworkInterfaces.mockResolvedValue({ interfaces: [] })
+
+    render(<RuntimePairingUrlGenerator />)
+
+    await waitFor(() => expect(mocks.listNetworkInterfaces).toHaveBeenCalledOnce())
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('10.99.88.1')
+  })
+
+  it('remembers a new address on the saved interface', async () => {
+    runtimePairingLinkCache.selectedAddress = ''
+    mocks.settings = {
+      runtimePairingAdvertisedInterfaceName: 'bridge0',
+      runtimePairingAdvertisedAddress: '10.99.88.1'
+    }
+    mocks.listNetworkInterfaces.mockResolvedValue({
+      interfaces: [
+        { name: 'en0', address: '192.168.4.191' },
+        { name: 'bridge0', address: '10.99.88.2' }
+      ]
+    })
+
+    render(<RuntimePairingUrlGenerator />)
+
+    await waitFor(() =>
+      expect(screen.getByTestId('selected-address')).toHaveTextContent('10.99.88.2')
+    )
+    await waitFor(() =>
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        runtimePairingAdvertisedInterfaceName: 'bridge0',
+        runtimePairingAdvertisedAddress: '10.99.88.2'
+      })
+    )
+  })
+
   it('keeps an explicit Thunderbolt pick when refresh reports only Ethernet', async () => {
     runtimePairingLinkCache.selectedAddress = ''
     mocks.listNetworkInterfaces
