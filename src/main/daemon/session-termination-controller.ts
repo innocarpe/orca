@@ -130,8 +130,9 @@ export class SessionTerminationController {
 
   /**
    * SIGTERM the PTY's process groups, then SIGKILL if the process is still alive.
-   * The two waits together stay inside `timeoutMs`. Handles without group signals
-   * keep the direct force-kill.
+   * A root that exits during the grace still gets a group SIGKILL: its children
+   * can ignore SIGTERM after the shell is gone. The two waits together stay
+   * inside `timeoutMs`. Handles without group signals keep the direct force-kill.
    */
   async signalGroupsThenForceKillWithinBudget(
     timeoutMs = IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS
@@ -163,6 +164,7 @@ export class SessionTerminationController {
       console.warn('[Session] failed to signal PTY process groups before force-kill:', error)
     }
     if (this.deps.isExited()) {
+      this.killRemainingProcessGroups()
       return
     }
     if (graceMs > 0) {
@@ -171,12 +173,14 @@ export class SessionTerminationController {
           graceMs,
           () => new Error(`Timed out waiting for PTY process exit: ${this.deps.sessionId}`)
         )
+        this.killRemainingProcessGroups()
         return
       } catch {
         // The group ignored SIGTERM. SIGKILL still has to run inside the same budget.
       }
     }
     if (this.deps.isExited()) {
+      this.killRemainingProcessGroups()
       return
     }
     await this.requestForceKillWithRetry()
@@ -230,6 +234,15 @@ export class SessionTerminationController {
         }
       }
     }, delayMs)
+  }
+
+  /** Children that ignored SIGTERM stay up after the PTY root exits. */
+  private killRemainingProcessGroups(): void {
+    try {
+      this.deps.subprocess.signalProcessGroups?.('SIGKILL')
+    } catch (error) {
+      console.warn('[Session] failed to SIGKILL PTY process groups after the root exited:', error)
+    }
   }
 
   private requestForceKill(): void {
