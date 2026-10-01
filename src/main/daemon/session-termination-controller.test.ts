@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionTerminationController } from './session-termination-controller'
 import type { SubprocessHandle } from './session-subprocess-handle'
 
@@ -41,8 +41,17 @@ function createController(options: { signalProcessGroups?: false } = {}) {
 }
 
 describe('signalGroupsThenForceKillWithinBudget', () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+
+  beforeEach(() => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
+  })
+
   afterEach(() => {
     vi.useRealTimers()
+    if (originalPlatform) {
+      Object.defineProperty(process, 'platform', originalPlatform)
+    }
   })
 
   it('sends SIGTERM to the process groups before SIGKILL', async () => {
@@ -161,6 +170,24 @@ describe('signalGroupsThenForceKillWithinBudget', () => {
         Object.defineProperty(process, 'platform', platform)
       }
     }
+  })
+
+  it('does not spend the force-kill retry outside the caller timeout', async () => {
+    vi.useFakeTimers()
+    const harness = createController()
+    harness.forceKill.mockImplementation(() => {
+      throw new Error('kill failed')
+    })
+
+    const pending = harness.controller.signalGroupsThenForceKillWithinBudget(25)
+    const outcome = pending.then(
+      () => 'resolved' as const,
+      () => 'rejected' as const
+    )
+    await vi.advanceTimersByTimeAsync(25)
+
+    await expect(outcome).resolves.toBe('rejected')
+    expect(harness.forceKill).toHaveBeenCalledTimes(1)
   })
 
   it('does not signal a process that has already exited', async () => {
