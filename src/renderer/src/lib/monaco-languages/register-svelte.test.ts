@@ -178,6 +178,11 @@ describe('svelte tokenization', () => {
     const [fileStartCloser] = tokenizeSvelte('{/each}')
     expect(tokenTypeAt(fileStartCloser, 0)).toBe('keyword.control')
 
+    const [sameLine] = tokenizeSvelte('<p>before</p>{/if}<p>after</p>')
+    const closerAt = '<p>before</p>'.length
+    expect(tokenTypeAt(sameLine, closerAt)).toBe('keyword.control')
+    expect(tokenLanguages(sameLine)).toEqual(['html', 'svelte', 'html'])
+
     expect(
       languagesPerLine(
         '{#each items as item}\n  <p>{item}</p>\n{/each}\n<style>\n  p { color: red; }\n</style>'
