@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { hasControllingTty } from '../../shared/posix-controlling-terminal'
 import { recordSelfInitiatedTreeKill } from '../crash-reporting/self-initiated-tree-kill-log'
+import { resetPosixTerminalSelectionForTests } from './posix-process-groups-on-terminal'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { runProcess, runProcessSync } from '@orca/process-host'
 import type { ProcessResult } from '@orca/process-host/process-spec'
@@ -22,6 +23,7 @@ class UnsupportedPsSelectionError extends Error {}
 export function resetPosixPtyProcessTableDialectForTests(): void {
   psDialect = undefined
   dialectProbe = undefined
+  resetPosixTerminalSelectionForTests()
 }
 
 type ProcessRow = {
@@ -229,44 +231,7 @@ export function getPosixPtyProcessGroups(
   })
 }
 
-function isSafeTerminalName(ptsName: string): boolean {
-  return /^[\w./]{1,128}$/.test(ptsName) && !ptsName.startsWith('-')
-}
-
-function parseProcessGroupIds(output: string): number[] {
-  const groups = new Set<number>()
-  for (const line of output.split(/\r?\n/)) {
-    const pgid = Number(line.trim())
-    if (Number.isInteger(pgid) && pgid > 1) {
-      groups.add(pgid)
-    }
-  }
-  return [...groups]
-}
-
-/** Groups still attached to this PTY. `null` means the table could not be read. */
-export function readPosixProcessGroupsOnTerminal(
-  ptsName: string,
-  deps: { readProcessTable?: (ptsName: string) => string } = {}
-): number[] | null {
-  if (!isSafeTerminalName(ptsName)) {
-    return null
-  }
-  try {
-    const output = (
-      deps.readProcessTable ??
-      ((tty: string) =>
-        readProcessTableResult(
-          runProcessSync(
-            processTableSpec(['-t', tty, '-o', 'pgid='])
-          )
-        ))
-    )(ptsName)
-    return parseProcessGroupIds(output)
-  } catch {
-    return null
-  }
-}
+export { readPosixProcessGroupsOnTerminal } from './posix-process-groups-on-terminal'
 
 function isProcessAlreadyGone(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | undefined)?.code === 'ESRCH'
