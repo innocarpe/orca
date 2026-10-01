@@ -335,8 +335,7 @@ export class OrcaRuntimeWithRuntimeId {
   protected readonly terminalWriter = new RuntimeTerminalWriter(
     (ptyId, data, inputKind) => this.ptyController?.write(ptyId, data, inputKind) ?? false,
     (ptyId) => this.getPtyWriteHostPlatform(ptyId),
-    (ptyId) => this.getPtyAgent(ptyId),
-    (ptyId) => this.readPtyKittyKeyboardFlags(ptyId)
+    (ptyId) => this.getPtyAgent(ptyId)
   )
 
   // Why one source: every tui-idle site must read the same evidence, or they rank one pane differently.
