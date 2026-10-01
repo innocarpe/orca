@@ -3,6 +3,7 @@ import type { RecognizedAgentProcess } from '../../../shared/agent-process-recog
 import { readPtySlavePath } from '../../../shared/pty-slave-line-discipline-echo'
 import {
   forceKillPosixPtyProcessGroups,
+  readPosixProcessGroupsOnTerminal,
   signalPosixPtyProcessGroups
 } from '../../pty/posix-pty-process-groups'
 import { signalPosixPtyForegroundGroup } from '../../pty/posix-pty-foreground-group'
@@ -76,10 +77,17 @@ export function createDaemonPtySubprocessHandle(args: {
   const slavePath = readPtySlavePath(proc)
   const signalRememberedProcessGroups = (signal: NodeJS.Signals): void => {
     const groups = rememberedProcessGroups
-    if (!groups) {
+    // A group id remembered at SIGTERM can be reused after the root exits.
+    // Signal it only when a fresh table still shows that id on this PTY.
+    const stillAttached = slavePath ? readPosixProcessGroupsOnTerminal(slavePath) : null
+    if (!groups || !stillAttached) {
       return
     }
+    const allowed = new Set(stillAttached)
     for (const pgid of groups) {
+      if (!allowed.has(pgid)) {
+        continue
+      }
       try {
         process.kill(-pgid, signal)
       } catch (error) {

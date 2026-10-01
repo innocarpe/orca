@@ -18,6 +18,7 @@ import {
   forceKillPosixPtyProcessGroups,
   getPosixPtyProcessGroups,
   isPosixPtyRootStopped,
+  readPosixProcessGroupsOnTerminal,
   readPosixPtyProcessTable,
   resetPosixPtyProcessTableDialectForTests,
   signalPosixPtyProcessGroups
@@ -440,5 +441,35 @@ describe('POSIX PTY group-sweep breadcrumbs', () => {
     })
 
     expect(recordSelfInitiatedTreeKillMock.mock.calls.map(([kill]) => kill.pid)).toEqual([101, 100])
+  })
+})
+
+describe('readPosixProcessGroupsOnTerminal', () => {
+  it('returns the groups still printed for that terminal', () => {
+    expect(
+      readPosixProcessGroupsOnTerminal('/dev/ttys001', {
+        readProcessTable: () => ' 4242\n4242\n4243\n'
+      })
+    ).toEqual([4242, 4243])
+  })
+
+  it('returns an empty list when the terminal has no processes', () => {
+    expect(
+      readPosixProcessGroupsOnTerminal('/dev/ttys001', {
+        readProcessTable: () => '\n'
+      })
+    ).toEqual([])
+  })
+
+  it('returns null for an unsafe terminal name or an unreadable table', () => {
+    expect(readPosixProcessGroupsOnTerminal('-t')).toBeNull()
+    expect(readPosixProcessGroupsOnTerminal('/dev/ttys001 ../x')).toBeNull()
+    expect(
+      readPosixProcessGroupsOnTerminal('/dev/ttys001', {
+        readProcessTable: () => {
+          throw new Error('ps failed')
+        }
+      })
+    ).toBeNull()
   })
 })
