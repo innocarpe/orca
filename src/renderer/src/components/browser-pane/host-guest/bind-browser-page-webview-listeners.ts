@@ -149,18 +149,20 @@ export function bindBrowserPageWebviewListeners({
   webview.addEventListener('dom-ready', handleDomReady)
   webview.addEventListener('render-process-gone', guestRecovery.recoverRenderer)
   webview.addEventListener('destroyed', handleGuestDestroyed)
-  webview.addEventListener('focus', () => {
+  // Why: the guest does not bubble focus to the overlay, so the owning split
+  // stays stale and Ctrl+Tab targets the previous group (#22144). The same
+  // function is removed on cleanup; the webview outlives detach.
+  const handleGuestFocus = (): void => {
     dismissAddressBarSuggestions()
-    // Why: the guest does not bubble focus to the overlay, so the owning split
-    // stays stale and Ctrl+Tab targets the previous group (#22144).
     const state = useAppStore.getState()
     focusOwningGroupForBrowserGuest({
       worktreeId,
-      browserTabId,
+      workspaceId,
       unifiedTabsByWorktree: state.unifiedTabsByWorktree,
       focusGroup: state.focusGroup
     })
-  })
+  }
+  webview.addEventListener('focus', handleGuestFocus)
   webview.addEventListener('did-start-loading', handleDidStartLoading)
   webview.addEventListener('did-start-navigation', handleDidStartNavigation)
   webview.addEventListener('did-redirect-navigation', handleDidRedirectNavigation)
@@ -198,7 +200,7 @@ export function bindBrowserPageWebviewListeners({
     webview.removeEventListener('dom-ready', handleDomReady)
     webview.removeEventListener('render-process-gone', guestRecovery.recoverRenderer)
     webview.removeEventListener('destroyed', handleGuestDestroyed)
-    webview.removeEventListener('focus', dismissAddressBarSuggestions)
+    webview.removeEventListener('focus', handleGuestFocus)
     webview.removeEventListener('did-start-loading', handleDidStartLoading)
     webview.removeEventListener('did-start-navigation', handleDidStartNavigation)
     webview.removeEventListener('did-redirect-navigation', handleDidRedirectNavigation)

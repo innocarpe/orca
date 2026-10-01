@@ -3,7 +3,7 @@ import { focusOwningGroupForBrowserGuest } from './browser-guest-owning-group'
 
 const browserTab = {
   contentType: 'browser' as const,
-  entityId: 'page-1',
+  entityId: 'workspace-1',
   groupId: 'group-2'
 }
 
@@ -12,7 +12,7 @@ describe('focusOwningGroupForBrowserGuest', () => {
     const focusGroup = vi.fn()
     focusOwningGroupForBrowserGuest({
       worktreeId: 'wt-1',
-      browserTabId: 'page-1',
+      workspaceId: 'workspace-1',
       unifiedTabsByWorktree: { 'wt-1': [browserTab] },
       focusGroup
     })
@@ -20,13 +20,13 @@ describe('focusOwningGroupForBrowserGuest', () => {
     expect(focusGroup).toHaveBeenCalledWith('wt-1', 'group-2')
   })
 
-  it('does not move the focused split when the page is not in a group yet', () => {
+  it('does not match a page id against the workspace id stored on the tab', () => {
     const focusGroup = vi.fn()
     focusOwningGroupForBrowserGuest({
       worktreeId: 'wt-1',
-      browserTabId: 'page-1',
+      workspaceId: 'page-1',
       unifiedTabsByWorktree: {
-        'wt-1': [{ contentType: 'terminal', entityId: 'page-1', groupId: 'group-1' }]
+        'wt-1': [{ contentType: 'browser', entityId: 'workspace-1', groupId: 'group-1' }]
       },
       focusGroup
     })
@@ -37,7 +37,7 @@ describe('focusOwningGroupForBrowserGuest', () => {
     const focusGroup = vi.fn()
     focusOwningGroupForBrowserGuest({
       worktreeId: 'wt-1',
-      browserTabId: 'page-1',
+      workspaceId: 'workspace-1',
       unifiedTabsByWorktree: { 'wt-2': [browserTab] },
       focusGroup
     })
