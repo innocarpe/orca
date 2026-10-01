@@ -183,7 +183,7 @@ export class SessionTerminationController {
       this.killRemainingProcessGroups()
       return
     }
-    await this.requestForceKillWithRetry()
+    await this.requestForceKillWithRetry(Math.max(0, timeoutMs - (Date.now() - startedAt)))
     if (this.deps.isExited()) {
       return
     }
@@ -258,7 +258,8 @@ export class SessionTerminationController {
     }
   }
 
-  private async requestForceKillWithRetry(): Promise<void> {
+  private async requestForceKillWithRetry(budgetMs?: number): Promise<void> {
+    const startedAt = Date.now()
     let lastError: unknown
     for (let attempt = 0; attempt < SESSION_FORCE_KILL_MAX_ATTEMPTS; attempt++) {
       try {
@@ -267,16 +268,24 @@ export class SessionTerminationController {
       } catch (error) {
         lastError = error
       }
-      if (attempt + 1 < SESSION_FORCE_KILL_MAX_ATTEMPTS) {
-        try {
-          await this.physicalExit.waitForExit(
-            SESSION_FORCE_KILL_RETRY_MS,
-            () => new Error(`Retrying force-kill for PTY ${this.deps.sessionId}`)
-          )
-          return
-        } catch {
-          // The bounded waiter detached; retry the still-owned subprocess.
-        }
+      if (attempt + 1 >= SESSION_FORCE_KILL_MAX_ATTEMPTS) {
+        break
+      }
+      const remainingMs =
+        budgetMs == null
+          ? SESSION_FORCE_KILL_RETRY_MS
+          : Math.min(SESSION_FORCE_KILL_RETRY_MS, budgetMs - (Date.now() - startedAt))
+      if (remainingMs <= 0) {
+        break
+      }
+      try {
+        await this.physicalExit.waitForExit(
+          remainingMs,
+          () => new Error(`Retrying force-kill for PTY ${this.deps.sessionId}`)
+        )
+        return
+      } catch {
+        // The bounded waiter detached; retry the still-owned subprocess.
       }
     }
     throw lastError

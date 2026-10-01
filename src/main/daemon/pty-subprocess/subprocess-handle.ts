@@ -7,6 +7,7 @@ import {
 } from '../../pty/posix-pty-process-groups'
 import { signalPosixPtyForegroundGroup } from '../../pty/posix-pty-foreground-group'
 import { readPtsName } from '../../pty/node-pty-pts-name'
+import { recordSelfInitiatedTreeKill } from '../../crash-reporting/self-initiated-tree-kill-log'
 import { terminatePtyJob } from '../../windows/windows-pty-job'
 import { isValidPtySize } from '../daemon-pty-size'
 import type { SubprocessHandle } from '../session-subprocess-handle'
@@ -41,6 +42,9 @@ export function createDaemonPtySubprocessHandle(args: {
   let ioFailed = false
   let disposed = false
   let nodePtyKillIssued = false
+  // Groups learned while the root pid still owned the PTY. Exit sets `dead`
+  // before listeners run, so a later SIGKILL cannot look that pid up again.
+  let rememberedProcessGroups: number[] | null = null
   const foreground = createPtyForegroundProcessTracker({
     process: proc,
     shellPath: args.shellPath,
@@ -70,6 +74,29 @@ export function createDaemonPtySubprocessHandle(args: {
   })
 
   const slavePath = readPtySlavePath(proc)
+  const signalRememberedProcessGroups = (signal: NodeJS.Signals): void => {
+    const groups = rememberedProcessGroups
+    if (!groups) {
+      return
+    }
+    for (const pgid of groups) {
+      try {
+        process.kill(-pgid, signal)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException | undefined)?.code === 'ESRCH') {
+          continue
+        }
+        throw error
+      }
+      if (signal === 'SIGKILL') {
+        recordSelfInitiatedTreeKill({
+          pid: pgid,
+          site: 'posix-pty-process-group-sweep',
+          scope: 'posix-process-group'
+        })
+      }
+    }
+  }
   return {
     pid: proc.pid,
     processNameIsSpawnFile: ptyProcessNameIsSpawnFile(proc),
@@ -201,13 +228,34 @@ export function createDaemonPtySubprocessHandle(args: {
       signalRootPid()
     },
     signalProcessGroups: (signal) => {
-      if (dead || process.platform === 'win32') {
+      if (process.platform === 'win32') {
         // ConPTY has no POSIX process groups. forceKill still owns that tree.
         return
       }
-      signalPosixPtyProcessGroups(proc.pid, signal, () => {
-        process.kill(proc.pid, signal)
-      })
+      if (dead) {
+        signalRememberedProcessGroups(signal)
+        return
+      }
+      const captured: number[] = []
+      try {
+        signalPosixPtyProcessGroups(
+          proc.pid,
+          signal,
+          () => {
+            process.kill(proc.pid, signal)
+          },
+          {
+            signalProcessGroup: (pgid) => {
+              process.kill(-pgid, signal)
+              captured.push(pgid)
+            }
+          }
+        )
+      } finally {
+        if (captured.length > 0) {
+          rememberedProcessGroups = captured
+        }
+      }
     },
     onData: (cb) => events.onData(cb),
     onExit: (cb) => events.onExit(cb),
