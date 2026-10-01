@@ -50,6 +50,8 @@ export function settleWorktreeSpawnSleep(
 ): boolean {
   const key = runtimeWorktreeIdentityKey(worktreeId)
   const sleepState = sleepStates.get(key)
+  // `stopping` stays inside the exclusive mutation lock and is replaced by
+  // sleeping, partial, or deletion before that lock is released.
   if (sleepState?.phase !== 'sleeping' && sleepState?.phase !== 'partial') {
     return false
   }
