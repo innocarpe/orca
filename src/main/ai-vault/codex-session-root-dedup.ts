@@ -256,7 +256,7 @@ export function codexRevertPeers(left: AiVaultSession, right: AiVaultSession): b
   )
 }
 
-/** Continuation files win; two continuations fall back to the alias ranking. */
+/** Continuation files win. Two continuations keep the later activity, then the alias ranking. */
 export function codexRevertContinuationBeats(
   candidate: AiVaultSession,
   best: AiVaultSession
@@ -268,6 +268,13 @@ export function codexRevertContinuationBeats(
   const bestContinuation = isCodexRevertContinuationPath(best.filePath, best.sessionId)
   if (candidateContinuation !== bestContinuation) {
     return candidateContinuation
+  }
+  if (candidateContinuation && bestContinuation) {
+    const candidateTime = sessionSortTime(candidate)
+    const bestTime = sessionSortTime(best)
+    if (candidateTime !== bestTime) {
+      return candidateTime > bestTime
+    }
   }
   return codexSessionAliasBeats(candidate, best)
 }
