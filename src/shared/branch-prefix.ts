@@ -13,7 +13,7 @@ export function selectBranchPrefixInput(
 ): string | null | void {
   switch (settings.branchPrefix) {
     case 'git-username': {
-      // Lowercase a mixed-case login. If that form is a ref git rejects, keep the original when it is still valid.
+      // Lowercase a mixed-case login. If that form is a ref git rejects, omit the prefix.
       if (gitUsername === null) {
         return null
       }
@@ -21,8 +21,13 @@ export function selectBranchPrefixInput(
       if (getBranchPrefixIssue(lower) === null) {
         return lower
       }
+      // The original can pass git's case-sensitive check while its lowercase
+      // form is `*.lock`. Keeping that original still collides on a
+      // case-insensitive filesystem, so the prefix is omitted. An
+      // already-lowercase invalid login is returned unchanged so settings can
+      // show the rejection instead of pretending no username was configured.
       if (lower !== gitUsername && getBranchPrefixIssue(gitUsername) === null) {
-        return gitUsername
+        return null
       }
       return lower
     }
