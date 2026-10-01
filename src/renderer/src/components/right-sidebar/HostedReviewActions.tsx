@@ -92,8 +92,7 @@ export default function HostedReviewActions({
       checksStatus: review.status,
       autoMergeEnabled: review.autoMergeEnabled,
       autoMergeAllowed: review.autoMergeAllowed,
-      mergeQueueRequired: review.mergeQueueRequired,
-      inMergeQueue: review.inMergeQueue ?? githubPR?.inMergeQueue
+      mergeQueueRequired: review.mergeQueueRequired
     })
     if (!githubPR?.stack || !stackMergeScope) {
       return presentation
