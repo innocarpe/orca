@@ -17,6 +17,7 @@ import {
   shouldDeleteUntouchedUntitledFile
 } from '../tabs/untitled-file-cleanup'
 import { unifiedTabsKeepWorktreeSelected } from './unified-tabs-keep-worktree-selected'
+import { rememberKeptUntitledEditor } from './remember-kept-untitled-editor'
 import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../../shared/layout-owner-switch'
 import { afterPendingTabs, hasPendingEntityTab } from '@/runtime/layout-owner-pending-tabs'
@@ -74,6 +75,21 @@ export function createRecentlyClosedEditorTabs(
           )
       )
       const untitledIdsToDelete = new Set(untitledToDelete.map((file) => file.id))
+      const untitledReopenPosition = new Map<
+        string,
+        ReturnType<ReturnType<typeof createRecentlyClosedTabPositionIndex>['positionFor']>
+      >()
+      for (const worktreeId of new Set(untitledToDelete.map((file) => file.worktreeId))) {
+        if (!worktreeId) {
+          continue
+        }
+        const positionIndex = createRecentlyClosedTabPositionIndex(state, worktreeId)
+        for (const file of untitledToDelete) {
+          if (file.worktreeId === worktreeId) {
+            untitledReopenPosition.set(file.id, positionIndex.positionFor(file.id))
+          }
+        }
+      }
       const closingFiles = state.openFiles.filter(
         (file) => !activeWorktreeId || file.worktreeId === activeWorktreeId
       )
@@ -238,11 +254,17 @@ export function createRecentlyClosedEditorTabs(
           }
         })
         if (typeof window !== 'undefined') {
-          for (const f of untitledToDelete) {
-            if (!kept.has(f.id)) {
-              deleteUntouchedUntitledFile(get, f)
+          void (async () => {
+            for (const file of [...untitledToDelete].toReversed()) {
+              if (kept.has(file.id)) {
+                continue
+              }
+              const deleted = await deleteUntouchedUntitledFile(get, file)
+              if (!deleted) {
+                rememberKeptUntitledEditor(set, file, untitledReopenPosition.get(file.id))
+              }
             }
-          }
+          })()
         }
       }
       // Capture records before frames; drop content only after accepted closes, retaining files for refusals or pending reopen.

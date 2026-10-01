@@ -13,6 +13,7 @@ import {
   shouldDeleteUntouchedUntitledFile
 } from '../tabs/untitled-file-cleanup'
 import { unifiedTabsKeepWorktreeSelected } from './unified-tabs-keep-worktree-selected'
+import { rememberKeptUntitledEditor } from './remember-kept-untitled-editor'
 import { mayShareEditorBackingFile } from '../file-ids/editor-file-ids'
 import { isSameOwnedDocument } from '../file-ids/same-owned-editor-document'
 import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
@@ -97,6 +98,11 @@ export function createCloseFileAction(
       const closedPosition =
         ORCA_LAYOUT_OWNER_IS_MAIN && preClose
           ? getRecentlyClosedTabPosition(get(), preClose.worktreeId, fileId)
+          : undefined
+      // Captured before the tab is dropped; a deferred layout-owner close would otherwise lose the place.
+      const reopenPosition =
+        shouldDeleteFromDisk && preClose?.worktreeId
+          ? (closedPosition ?? getRecentlyClosedTabPosition(get(), preClose.worktreeId, fileId))
           : undefined
       const cleanUp = (): void => {
         set((s) => {
@@ -298,7 +304,12 @@ export function createCloseFileAction(
 
         // Eagerly created empty untitled paths are bindable placeholders; delete them after close to avoid disk clutter.
         if (shouldDeleteFromDisk && preClose && typeof window !== 'undefined') {
-          deleteUntouchedUntitledFile(get, preClose)
+          void deleteUntouchedUntitledFile(get, preClose).then((deleted) => {
+            // Why: the placeholder is only omitted from reopen when the delete actually removes it (#23771).
+            if (!deleted) {
+              rememberKeptUntitledEditor(set, preClose, reopenPosition)
+            }
+          })
         }
       }
 
