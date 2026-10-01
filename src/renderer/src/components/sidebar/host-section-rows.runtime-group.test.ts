@@ -128,6 +128,17 @@ function sectioned(rows: Row[]) {
   })
 }
 
+function renderedHostFilter(rows: Row[]) {
+  return addHostSectionRows({
+    rows,
+    hostOptions,
+    workspaceHostScope: 'all',
+    visibleWorkspaceHostIds: [FOCUSED, OWNER],
+    defaultHostId: FOCUSED,
+    preferProjectGrouping: true
+  })
+}
+
 function rowKey(row: { type: string; key?: string; worktree?: { id: string } }): string {
   return row.type === 'item' ? row.worktree!.id : (row.key ?? row.type)
 }
@@ -178,5 +189,37 @@ describe('runtime-stamped project groups', () => {
       'group:group-a',
       'owner-wt'
     ])
+  })
+
+  it('keeps a runtime-stamped group under its owner when the sidebar filters to both hosts', () => {
+    const rows = renderedHostFilter([
+      groupHeader(projectGroup(OWNER, null)),
+      item('owner-wt', repo('owner-project', OWNER)),
+      item('focused-wt', repo('focused-project', FOCUSED))
+    ])
+
+    expect(rows.map(rowKey)).toEqual([
+      'host:runtime:env-1',
+      'focused-wt',
+      'host:runtime:env-2',
+      'group:group-a',
+      'owner-wt'
+    ])
+  })
+
+  it('does not add host headers in the unfiltered projects view', () => {
+    const rows = addHostSectionRows({
+      rows: [
+        groupHeader(projectGroup(OWNER, null)),
+        item('owner-wt', repo('owner-project', OWNER))
+      ],
+      hostOptions,
+      workspaceHostScope: 'all',
+      visibleWorkspaceHostIds: null,
+      defaultHostId: FOCUSED,
+      preferProjectGrouping: true
+    })
+
+    expect(rows.map(rowKey)).toEqual(['group:group-a', 'owner-wt'])
   })
 })
