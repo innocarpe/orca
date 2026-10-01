@@ -1,6 +1,7 @@
 import { resolveAgentPromptSubmitDelayForAgent } from '../../shared/agent-prompt-injection'
 import type { TerminalAgent } from '../../shared/terminal-agent'
 import { iterateTerminalInputChunks } from '../../shared/terminal-input'
+import { terminalInterruptBytes } from '../../shared/terminal-interrupt-bytes'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 
 export type RuntimeTerminalWriteOptions = {
@@ -17,7 +18,8 @@ export class RuntimeTerminalWriter {
     private readonly write: (ptyId: string, data: string, inputKind: TerminalInputKind) => boolean,
     private readonly getWriteHostPlatform: (ptyId: string) => NodeJS.Platform = () =>
       process.platform,
-    private readonly getAgent: (ptyId: string) => TerminalAgent | null = () => null
+    private readonly getAgent: (ptyId: string) => TerminalAgent | null = () => null,
+    private readonly getKittyKeyboardFlags: (ptyId: string) => number = () => 0
   ) {}
 
   async writeAction(
@@ -34,7 +36,10 @@ export class RuntimeTerminalWriter {
       await this.writeChunks(ptyId, text, options)
     }
     if (hasSuffix) {
-      const suffix = (action.enter ? '\r' : '') + (action.interrupt ? '\x03' : '')
+      const interrupt = action.interrupt
+        ? terminalInterruptBytes(this.getKittyKeyboardFlags(ptyId))
+        : ''
+      const suffix = (action.enter ? '\r' : '') + interrupt
       if (text) {
         // Why: same hazard as the agent-prompt path -- Enter must not overtake text the
         // execution host is still ingesting, and a flat 500 ms cannot cover 16 MB.
