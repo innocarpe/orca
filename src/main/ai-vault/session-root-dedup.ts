@@ -3,20 +3,39 @@ import {
   codexRevertContinuationBeats,
   codexRevertIdentityKey,
   codexRevertPeers,
+  codexSessionAliasAdmission,
   codexSessionAliasBeats,
-  codexSessionAliasKey,
   isCodexRevertContinuationPath
 } from './codex-session-root-dedup'
 import { sessionSortTime } from './session-scanner-accumulator'
 
 function sessionAliasKey(session: AiVaultSession): string | null {
+  return sessionAliasAdmission(session)?.key ?? null
+}
+
+function sessionAliasAdmission(session: AiVaultSession): {
+  key: string
+  revertContinuation: boolean
+  revertIdentity: string | null
+} | null {
   if (session.agent !== 'devin') {
-    const codexKey = codexSessionAliasKey(session)
-    return codexKey ? `codex\0${codexKey}` : null
+    const codex = codexSessionAliasAdmission(session)
+    if (!codex) {
+      return null
+    }
+    return {
+      key: `codex\0${codex.key}`,
+      revertContinuation: codex.revertContinuation,
+      revertIdentity: codex.revertIdentity
+    }
   }
   // Sibling exports share an index; different installs and WSL distros do not.
   const cliDir = session.filePath.split(/[\\/]/).slice(0, -2).join('/')
-  return `devin\0${session.executionHostId}\0${cliDir}\0${session.sessionId}`
+  return {
+    key: `devin\0${session.executionHostId}\0${cliDir}\0${session.sessionId}`,
+    revertContinuation: false,
+    revertIdentity: null
+  }
 }
 
 function sessionAliasBeats(candidate: AiVaultSession, best: AiVaultSession): boolean {
@@ -121,10 +140,13 @@ export class ScannedSessionCollection {
   }
 
   add(session: AiVaultSession): void {
-    const key = sessionAliasKey(session)
+    const admission = sessionAliasAdmission(session)
     const index = this.nextIndex++
-    if (key && !this.admit(session, key, index)) {
+    if (admission && !this.admit(session, admission.key, index)) {
       return
+    }
+    if (admission?.revertContinuation && admission.revertIdentity) {
+      this.revertIdentities.add(admission.revertIdentity)
     }
     this.sessions.set(index, session)
   }

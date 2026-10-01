@@ -223,7 +223,33 @@ export async function dedupeCodexRolloutCopyAliases<T>(
   return candidates.filter((candidate) => !aliasesToDrop.has(candidate))
 }
 
-export function codexSessionAliasKey(session: AiVaultSession): string | null {
+// Codex Esc-revert writes rollout-<ts>-<sessionId>_<suffixUuid>.jsonl beside the base log.
+const CODEX_REVERT_CONTINUATION_SUFFIX =
+  /_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+
+export function isCodexRevertContinuationFileName(fileName: string, sessionId: string): boolean {
+  if (!sessionId) {
+    return false
+  }
+  const suffix = fileName.match(CODEX_REVERT_CONTINUATION_SUFFIX)
+  if (!suffix) {
+    return false
+  }
+  const stem = fileName.slice(0, -suffix[0].length)
+  return stem.endsWith(sessionId)
+}
+
+/** True when the filename is a revert continuation of this parsed session id. */
+export function isCodexRevertContinuationPath(filePath: string, sessionId: string): boolean {
+  return isCodexRevertContinuationFileName(lastPathSegment(filePath), sessionId)
+}
+
+/** Alias key plus the revert facts already visible from that key's filename. */
+export function codexSessionAliasAdmission(session: AiVaultSession): {
+  key: string
+  revertContinuation: boolean
+  revertIdentity: string | null
+} | null {
   if (session.agent !== 'codex') {
     return null
   }
@@ -231,25 +257,20 @@ export function codexSessionAliasKey(session: AiVaultSession): string | null {
   if (!CODEX_ROLLOUT_FILE_NAME_PATTERN.test(fileName)) {
     return null
   }
-  return `${session.executionHostId}\0${codexPathExecutionNamespace(session.filePath)}\0${session.sessionId}\0${fileName}`
+  const namespace = codexPathExecutionNamespace(session.filePath)
+  const revertIdentity = session.sessionId
+    ? `${session.executionHostId}\0${namespace}\0${session.sessionId}`
+    : null
+  return {
+    key: `${session.executionHostId}\0${namespace}\0${session.sessionId}\0${fileName}`,
+    revertContinuation:
+      revertIdentity !== null && isCodexRevertContinuationFileName(fileName, session.sessionId),
+    revertIdentity
+  }
 }
 
-// Codex Esc-revert writes rollout-<ts>-<sessionId>_<suffixUuid>.jsonl beside the base log.
-const CODEX_REVERT_CONTINUATION_SUFFIX =
-  /_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
-
-/** True when the filename is a revert continuation of this parsed session id. */
-export function isCodexRevertContinuationPath(filePath: string, sessionId: string): boolean {
-  if (!sessionId) {
-    return false
-  }
-  const fileName = lastPathSegment(filePath)
-  const suffix = fileName.match(CODEX_REVERT_CONTINUATION_SUFFIX)
-  if (!suffix) {
-    return false
-  }
-  const stem = fileName.slice(0, -suffix[0].length)
-  return stem.endsWith(sessionId)
+export function codexSessionAliasKey(session: AiVaultSession): string | null {
+  return codexSessionAliasAdmission(session)?.key ?? null
 }
 
 export function codexRevertIdentityKey(session: AiVaultSession): string | null {
