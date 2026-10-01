@@ -77,6 +77,7 @@ describe('RuntimePairingUrlGenerator', () => {
     Object.defineProperty(window, 'api', {
       configurable: true,
       value: {
+        platform: { get: () => ({ platform: 'darwin' as const }) },
         mobile: {
           listNetworkInterfaces: mocks.listNetworkInterfaces,
           listRuntimeAccessGrants: mocks.listRuntimeAccessGrants,
