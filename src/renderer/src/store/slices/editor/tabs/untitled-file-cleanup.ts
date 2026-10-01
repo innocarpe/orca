@@ -6,6 +6,7 @@ import { getDiskBaselineSignature } from '@/components/editor/diff-content-signa
 import {
   deleteRuntimePath,
   deleteRuntimeRelativePath,
+  isMissingRuntimePathError,
   statRuntimePath
 } from '@/runtime/runtime-file-client'
 
@@ -30,7 +31,11 @@ export function deleteUntouchedUntitledFile(state: AppState, file: OpenFile): Pr
       }
       return true
     })
-    .catch(() => false)
+    .catch((error: unknown) => {
+      // A missing path was already removed. Callers treat false as "kept", which
+      // would offer Cmd+Shift+T for a file that is gone.
+      return isMissingRuntimePathError(error)
+    })
 }
 
 const EMPTY_DISK_SIGNATURE = getDiskBaselineSignature('')
