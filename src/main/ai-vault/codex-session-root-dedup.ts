@@ -269,10 +269,6 @@ export function codexSessionAliasAdmission(session: AiVaultSession): {
   }
 }
 
-export function codexSessionAliasKey(session: AiVaultSession): string | null {
-  return codexSessionAliasAdmission(session)?.key ?? null
-}
-
 export function codexRevertIdentityKey(session: AiVaultSession): string | null {
   if (session.agent !== 'codex' || !session.sessionId) {
     return null
