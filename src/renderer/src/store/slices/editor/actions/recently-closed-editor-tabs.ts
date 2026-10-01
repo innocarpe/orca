@@ -254,10 +254,8 @@ export function createRecentlyClosedEditorTabs(
           // runtime rejects calls past its pending-request cap, and a rejected
           // check looks like a kept file. Stay under that cap.
           const files = [...untitledToDelete].toReversed()
-          const deleted = await mapWithConcurrency(
-            files,
-            UNTITLED_CLOSE_STAT_CONCURRENCY,
-            (file) => deleteUntouchedUntitledFile(postCloseState, file)
+          const deleted = await mapWithConcurrency(files, UNTITLED_CLOSE_STAT_CONCURRENCY, (file) =>
+            deleteUntouchedUntitledFile(postCloseState, file)
           )
           files.forEach((file, index) => {
             if (deleted[index]) {
