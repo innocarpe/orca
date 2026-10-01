@@ -568,11 +568,11 @@ describe('createEditorSlice editor drafts', () => {
       mode: 'edit'
     })
     store.setState({
-      closeUnifiedTab: () => {},
+      closeUnifiedTab: () => null,
       unifiedTabsByWorktree: {
         'wt-1': [mirroredEditorUnifiedTab('editor-1', '/repo/notes.md', 'wt-1')]
       }
-    } as Partial<AppState>)
+    })
 
     store.getState().closeFile('/repo/notes.md')
 
