@@ -17,7 +17,9 @@ export function selectBranchPrefixInput(
 ): string | null {
   switch (settings.branchPrefix) {
     case 'git-username':
-      return gitUsername
+      // Why: GitHub keeps the signup case and treats the login as case-insensitive.
+      // A mixed-case prefix collides with an existing lowercase ref directory on APFS.
+      return gitUsername === null ? null : gitUsername.toLowerCase()
     case 'custom':
       return settings.branchPrefixCustom ?? null
     case 'none':
