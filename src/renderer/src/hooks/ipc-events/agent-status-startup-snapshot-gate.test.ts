@@ -50,6 +50,29 @@ describe('agent status startup snapshot gate', () => {
     expect(settled).toBe(true)
   })
 
+  it('releases a pane that is not in the remaining replay hold', async () => {
+    const epoch = armAgentStatusStartupSnapshot()
+    const owner = {}
+    let ready = false
+    let blocked = false
+    const readyWait = waitForAgentStatusStartupSnapshot(undefined, 'ready-pane').then(() => {
+      ready = true
+    })
+    const blockedWait = waitForAgentStatusStartupSnapshot(undefined, 'blocked-pane').then(() => {
+      blocked = true
+    })
+
+    holdAgentStatusStartupSnapshotForReplay(epoch, owner, ['blocked-pane'])
+    await readyWait
+    expect(ready).toBe(true)
+    await Promise.resolve()
+    expect(blocked).toBe(false)
+
+    expect(releaseAgentStatusStartupSnapshotReplayHold(true, owner, [])).toBe(true)
+    await blockedWait
+    expect(blocked).toBe(true)
+  })
+
   it('does not let a different queue release a replay hold', async () => {
     const epoch = armAgentStatusStartupSnapshot()
     const owner = {}

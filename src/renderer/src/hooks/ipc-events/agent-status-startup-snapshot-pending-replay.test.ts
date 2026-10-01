@@ -3,6 +3,8 @@ import {
   buildStoreState,
   FUTURE_LEAF_ID,
   FUTURE_PANE_KEY,
+  TAB_1_LEAF_ID,
+  TAB_1_PANE_KEY,
   installMockAgentStatusTransaction,
   type StoreLike,
   type StoreSubscribeListener
@@ -94,7 +96,8 @@ async function bootBridge(
       mutate(storeState)
       subscribeListenerRef.current?.(storeState, previousState)
     },
-    waitForSnapshot: () => gate.waitForAgentStatusStartupSnapshot(),
+    waitForSnapshot: (paneKey?: string) =>
+      gate.waitForAgentStatusStartupSnapshot(undefined, paneKey),
     dispose: () => {
       bridge.unsubscribeStore()
       bridge.disposeAsyncState()
@@ -148,6 +151,53 @@ describe('startup snapshot gate waits for a pending replay', () => {
     expect(setAgentStatuses).toHaveBeenCalledWith([
       expect.objectContaining({ paneKey: FUTURE_PANE_KEY })
     ])
+    harness.dispose()
+  })
+
+  it('does not hold a routed pane for an unrelated snapshot row', async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    vi.setSystemTime(1_700_000_100_000)
+    const storeState = buildStoreState({
+      workspaceSessionReady: true,
+      settings: { terminalFontSize: 13, notifications: { enabled: false } }
+    })
+    installMockAgentStatusTransaction(storeState)
+    storeState.tabsByWorktree = {
+      'wt-1': [{ id: 'tab-1', ptyId: 'pty-1', worktreeId: 'wt-1', title: 'Ready' }]
+    }
+    storeState.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: { type: 'leaf', leafId: TAB_1_LEAF_ID },
+        activeLeafId: TAB_1_LEAF_ID,
+        expandedLeafId: null
+      }
+    }
+    const readyEntry = {
+      ...SNAPSHOT_ENTRY,
+      paneKey: TAB_1_PANE_KEY,
+      providerSession: { key: 'session_id' as const, id: 'ses_ready' }
+    }
+    const harness = await bootBridge(storeState, {
+      getSnapshot: () => Promise.resolve([readyEntry, SNAPSHOT_ENTRY])
+    })
+    let ready = false
+    let blocked = false
+    const readyWait = harness.waitForSnapshot(TAB_1_PANE_KEY).then(() => {
+      ready = true
+    })
+    const blockedWait = harness.waitForSnapshot(FUTURE_PANE_KEY).then(() => {
+      blocked = true
+    })
+
+    await flushMicrotasks()
+    expect(ready).toBe(true)
+    expect(blocked).toBe(false)
+
+    harness.publish(routedTabs)
+    await blockedWait
+    expect(blocked).toBe(true)
+    await readyWait
     harness.dispose()
   })
 
