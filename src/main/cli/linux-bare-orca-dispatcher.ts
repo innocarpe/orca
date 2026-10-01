@@ -17,6 +17,7 @@ import { resolveGenerationStableLauncherPath } from './appimage-generation-stabl
 import { withAppImageRegistrationLock } from './appimage-registration-lock'
 import { getBundledLauncherPath } from './bundled-cli-launcher-path'
 import { quotePosixShellDoubleQuotedApostrophe } from '../../shared/shell-argument-quoting'
+import { extractLegacyAppImageCliWrapperTarget } from './legacy-appimage-cli-wrapper'
 
 // Why: marks a dispatcher this function wrote so repeat serve starts overwrite
 // our own file idempotently but never clobber a user's own ~/.local/bin/orca.
@@ -60,7 +61,9 @@ export async function installLinuxBareOrcaDispatcher(
   options: LinuxBareOrcaDispatcherOptions
 ): Promise<LinuxBareOrcaDispatcherResult> {
   const dispatcherPath = join(options.homePath ?? homedir(), '.local', 'bin', 'orca')
-  if (existsSync(dispatcherPath) && !(await isOwnedDispatcher(dispatcherPath))) {
+  // Why: the pre-rename AppImage wrapper is ours. Leaving it in place execs the
+  // AppImage, and AppRun injects `--no-sandbox` into node mode (#18985).
+  if (existsSync(dispatcherPath) && !(await isReplaceableDispatcher(dispatcherPath))) {
     return { state: 'skipped-foreign', dispatcherPath, target: null }
   }
 
@@ -147,6 +150,23 @@ async function isOwnedDispatcher(dispatcherPath: string): Promise<boolean> {
   }
 }
 
+// A user's own `orca` script must stay. Only the exact wrapper this app wrote
+// before the `orca-ide` rename is safe to replace.
+async function isReplaceableDispatcher(dispatcherPath: string): Promise<boolean> {
+  if (await isOwnedDispatcher(dispatcherPath)) {
+    return true
+  }
+  try {
+    if (!(await lstat(dispatcherPath)).isFile()) {
+      return false
+    }
+    const content = await readFile(dispatcherPath, 'utf8')
+    return extractLegacyAppImageCliWrapperTarget(content) !== null
+  } catch {
+    return false
+  }
+}
+
 async function publishDispatcher(dispatcherPath: string, content: string): Promise<boolean> {
   const directoryPath = dirname(dispatcherPath)
   const temporaryPath = join(directoryPath, `.orca-dispatcher-${process.pid}-${randomUUID()}`)
@@ -170,7 +190,7 @@ async function publishDispatcher(dispatcherPath: string, content: string): Promi
       return await publishIfVacant(temporaryPath, dispatcherPath)
     }
 
-    if (!(await isOwnedDispatcher(displacedPath))) {
+    if (!(await isReplaceableDispatcher(displacedPath))) {
       await restoreDisplacedDispatcher(displacedPath, dispatcherPath)
       return false
     }
