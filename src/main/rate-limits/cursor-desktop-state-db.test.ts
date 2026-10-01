@@ -33,8 +33,8 @@ function tempDir(): string {
   return dir
 }
 
-function seedDatabase(dir: string, name = 'state.vscdb'): string {
-  const dbPath = join(dir, name)
+function seedDatabase(dir: string): string {
+  const dbPath = join(dir, 'state.vscdb')
   const db = new DatabaseSync(dbPath)
   db.exec('CREATE TABLE ItemTable (key TEXT, value TEXT)')
   db.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)').run(
