@@ -9,6 +9,12 @@ import {
 import { isRpcResponse } from './rpc-response-shape'
 import { isStaleRpcSocketEvent, logRpcSocketClose } from './rpc-socket-close-evidence'
 import { describeSocketEvent, redactSocketEndpoint } from './socket-event-debug'
+import {
+  releaseSocketTimer,
+  rememberSocketDeadlineClock,
+  startSocketDeadlineClock,
+  takeSocketDeadline
+} from './socket-deadline-clock'
 import { reportSocketDeadline, type SocketDeadlineKind } from './socket-deadline-suspension'
 import type { ConnectionLogEmitter, ConnectionState, RpcResponse } from './types'
 import { websocketPayloadToUint8 } from './websocket-payload-bytes'
@@ -88,14 +94,8 @@ export class RpcClientSocketSession {
   }
 
   clearTimers(): void {
-    if (this.connectTimer) {
-      clearTimeout(this.connectTimer)
-      this.connectTimer = null
-    }
-    if (this.handshakeTimer) {
-      clearTimeout(this.handshakeTimer)
-      this.handshakeTimer = null
-    }
+    this.connectTimer = releaseSocketTimer(this.connectTimer)
+    this.handshakeTimer = releaseSocketTimer(this.handshakeTimer)
   }
 
   clearKey(): void {
@@ -257,8 +257,8 @@ export class RpcClientSocketSession {
   }
 
   private armSocketDeadline(kind: SocketDeadlineKind, timeoutMs: number): void {
-    const armedAtMs = Date.now()
     const timer = setTimeout(() => {
+      const sample = takeSocketDeadline(timer)
       if (kind === 'connect') {
         this.connectTimer = null
       } else {
@@ -275,8 +275,7 @@ export class RpcClientSocketSession {
       reportSocketDeadline(
         {
           kind,
-          armedAtMs,
-          firedAtMs: Date.now(),
+          ...sample,
           timeoutMs,
           ...(kind === 'connect' ? { attempt: this.options.getReconnectAttempt() } : {})
         },
@@ -284,6 +283,7 @@ export class RpcClientSocketSession {
         () => this.options.onForcedClose(this)
       )
     }, timeoutMs)
+    rememberSocketDeadlineClock(timer, startSocketDeadlineClock())
     if (kind === 'connect') {
       this.connectTimer = timer
     } else {
@@ -292,17 +292,11 @@ export class RpcClientSocketSession {
   }
 
   private clearConnectTimer(): void {
-    if (this.connectTimer) {
-      clearTimeout(this.connectTimer)
-      this.connectTimer = null
-    }
+    this.connectTimer = releaseSocketTimer(this.connectTimer)
   }
 
   private clearHandshakeTimer(): void {
-    if (this.handshakeTimer) {
-      clearTimeout(this.handshakeTimer)
-      this.handshakeTimer = null
-    }
+    this.handshakeTimer = releaseSocketTimer(this.handshakeTimer)
   }
 
   private isStale(eventName: string): boolean {
