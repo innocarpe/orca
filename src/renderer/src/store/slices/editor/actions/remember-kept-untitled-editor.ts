@@ -5,14 +5,27 @@ import {
   type OpenFile
 } from '../types/open-file'
 import {
-  pushRecentlyClosedTabKind,
+  insertRecentlyClosedTabKind,
   type RecentlyClosedTabPosition
 } from '../../recently-closed-tabs'
+
+export function placeClosedEditorSnapshot(
+  stack: ClosedEditorTabSnapshot[],
+  entry: ClosedEditorTabSnapshot
+): ClosedEditorTabSnapshot[] {
+  // Why: higher closeOrder is more recent and stays in front. A missing stamp is older than any stamped close.
+  const order = entry.closeOrder ?? Number.MAX_SAFE_INTEGER
+  const index = stack.findIndex((item) => (item.closeOrder ?? -1) < order)
+  const placed =
+    index === -1 ? [...stack, entry] : [...stack.slice(0, index), entry, ...stack.slice(index)]
+  return placed.slice(0, MAX_RECENT_CLOSED_EDITOR_TABS)
+}
 
 export function rememberKeptUntitledEditor(
   set: EditorSet,
   file: OpenFile,
-  position: RecentlyClosedTabPosition | undefined
+  position: RecentlyClosedTabPosition | undefined,
+  closeOrder: number
 ): void {
   if (!file.worktreeId || file.mode === 'markdown-preview') {
     return
@@ -26,19 +39,18 @@ export function rememberKeptUntitledEditor(
     return {
       recentlyClosedEditorTabsByWorktree: {
         ...state.recentlyClosedEditorTabsByWorktree,
-        [file.worktreeId]: [
-          {
-            ...(snap as ClosedEditorTabSnapshot),
-            reopenId: id,
-            ...(position ? { position } : {})
-          },
-          ...stack
-        ].slice(0, MAX_RECENT_CLOSED_EDITOR_TABS)
+        [file.worktreeId]: placeClosedEditorSnapshot(stack, {
+          ...(snap as ClosedEditorTabSnapshot),
+          reopenId: id,
+          closeOrder,
+          ...(position ? { position } : {})
+        })
       },
-      recentlyClosedTabKindsByWorktree: pushRecentlyClosedTabKind(
+      recentlyClosedTabKindsByWorktree: insertRecentlyClosedTabKind(
         state.recentlyClosedTabKindsByWorktree,
         file.worktreeId,
-        'editor'
+        'editor',
+        closeOrder
       )
     }
   })
