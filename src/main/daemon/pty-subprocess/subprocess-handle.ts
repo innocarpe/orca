@@ -1,7 +1,10 @@
 import type * as pty from 'node-pty'
 import type { RecognizedAgentProcess } from '../../../shared/agent-process-recognition'
 import { readPtySlavePath } from '../../../shared/pty-slave-line-discipline-echo'
-import { forceKillPosixPtyProcessGroups } from '../../pty/posix-pty-process-groups'
+import {
+  forceKillPosixPtyProcessGroups,
+  signalPosixPtyProcessGroups
+} from '../../pty/posix-pty-process-groups'
 import { signalPosixPtyForegroundGroup } from '../../pty/posix-pty-foreground-group'
 import { readPtsName } from '../../pty/node-pty-pts-name'
 import { terminatePtyJob } from '../../windows/windows-pty-job'
@@ -196,6 +199,15 @@ export function createDaemonPtySubprocessHandle(args: {
         return
       }
       signalRootPid()
+    },
+    signalProcessGroups: (signal) => {
+      if (dead || process.platform === 'win32') {
+        // ConPTY has no POSIX process groups. forceKill still owns that tree.
+        return
+      }
+      signalPosixPtyProcessGroups(proc.pid, signal, () => {
+        process.kill(proc.pid, signal)
+      })
     },
     onData: (cb) => events.onData(cb),
     onExit: (cb) => events.onExit(cb),
