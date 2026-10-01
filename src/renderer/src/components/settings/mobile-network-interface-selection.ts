@@ -2,6 +2,7 @@ import {
   isVirtualBridgeInterface,
   selectAutoAdvertisedPairingAddress
 } from '../../../../shared/pairing-address-auto-selection'
+import { readPairingHostPlatform } from './read-pairing-host-platform'
 
 export type MobileNetworkInterface = {
   name: string
@@ -16,7 +17,8 @@ export function selectRefreshedNetworkAddress(
   // (not an OS-enumerated one) pass this so the refresh path keeps their
   // selection instead of snapping back to a tailnet/LAN fallback.
   currentAddressIsManual: boolean = false,
-  currentAddressWasExplicitlySelected: boolean = false
+  currentAddressWasExplicitlySelected: boolean = false,
+  platform?: NodeJS.Platform
 ): string | undefined {
   // Why: transient discovery failure must not clobber a deliberate user choice.
   if (interfaces.length === 0) {
@@ -27,15 +29,21 @@ export function selectRefreshedNetworkAddress(
   if (currentAddressIsManual) {
     return currentAddress
   }
+  // Read only once classification needs a host. An empty refresh must not require it.
+  const hostPlatform = platform ?? readPairingHostPlatform()
   const currentInterface = interfaces.find((iface) => iface.address === currentAddress)
   if (
     currentInterface &&
     (currentAddressWasExplicitlySelected ||
-      !isVirtualBridgeInterface(currentInterface.name, currentInterface.hasDefaultRoute))
+      !isVirtualBridgeInterface(
+        currentInterface.name,
+        currentInterface.hasDefaultRoute,
+        hostPlatform
+      ))
   ) {
     return currentAddress
   }
   // Why: shared with main so the picker never shows a default the QR didn't advertise. Undefined on
   // a bridge-only host: Relay pairs without a direct address rather than offering an unreachable one.
-  return selectAutoAdvertisedPairingAddress(interfaces)
+  return selectAutoAdvertisedPairingAddress(interfaces, hostPlatform)
 }
