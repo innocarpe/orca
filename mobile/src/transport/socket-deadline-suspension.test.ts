@@ -62,6 +62,52 @@ describe('describeSocketDeadline', () => {
     expect(report.consoleMessage).not.toContain('connect-timeout')
   })
 
+  it('keeps a wall-clock jump as a host timeout when the monotonic clock stays on budget', () => {
+    const armedAtMs = 1_000
+    const report = describeSocketDeadline({
+      kind: 'connect',
+      armedAtMs,
+      firedAtMs: armedAtMs + 3 * 60 * 60 * 1000,
+      timeoutMs: CONNECT_TIMEOUT_MS,
+      monotonicElapsedMs: CONNECT_TIMEOUT_MS,
+      leftForeground: false
+    })
+
+    expect(report.suspended).toBe(false)
+    expect(report.code).toBe('connect-timeout')
+  })
+
+  it('still reads a foreground loss as suspension when the wall clock jumps backward', () => {
+    const armedAtMs = 50_000
+    const report = describeSocketDeadline({
+      kind: 'connect',
+      armedAtMs,
+      firedAtMs: armedAtMs - 5_000,
+      timeoutMs: CONNECT_TIMEOUT_MS,
+      monotonicElapsedMs: CONNECT_TIMEOUT_MS,
+      leftForeground: true
+    })
+
+    expect(report.code).toBe('suspended-dial')
+    expect(report.detail).toBe('App suspended; connection state unknown, re-dialing')
+    expect(report.detail).not.toContain('endpoint unreachable')
+  })
+
+  it('reads suspension when the wall clock and the monotonic clock both run long', () => {
+    const armedAtMs = 0
+    const report = describeSocketDeadline({
+      kind: 'connect',
+      armedAtMs,
+      firedAtMs: CONNECT_TIMEOUT_MS + SUSPENSION_SLACK_MS + 1,
+      timeoutMs: CONNECT_TIMEOUT_MS,
+      monotonicElapsedMs: CONNECT_TIMEOUT_MS + SUSPENSION_SLACK_MS + 1,
+      leftForeground: false
+    })
+
+    expect(report.code).toBe('suspended-dial')
+    expect(report.detail).toContain('App suspended for')
+  })
+
   it('uses the same suspension reading for a frozen handshake timer', () => {
     const armedAtMs = 0
     const report = describeSocketDeadline({

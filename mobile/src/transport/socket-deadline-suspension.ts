@@ -14,6 +14,10 @@ export type SocketDeadlineInput = {
   firedAtMs: number
   timeoutMs: number
   attempt?: number
+  /** Elapsed on a clock that ignores wall-clock steps. Omitted keeps the wall-clock reading. */
+  monotonicElapsedMs?: number
+  /** The app left the foreground while this deadline was armed. */
+  leftForeground?: boolean
 }
 
 export type SocketDeadlineReport = {
@@ -26,21 +30,34 @@ export type SocketDeadlineReport = {
   consoleFields: { timeoutMs: number; elapsedMs: number; attempt?: number }
 }
 
+function elapsedLooksFrozen(elapsedMs: number, timeoutMs: number): boolean {
+  return elapsedMs > timeoutMs + SUSPENSION_SLACK_MS
+}
+
 export function describeSocketDeadline(input: SocketDeadlineInput): SocketDeadlineReport {
   const elapsedMs = input.firedAtMs - input.armedAtMs
-  const suspended = elapsedMs > input.timeoutMs + SUSPENSION_SLACK_MS
+  const wallFrozen = elapsedLooksFrozen(elapsedMs, input.timeoutMs)
+  const monotonicFrozen =
+    input.monotonicElapsedMs !== undefined &&
+    elapsedLooksFrozen(input.monotonicElapsedMs, input.timeoutMs)
+  // A wall-clock step while the app stays up moves only the wall elapsed.
+  // Suspension still shows up as a foreground loss, or as both clocks running long.
+  const suspended =
+    input.leftForeground === true ||
+    (input.monotonicElapsedMs === undefined ? wallFrozen : wallFrozen && monotonicFrozen)
   const consoleFields = {
     timeoutMs: input.timeoutMs,
     elapsedMs,
     ...(input.attempt === undefined ? {} : { attempt: input.attempt })
   }
   if (suspended) {
+    const duration = wallFrozen ? ` for ${formatSuspendedElapsed(elapsedMs)}` : ''
     return {
       suspended: true,
       level: 'warn',
       code: 'suspended-dial',
       title: input.kind === 'connect' ? 'WebSocket connect interrupted' : 'Handshake interrupted',
-      detail: `App suspended for ${formatSuspendedElapsed(elapsedMs)}; connection state unknown, re-dialing`,
+      detail: `App suspended${duration}; connection state unknown, re-dialing`,
       consoleMessage: `[net] ${input.kind} deadline fired after suspension`,
       consoleFields
     }
