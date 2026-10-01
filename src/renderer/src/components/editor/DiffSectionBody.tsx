@@ -64,18 +64,25 @@ export function DiffSectionBody({
 }: DiffSectionBodyProps): React.JSX.Element {
   const renderLimit = section.largeDiffRenderLimit?.limited ? section.largeDiffRenderLimit : null
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
+  const wordWrapOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
   const handleEditorMount: DiffOnMount = (diffEditor, monaco) => {
     diffEditorRef.current = diffEditor
     const cleanupShiftWheelScroll = installDiffEditorShiftWheelScroll(diffEditor)
     diffEditor.onDidDispose(() => {
       cleanupShiftWheelScroll()
+      wordWrapOptionsSubRef.current?.dispose()
+      wordWrapOptionsSubRef.current = null
       if (diffEditorRef.current === diffEditor) {
         diffEditorRef.current = null
       }
     })
     // Why: Monaco applies the inline-layout wrap override after mount, once width is known.
     requestAnimationFrame(() => {
-      syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+      if (diffEditorRef.current !== diffEditor) {
+        return
+      }
+      wordWrapOptionsSubRef.current?.dispose()
+      wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
     })
     onMount(diffEditor, monaco)
   }
@@ -85,7 +92,12 @@ export function DiffSectionBody({
     if (!diffEditor) {
       return
     }
-    syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+    wordWrapOptionsSubRef.current?.dispose()
+    wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+    return () => {
+      wordWrapOptionsSubRef.current?.dispose()
+      wordWrapOptionsSubRef.current = null
+    }
   }, [diffWordWrap, sideBySide])
 
   return (

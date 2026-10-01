@@ -75,6 +75,7 @@ export default function DiffViewer({
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
   const { registerDiffEditor, unregisterDiffEditor } = useDiffEditorRegistration()
   const lineNumberOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
+  const wordWrapOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
   const [modifiedEditor, setModifiedEditor] = useState<editor.ICodeEditor | null>(null)
 
   const renderLimit = useMemo(
@@ -165,6 +166,8 @@ export default function DiffViewer({
     // Why: on fallback transition, drop stale Monaco refs so decorators/save handlers don't talk to disposed UI.
     lineNumberOptionsSubRef.current?.dispose()
     lineNumberOptionsSubRef.current = null
+    wordWrapOptionsSubRef.current?.dispose()
+    wordWrapOptionsSubRef.current = null
     // Why: capture before nulling so we unregister the exact instance (identity guard no-ops a stale dispose).
     const fallenBackEditor = diffEditorRef.current
     diffEditorRef.current = null
@@ -199,7 +202,11 @@ export default function DiffViewer({
       registerDiffEditor(diffEditor)
       // Why: Monaco applies the inline-layout wrap override after mount, once width is known.
       requestAnimationFrame(() => {
-        syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+        if (diffEditorRef.current !== diffEditor) {
+          return
+        }
+        wordWrapOptionsSubRef.current?.dispose()
+        wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
       })
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
@@ -249,6 +256,8 @@ export default function DiffViewer({
       diffEditor.onDidDispose(() => {
         lineNumberOptionsSubRef.current?.dispose()
         lineNumberOptionsSubRef.current = null
+        wordWrapOptionsSubRef.current?.dispose()
+        wordWrapOptionsSubRef.current = null
         diffEditorRef.current = null
         unregisterDiffEditor(diffEditor)
         setModifiedEditor(null)
@@ -286,10 +295,13 @@ export default function DiffViewer({
     }
     lineNumberOptionsSubRef.current?.dispose()
     lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
-    syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+    wordWrapOptionsSubRef.current?.dispose()
+    wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
     return () => {
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = null
+      wordWrapOptionsSubRef.current?.dispose()
+      wordWrapOptionsSubRef.current = null
     }
   }, [diffWordWrap, sideBySide])
 

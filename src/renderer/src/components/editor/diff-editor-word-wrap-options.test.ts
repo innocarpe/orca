@@ -26,19 +26,48 @@ describe('buildDiffEditorWordWrapOptions', () => {
 })
 
 describe('syncDiffEditorOriginalWordWrap', () => {
-  function fakeDiffEditor(): {
-    diffEditor: editor.IStandaloneDiffEditor
-    original: { updateOptions: ReturnType<typeof vi.fn> }
-    modified: { updateOptions: ReturnType<typeof vi.fn> }
+  function fakeEditor(): {
+    updateOptions: ReturnType<typeof vi.fn>
+    getRawOptions: () => editor.IEditorOptions
+    onDidChangeConfiguration: (listener: () => void) => { dispose: () => void }
+    emitDidChangeConfiguration: () => void
   } {
-    const original = { updateOptions: vi.fn() }
-    const modified = { updateOptions: vi.fn() }
+    const listeners = new Set<() => void>()
+    let options: editor.IEditorOptions = {}
+    const editorStub = {
+      updateOptions: vi.fn((next: editor.IEditorOptions) => {
+        options = { ...options, ...next }
+      }),
+      getRawOptions: () => options,
+      onDidChangeConfiguration: (listener: () => void) => {
+        listeners.add(listener)
+        return {
+          dispose: () => {
+            listeners.delete(listener)
+          }
+        }
+      },
+      emitDidChangeConfiguration: () => {
+        listeners.forEach((listener) => listener())
+      }
+    }
+    return editorStub
+  }
+
+  function fakeDiffEditor(root?: { classList: { contains: (name: string) => boolean } }): {
+    diffEditor: editor.IStandaloneDiffEditor
+    original: ReturnType<typeof fakeEditor>
+    modified: ReturnType<typeof fakeEditor>
+  } {
+    const original = fakeEditor()
+    const modified = fakeEditor()
     return {
       original,
       modified,
       diffEditor: {
         getOriginalEditor: () => original,
-        getModifiedEditor: () => modified
+        getModifiedEditor: () => modified,
+        ...(root ? { getContainerDomNode: () => root } : {})
       } as unknown as editor.IStandaloneDiffEditor
     }
   }
@@ -65,5 +94,44 @@ describe('syncDiffEditorOriginalWordWrap', () => {
       wordWrapOverride2: 'off'
     })
     expect(modified.updateOptions).toHaveBeenCalledWith({ wordWrap: 'off' })
+  })
+
+  it('reapplies the original pane wrap after Monaco clears it, and stops after dispose', async () => {
+    const root = {
+      classList: { contains: (name: string) => name === 'side-by-side' }
+    }
+    const { diffEditor, original } = fakeDiffEditor(root)
+    const disposable = syncDiffEditorOriginalWordWrap(diffEditor, true)
+    original.updateOptions.mockClear()
+
+    original.updateOptions({ wordWrapOverride2: 'off' })
+    original.emitDidChangeConfiguration()
+    await Promise.resolve()
+
+    expect(original.getRawOptions().wordWrapOverride2).toBe('inherit')
+
+    original.updateOptions.mockClear()
+    disposable.dispose()
+    original.updateOptions({ wordWrapOverride2: 'off' })
+    original.emitDidChangeConfiguration()
+    await Promise.resolve()
+
+    expect(original.getRawOptions().wordWrapOverride2).toBe('off')
+    expect(original.updateOptions).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the hidden original pane unwrapped while Monaco is inline', async () => {
+    const root = { classList: { contains: () => false } }
+    const { diffEditor, original } = fakeDiffEditor(root)
+
+    syncDiffEditorOriginalWordWrap(diffEditor, true)
+
+    expect(original.getRawOptions().wordWrapOverride2).toBe('off')
+
+    original.updateOptions({ wordWrapOverride2: 'inherit' })
+    original.emitDidChangeConfiguration()
+    await Promise.resolve()
+
+    expect(original.getRawOptions().wordWrapOverride2).toBe('off')
   })
 })

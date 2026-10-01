@@ -15,15 +15,67 @@ export function buildDiffEditorWordWrapOptions(
   }
 }
 
+type Disposable = { dispose: () => void }
+
+function diffEditorIsSideBySide(diffEditor: editor.IStandaloneDiffEditor): boolean {
+  const root = diffEditor.getContainerDomNode?.()
+  // Callers without a container (unit tests) keep the explicit preference.
+  if (!root) {
+    return true
+  }
+  // Why: the construction option stays side-by-side while Monaco drops this class for the narrow inline fallback.
+  return root.classList.contains('side-by-side')
+}
+
 export function syncDiffEditorOriginalWordWrap(
   diffEditor: editor.IStandaloneDiffEditor,
   diffWordWrap: boolean | undefined
-): void {
-  const wrap = diffEditorWordWrapMode(diffWordWrap)
-  // Why: Monaco's narrow inline fallback sets the original pane's wordWrapOverride2 to off and never clears it (#24199).
-  diffEditor.getOriginalEditor().updateOptions({
-    wordWrap: wrap,
-    wordWrapOverride2: wrap === 'on' ? 'inherit' : 'off'
-  })
-  diffEditor.getModifiedEditor().updateOptions({ wordWrap: wrap })
+): Disposable {
+  const originalEditor = diffEditor.getOriginalEditor()
+  const modifiedEditor = diffEditor.getModifiedEditor()
+  let disposed = false
+  let scheduled = false
+
+  const apply = (): void => {
+    if (disposed) {
+      return
+    }
+    const wrap = diffEditorWordWrapMode(diffWordWrap)
+    // Why: inline layout hides the original editor and sets wordWrapOverride2 to off.
+    // Side-by-side only writes wordWrapOverride1, so the off value sticks after a widen (#24199).
+    const showOriginal = diffEditorIsSideBySide(diffEditor)
+    const override = wrap === 'on' && showOriginal ? 'inherit' : 'off'
+    const originalOptions = originalEditor.getRawOptions()
+    if (originalOptions.wordWrap !== wrap || originalOptions.wordWrapOverride2 !== override) {
+      originalEditor.updateOptions({ wordWrap: wrap, wordWrapOverride2: override })
+    }
+    if (modifiedEditor.getRawOptions().wordWrap !== wrap) {
+      modifiedEditor.updateOptions({ wordWrap: wrap })
+    }
+  }
+
+  // Why: Monaco updates the inner editor and the side-by-side class in the same turn.
+  // Applying on the next microtask sees the class after that turn settles.
+  const schedule = (): void => {
+    if (disposed || scheduled) {
+      return
+    }
+    scheduled = true
+    queueMicrotask(() => {
+      scheduled = false
+      apply()
+    })
+  }
+
+  apply()
+  const originalSub = originalEditor.onDidChangeConfiguration(schedule)
+  const modifiedSub = modifiedEditor.onDidChangeConfiguration(schedule)
+
+  return {
+    dispose: () => {
+      disposed = true
+      originalSub.dispose()
+      modifiedSub.dispose()
+    }
+  }
 }
