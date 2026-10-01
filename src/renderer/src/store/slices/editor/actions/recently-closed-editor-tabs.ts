@@ -23,6 +23,34 @@ import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../../../shared/layout-owner
 import { afterPendingTabs, hasPendingEntityTab } from '@/runtime/layout-owner-pending-tabs'
 import type { AppState } from '../../../types'
 
+// Why: files.stat waits up to 15s, but the runtime drops calls once 256 are
+// pending. Four at a time still overlaps the slow checks without filling that queue.
+const UNTITLED_CLOSE_STAT_CONCURRENCY = 4
+
+async function mapAtConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = []
+  let cursor = 0
+  async function worker(): Promise<void> {
+    while (cursor < items.length) {
+      const index = cursor
+      cursor += 1
+      const item = items[index]
+      if (item === undefined) {
+        return
+      }
+      results[index] = await run(item)
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(limit, 0), items.length) }, () => worker())
+  )
+  return results
+}
+
 export function createRecentlyClosedEditorTabs(
   set: EditorSet,
   get: EditorGet
@@ -266,11 +294,12 @@ export function createRecentlyClosedEditorTabs(
         })
         if (typeof window !== 'undefined') {
           void (async () => {
-            // Start every check together. A remote stat can take the full timeout,
-            // and waiting for one before the next stalls reopen for the rest.
+            // A remote stat can take the full timeout, so the checks overlap. The
+            // runtime rejects calls past its pending-request cap, and a rejected
+            // check looks like a kept file. Stay under that cap.
             const files = [...untitledToDelete].toReversed().filter((file) => !kept.has(file.id))
-            const deleted = await Promise.all(
-              files.map((file) => deleteUntouchedUntitledFile(get, file))
+            const deleted = await mapAtConcurrency(files, UNTITLED_CLOSE_STAT_CONCURRENCY, (file) =>
+              deleteUntouchedUntitledFile(get, file)
             )
             files.forEach((file, index) => {
               if (deleted[index]) {
