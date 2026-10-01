@@ -82,6 +82,16 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
         if (this.headlessTerminals.get(ptyId) !== state) {
           return
         }
+        // Why AFTER the seed write: a renderer buffer omits kitty pushes, same as a
+        // provider snapshot. The proven flags ride beside the payload. Without this
+        // reapply, a model seeded from the mounted renderer reports 0 and an
+        // interrupt falls back to ETX while the TUI is still in the protocol.
+        if (typeof rendered.kittyKeyboardFlags === 'number') {
+          await state.emulator.applyKittyKeyboardFlags(rendered.kittyKeyboardFlags)
+          if (this.headlessTerminals.get(ptyId) !== state) {
+            return
+          }
+        }
         const ptyDims = this.getTerminalSize(ptyId)
         if (ptyDims && (ptyDims.cols !== rendered.cols || ptyDims.rows !== rendered.rows)) {
           state.emulator.resize(ptyDims.cols, ptyDims.rows)
