@@ -113,6 +113,19 @@ describe('selectBranchPrefixInput', () => {
     expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'jdoe')).toBe('jdoe')
   })
 
+  it('lowercases a git-username prefix so it cannot collide with an existing ref directory', () => {
+    expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'EurFelux')).toBe('eurfelux')
+  })
+
+  it('leaves a custom prefix in the case the user typed', () => {
+    expect(
+      selectBranchPrefixInput(
+        { branchPrefix: 'custom', branchPrefixCustom: 'EurFelux' },
+        'eurfelux'
+      )
+    ).toBe('EurFelux')
+  })
+
   it('returns null for git-username when no username is available', () => {
     expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, null)).toBeNull()
   })
