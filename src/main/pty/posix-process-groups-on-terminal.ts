@@ -1,9 +1,10 @@
+import { statSync } from 'node:fs'
 import { runProcessSync, type ProcessResult } from '../../shared/child-process/run-process'
 
 const PROCESS_TABLE_TIMEOUT_MS = 1_000
 const PROCESS_TABLE_MAX_BYTES = 1024 * 1024
-// Same columns as the dialect probe. Explicit widths keep BusyBox from merging device numbers.
-const ALL_PROCESS_ARGS = [
+// Explicit widths keep BusyBox from merging device numbers into the next column.
+export const POSIX_PS_ALL_PROCESS_ARGS = [
   '-e',
   '-o',
   'pid=PROCESS_ID,pgid=PROCESS_GID,tty=TERMINAL_DEVICE_NUMBER,stat=PROCESS_STATE'
@@ -15,7 +16,7 @@ export function resetPosixTerminalSelectionForTests(): void {
   terminalSelectionUnsupported = false
 }
 
-function processTableSpec(args: string[]) {
+export function posixProcessTableSpec(args: string[]) {
   return {
     program: 'ps',
     args,
@@ -25,26 +26,29 @@ function processTableSpec(args: string[]) {
   }
 }
 
-function readProcessTableResult(result: ProcessResult): string {
+export function readPosixProcessTableOutput(result: ProcessResult): string {
   if (result.code !== 0 || result.timedOut || result.outputTruncated) {
     throw new Error('PTY process table is unavailable')
   }
   return result.stdout
 }
 
-function rejectsTerminalSelector(result: ProcessResult): boolean {
+export function rejectedPosixPsSelector(result: ProcessResult): 'p' | 't' | null {
   const rejectedOption =
     /^ps: (?:invalid|illegal|unrecognized) option(?: -- |: | )['"]?-?([pt])['"]?\s*$/m.exec(
       result.stderr ?? ''
     )?.[1]
-  return (
-    result.code !== null &&
-    result.code !== 0 &&
-    !result.signal &&
-    !result.timedOut &&
-    !result.outputTruncated &&
-    rejectedOption === 't'
-  )
+  if (
+    result.code === null ||
+    result.code === 0 ||
+    result.signal ||
+    result.timedOut ||
+    result.outputTruncated ||
+    (rejectedOption !== 'p' && rejectedOption !== 't')
+  ) {
+    return null
+  }
+  return rejectedOption
 }
 
 function isSafeTerminalName(ptsName: string): boolean {
@@ -62,14 +66,51 @@ function parseProcessGroupIds(output: string): number[] {
   return [...groups]
 }
 
-function terminalNames(ptsName: string): Set<string> {
-  const base = ptsName.slice(ptsName.lastIndexOf('/') + 1)
-  return new Set([ptsName, base])
+/** BusyBox prints st_rdev with glibc's major,minor split, not the path. */
+export function posixBusyboxTtyName(rdev: number): string | null {
+  if (!Number.isSafeInteger(rdev) || rdev < 0) {
+    return null
+  }
+  const dev = BigInt(rdev)
+  const major = ((dev >> 8n) & 0xfffn) | ((dev >> 32n) & ~0xfffn)
+  const minor = (dev & 0xffn) | ((dev >> 12n) & ~0xffn)
+  return `${major},${minor}`
 }
 
-function groupsFromFullTable(ptsName: string): string {
-  const table = readProcessTableResult(runProcessSync(processTableSpec(ALL_PROCESS_ARGS)))
-  const names = terminalNames(ptsName)
+function characterDeviceNumber(ptsName: string): number | null {
+  try {
+    const stats = statSync(ptsName)
+    return stats.isCharacterDevice() ? stats.rdev : null
+  } catch {
+    return null
+  }
+}
+
+function terminalNames(ptsName: string, rdev: number | null): Set<string> {
+  const names = new Set<string>([ptsName])
+  const base = ptsName.slice(ptsName.lastIndexOf('/') + 1)
+  if (base) {
+    names.add(base)
+  }
+  // procps prints the path under /dev, so /dev/pts/100 is pts/100, not 100.
+  if (ptsName.startsWith('/dev/')) {
+    const relative = ptsName.slice('/dev/'.length)
+    if (relative) {
+      names.add(relative)
+    }
+  }
+  const deviceName = rdev === null ? null : posixBusyboxTtyName(rdev)
+  if (deviceName) {
+    names.add(deviceName)
+  }
+  return names
+}
+
+function groupsFromFullTable(ptsName: string, rdev: number | null): string {
+  const table = readPosixProcessTableOutput(
+    runProcessSync(posixProcessTableSpec(POSIX_PS_ALL_PROCESS_ARGS))
+  )
+  const names = terminalNames(ptsName, rdev)
   const groups: number[] = []
   for (const line of table.split(/\r?\n/)) {
     const match = /^\s*(\d+)\s+(\d+)\s+(\S+)/.exec(line)
@@ -84,28 +125,36 @@ function groupsFromFullTable(ptsName: string): string {
   return groups.join('\n')
 }
 
-function readGroupsOnTerminal(ptsName: string): string {
+function readGroupsOnTerminal(
+  ptsName: string,
+  readDeviceNumber: (ptsName: string) => number | null
+): string {
   if (terminalSelectionUnsupported) {
-    return groupsFromFullTable(ptsName)
+    return groupsFromFullTable(ptsName, readDeviceNumber(ptsName))
   }
-  const selected = runProcessSync(processTableSpec(['-t', ptsName, '-o', 'pgid=']))
-  if (!rejectsTerminalSelector(selected)) {
-    return readProcessTableResult(selected)
+  const selected = runProcessSync(posixProcessTableSpec(['-t', ptsName, '-o', 'pgid=']))
+  if (rejectedPosixPsSelector(selected) !== 't') {
+    return readPosixProcessTableOutput(selected)
   }
   terminalSelectionUnsupported = true
-  return groupsFromFullTable(ptsName)
+  return groupsFromFullTable(ptsName, readDeviceNumber(ptsName))
 }
 
 /** Groups still attached to this PTY. `null` means the table could not be read. */
 export function readPosixProcessGroupsOnTerminal(
   ptsName: string,
-  deps: { readProcessTable?: (ptsName: string) => string } = {}
+  deps: {
+    readProcessTable?: (ptsName: string) => string
+    characterDeviceNumber?: (ptsName: string) => number | null
+  } = {}
 ): number[] | null {
   if (!isSafeTerminalName(ptsName)) {
     return null
   }
   try {
-    const output = (deps.readProcessTable ?? readGroupsOnTerminal)(ptsName)
+    const output = deps.readProcessTable
+      ? deps.readProcessTable(ptsName)
+      : readGroupsOnTerminal(ptsName, deps.characterDeviceNumber ?? characterDeviceNumber)
     return parseProcessGroupIds(output)
   } catch {
     return null
