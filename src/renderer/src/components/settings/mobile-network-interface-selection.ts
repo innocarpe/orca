@@ -1,4 +1,5 @@
 import {
+  isThunderboltBridgeInterface,
   isVirtualBridgeInterface,
   selectAutoAdvertisedPairingAddress
 } from '../../../../shared/pairing-address-auto-selection'
@@ -32,15 +33,17 @@ export function selectRefreshedNetworkAddress(
   // Read only once classification needs a host. An empty refresh must not require it.
   const hostPlatform = platform ?? readPairingHostPlatform()
   const currentInterface = interfaces.find((iface) => iface.address === currentAddress)
-  if (
-    currentInterface &&
-    (currentAddressWasExplicitlySelected ||
-      !isVirtualBridgeInterface(
-        currentInterface.name,
-        currentInterface.hasDefaultRoute,
-        hostPlatform
-      ))
-  ) {
+  // An auto-selected Thunderbolt address is only the fallback while it is the only
+  // direct link. Ethernet showing up later must replace it. An explicit pick stays.
+  const autoSelectedReachableAddress =
+    currentInterface !== undefined &&
+    !isVirtualBridgeInterface(
+      currentInterface.name,
+      currentInterface.hasDefaultRoute,
+      hostPlatform
+    ) &&
+    !isThunderboltBridgeInterface(currentInterface.name, hostPlatform)
+  if (currentInterface && (currentAddressWasExplicitlySelected || autoSelectedReachableAddress)) {
     return currentAddress
   }
   // Why: shared with main so the picker never shows a default the QR didn't advertise. Undefined on
