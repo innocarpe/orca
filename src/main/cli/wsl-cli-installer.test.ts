@@ -467,6 +467,21 @@ describe('WslCliInstaller', () => {
       { encoding: 'utf8' }
     )
     expect(rewritten).toBe('\\\\wsl$\\Ubuntu-24.04\\tmp\\orca-wsl-bridge.ps1')
+    const rewriteBridgePath = (windowsPath: string): string =>
+      execFileSync(
+        'bash',
+        [
+          '-c',
+          `ORCA_BRIDGE_PS1_WIN='${windowsPath}'\n${bridgeUncRewrite}\nprintf '%s' "$ORCA_BRIDGE_PS1_WIN"`
+        ],
+        { encoding: 'utf8' }
+      )
+    expect(rewriteBridgePath('\\\\wsl$\\Ubuntu-24.04\\tmp\\orca-wsl-bridge.ps1')).toBe(
+      '\\\\wsl$\\Ubuntu-24.04\\tmp\\orca-wsl-bridge.ps1'
+    )
+    expect(rewriteBridgePath('C:\\Users\\alice\\orca-wsl-bridge.ps1')).toBe(
+      'C:\\Users\\alice\\orca-wsl-bridge.ps1'
+    )
   })
 
 })
