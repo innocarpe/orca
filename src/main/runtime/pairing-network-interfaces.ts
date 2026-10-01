@@ -85,7 +85,10 @@ function rankInterface({ name, address, hasDefaultRoute }: NetworkInterface): nu
   // Why: Thunderbolt Bridge is a real link, but it is not the phone's default. Keep it behind
   // LAN and IPv6 in the picker order so `bridge0` does not become interfaces[0] while en0 is up.
   const bridgePenalty =
-    isVirtualBridgeInterface(name, hasDefaultRoute) || isThunderboltBridgeInterface(name) ? 2 : 0
+    isVirtualBridgeInterface(name, hasDefaultRoute, process.platform) ||
+    isThunderboltBridgeInterface(name, process.platform)
+      ? 2
+      : 0
   return (address.includes(':') ? 2 : 1) + bridgePenalty
 }
 
@@ -95,7 +98,8 @@ export async function getDefaultPairingAddress(
 ): Promise<string | null> {
   return (
     selectAutoAdvertisedPairingAddress(
-      await getPairingNetworkInterfaces(listenerHost, getDefaultRouteInterfaceNames)
+      await getPairingNetworkInterfaces(listenerHost, getDefaultRouteInterfaceNames),
+      process.platform
     ) ?? null
   )
 }
