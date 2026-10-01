@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  macTrafficLightChromeForWindow,
   macTrafficLightsWidth,
   shouldRenderDesktopWindowChrome,
   shouldShowMacTrafficLightPad
 } from './desktop-window-chrome'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('shouldRenderDesktopWindowChrome', () => {
   it('renders custom chrome for frameless desktop Linux and Windows windows', () => {
@@ -40,6 +45,20 @@ describe('mac traffic-light inset', () => {
     expect(
       shouldShowMacTrafficLightPad({ isMac: true, isWebClient: true, isFullScreen: true })
     ).toBe(false)
+  })
+
+  it('reads the paired web flag for both the inset width and the pad', () => {
+    vi.stubGlobal('__ORCA_WEB_CLIENT__', true)
+    expect(macTrafficLightChromeForWindow({ isMac: true, isFullScreen: false })).toEqual({
+      width: '0px',
+      showPad: false
+    })
+
+    vi.stubGlobal('__ORCA_WEB_CLIENT__', false)
+    expect(macTrafficLightChromeForWindow({ isMac: true, isFullScreen: false })).toEqual({
+      width: '80px',
+      showPad: true
+    })
   })
 
   it('does not reserve a traffic-light inset on Windows or Linux', () => {
