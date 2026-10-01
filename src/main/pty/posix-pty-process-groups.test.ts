@@ -461,6 +461,21 @@ describe('readPosixProcessGroupsOnTerminal', () => {
     ).toEqual([])
   })
 
+  it('uses the full process table when ps rejects -t', () => {
+    runProcessSyncMock
+      .mockReturnValueOnce(unsupportedSelection('ps: unrecognized option: t\n'))
+      .mockReturnValueOnce({
+        code: 0,
+        signal: null,
+        stdout: '100 4242 ttys001\n200 4243 ttys002\n',
+        stderr: '',
+        timedOut: false
+      })
+
+    expect(readPosixProcessGroupsOnTerminal('/dev/ttys001')).toEqual([4242])
+    expect(runProcessSyncMock.mock.calls[1]?.[0]?.args).toEqual(ALL_PROCESS_ARGS)
+  })
+
   it('returns null for an unsafe terminal name or an unreadable table', () => {
     expect(readPosixProcessGroupsOnTerminal('-t')).toBeNull()
     expect(readPosixProcessGroupsOnTerminal('/dev/ttys001 ../x')).toBeNull()
