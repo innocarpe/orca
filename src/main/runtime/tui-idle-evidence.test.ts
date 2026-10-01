@@ -11,6 +11,7 @@ import {
 import {
   evaluateTuiIdle,
   hasFreshDoneFirstPartyStatus,
+  quietForegroundLaneForTerminalAgent,
   hasQuietReadyScreen,
   isTuiIdleReadyVerdict,
   nameOnlyIdleNeedsCorroboration,
@@ -178,6 +179,11 @@ describe('evaluateTuiIdle ranking', () => {
 
   // Why: a launched agent whose title Orca cannot classify has no other lane; closing this
   // one for every known agent left `worker start` failing at agent_readiness (STA-7440).
+  it('leaves the lane open for recognized dsb instead of reading a missing launch config', () => {
+    expect(quietForegroundLaneForTerminalAgent('dsb')).toBe('open')
+    expect(quietForegroundLaneForTerminalAgent('codex')).toBe('closed')
+  })
+
   it('keeps the quiet-foreground lane for an agent with no other rest signal, after it paints', () => {
     for (const agent of ['amp', 'goose', 'crush', 'kimi', 'qwen-code', 'rovo', 'aug'] as const) {
       expect(evaluateTuiIdle(input({ ...noMuse, agent }))).toEqual({
