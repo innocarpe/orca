@@ -79,7 +79,13 @@ export const svelteMonarchLanguage: Monaco.languages.IMonarchLanguage = {
       ],
       [/<style(?=\s|>)/, { token: 'tag', switchTo: '@styleOpen.css', nextEmbedded: '@pop' }],
       [/<!--/, { token: 'comment', switchTo: '@comment', nextEmbedded: '@pop' }],
-      [/\{\s*\/(if|each|await|key|snippet)\s*\}/, 'keyword.control'],
+      // A block closer has no expression. It still has to pop the html embed:
+      // a string token is invisible to `_nestedTokenize`, so `{/if}` is swallowed
+      // as HTML. Root keeps the same closer without a pop — nothing is embedded yet.
+      [
+        /\{\s*\/(if|each|await|key|snippet)\s*\}/,
+        { token: 'keyword.control', switchTo: '@markupReenter', nextEmbedded: '@pop' }
+      ],
       [
         /\{\s*#(if|each|await|key|snippet)\b/,
         { token: 'keyword.control', switchTo: '@svelteBlockExpressionEnter', nextEmbedded: '@pop' }
