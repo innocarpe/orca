@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assertBranchPrefixValid,
   getBranchPrefixIssue,
+  gitUsernamePrefixOmission,
   normalizeBranchPrefix,
   selectBranchPrefixInput
 } from './branch-prefix'
@@ -119,6 +120,11 @@ describe('selectBranchPrefixInput', () => {
 
   it('drops a mixed-case login whose lowercase form git rejects', () => {
     expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'Alice.LOCK')).toBeNull()
+    expect(gitUsernamePrefixOmission('Alice.LOCK')).toBe('lowercase-lock')
+    expect(gitUsernamePrefixOmission('alice.lock')).toBeNull()
+    expect(gitUsernamePrefixOmission('team x')).toBeNull()
+    expect(gitUsernamePrefixOmission('EurFelux')).toBeNull()
+    expect(gitUsernamePrefixOmission(null)).toBeNull()
   })
 
   it('returns an already-lowercase invalid login so settings can warn', () => {

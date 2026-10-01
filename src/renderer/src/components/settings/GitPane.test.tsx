@@ -65,6 +65,7 @@ describe('GitPane branch prefix feedback', () => {
   it('warns in git-username mode when the displayed username is invalid', () => {
     const html = renderGitPane(gitUsernamePrefixSettings(), 'team x')
     expect(html).toContain('Prefix cannot contain spaces')
+    expect(html).not.toContain('which Git rejects')
   })
 
   it('previews in git-username mode when the displayed username is valid', () => {
@@ -80,7 +81,9 @@ describe('GitPane branch prefix feedback', () => {
 
   it('does not preview a git username whose lowercase form is not a valid ref', () => {
     const html = renderGitPane(gitUsernamePrefixSettings(), 'Alice.LOCK')
-    expect(html).toContain('No prefix will be applied')
+    expect(html).toContain(
+      'No prefix will be applied because lowercasing this username ends in .lock, which Git rejects.'
+    )
     expect(html).not.toContain('Alice.LOCK')
     expect(html).not.toContain('alice.lock')
   })

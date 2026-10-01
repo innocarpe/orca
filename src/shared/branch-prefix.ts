@@ -17,6 +17,30 @@ export type BranchPrefixSettings = {
  * the prefix. Keeping the original login creates `refs/heads/Alice.LOCK/`, which
  * occupies the `alice.lock` lockfile path on a case-insensitive filesystem.
  */
+/** A configured login was not used because its lowercase form is a rejected ref. */
+export type GitUsernamePrefixOmission = 'lowercase-lock'
+
+/**
+ * Why Settings omits a git username. Only a mixed-case login whose lowercase
+ * form git rejects (`.LOCK` → `.lock`) is omitted. An already-lowercase invalid
+ * login stays visible so the existing character warning still explains it.
+ */
+export function gitUsernamePrefixOmission(
+  gitUsername: string | null
+): GitUsernamePrefixOmission | null {
+  if (gitUsername === null) {
+    return null
+  }
+  const lower = gitUsername.toLowerCase()
+  if (lower === gitUsername || getBranchPrefixIssue(lower) === null) {
+    return null
+  }
+  if (getBranchPrefixIssue(gitUsername) !== null) {
+    return null
+  }
+  return 'lowercase-lock'
+}
+
 export function selectBranchPrefixInput(
   settings: BranchPrefixSettings,
   gitUsername: string | null
@@ -35,7 +59,7 @@ export function selectBranchPrefixInput(
       // case-insensitive filesystem, so the prefix is omitted. An
       // already-lowercase invalid login is returned unchanged so settings can
       // show the rejection instead of pretending no username was configured.
-      if (lower !== gitUsername && getBranchPrefixIssue(gitUsername) === null) {
+      if (gitUsernamePrefixOmission(gitUsername) === 'lowercase-lock') {
         return null
       }
       return lower

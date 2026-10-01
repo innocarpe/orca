@@ -9,7 +9,10 @@ import { Switch } from '../ui/switch'
 import { useAppStore } from '../../store'
 import { getGitPaneSearchEntries } from './git-search'
 import { SearchableSetting } from './SearchableSetting'
-import { selectBranchPrefixInput } from '../../../../shared/branch-prefix'
+import {
+  gitUsernamePrefixOmission,
+  selectBranchPrefixInput
+} from '../../../../shared/branch-prefix'
 import { BranchPrefixFeedback } from './BranchPrefixFeedback'
 import { matchesSettingsSearch } from './settings-search'
 import { AutoRenameBranchFromWorkSetting } from './AutoRenameBranchFromWorkSetting'
@@ -246,7 +249,18 @@ export function GitPane({
             readOnly={settings.branchPrefix === 'git-username'}
           />
         )}
-        {isBranchPrefixInputMode && <BranchPrefixFeedback rawPrefix={branchPrefixInputValue} />}
+        {isBranchPrefixInputMode && (
+          <BranchPrefixFeedback
+            rawPrefix={branchPrefixInputValue}
+            omission={
+              settings.branchPrefix === 'git-username'
+                ? gitUsernamePrefixOmission(
+                    displayedGitUsername.trim() ? displayedGitUsername : null
+                  )
+                : null
+            }
+          />
+        )}
       </SearchableSetting>
     ) : null,
     matchesSettingsSearch(searchQuery, {
