@@ -72,6 +72,8 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
       return
     }
     if (pendingAgentStatusEvents.length === 0) {
+      // A clear can empty the queue without entering the flush loop below.
+      releaseAgentStatusStartupSnapshotReplayHold(false, pendingAgentStatusEvents)
       return
     }
     isFlushingAgentStatuses = true
@@ -101,7 +103,8 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
         pendingAgentStatusRetryTimer = null
       }
       releaseAgentStatusStartupSnapshotReplayHold(
-        pendingAgentStatusEvents.some((event) => event.replay)
+        pendingAgentStatusEvents.some((event) => event.replay),
+        pendingAgentStatusEvents
       )
     } finally {
       isFlushingAgentStatuses = false
@@ -150,7 +153,7 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
         const results = applyAgentStatusBatch(entries.map((data) => ({ data, replay: true })))
         // Why: an unroutable snapshot entry is replayed later. Hold the reattach gate until then (#24291).
         if (results.some((result) => result === 'pending')) {
-          holdAgentStatusStartupSnapshotForReplay(snapshotEpoch)
+          holdAgentStatusStartupSnapshotForReplay(snapshotEpoch, pendingAgentStatusEvents)
         }
         const getMigrationUnsupportedSnapshot =
           window.api.agentStatus.getMigrationUnsupportedSnapshot
@@ -182,7 +185,9 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
       })
       .finally(() => {
         const replayStillQueued = pendingAgentStatusEvents.some((event) => event.replay)
-        if (releaseAgentStatusStartupSnapshotReplayHold(replayStillQueued)) {
+        if (
+          releaseAgentStatusStartupSnapshotReplayHold(replayStillQueued, pendingAgentStatusEvents)
+        ) {
           return
         }
         settleAgentStatusStartupSnapshot(snapshotEpoch)

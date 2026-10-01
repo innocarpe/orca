@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_STATUS_STARTUP_SNAPSHOT_WAIT_MS,
   armAgentStatusStartupSnapshot,
+  holdAgentStatusStartupSnapshotForReplay,
+  releaseAgentStatusStartupSnapshotReplayHold,
   resetAgentStatusStartupSnapshotGate,
   settleAgentStatusStartupSnapshot,
   waitForAgentStatusStartupSnapshot
@@ -44,6 +46,24 @@ describe('agent status startup snapshot gate', () => {
     expect(settled).toBe(false)
 
     settleAgentStatusStartupSnapshot(second)
+    await waiting
+    expect(settled).toBe(true)
+  })
+
+  it('does not let a different queue release a replay hold', async () => {
+    const epoch = armAgentStatusStartupSnapshot()
+    const owner = {}
+    holdAgentStatusStartupSnapshotForReplay(epoch, owner)
+    let settled = false
+    const waiting = waitForAgentStatusStartupSnapshot().then(() => {
+      settled = true
+    })
+
+    expect(releaseAgentStatusStartupSnapshotReplayHold(false, {})).toBe(false)
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    expect(releaseAgentStatusStartupSnapshotReplayHold(false, owner)).toBe(true)
     await waiting
     expect(settled).toBe(true)
   })

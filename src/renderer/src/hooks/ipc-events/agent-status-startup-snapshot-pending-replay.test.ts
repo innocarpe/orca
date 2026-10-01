@@ -32,10 +32,23 @@ function routedTabs(state: StoreLike): void {
   }
 }
 
-async function bootBridge(storeState: StoreLike): Promise<{
+async function flushMicrotasks(): Promise<void> {
+  for (let step = 0; step < 12; step += 1) {
+    await Promise.resolve()
+  }
+}
+
+async function bootBridge(
+  storeState: StoreLike,
+  options?: {
+    getSnapshot?: () => Promise<unknown>
+    clearHandler?: { current: ((data: unknown) => void) | null }
+  }
+): Promise<{
   publish: (mutate: (state: StoreLike) => void) => void
   waitForSnapshot: () => Promise<void>
   dispose: () => void
+  registerReplacement: () => { dispose: () => void }
 }> {
   const subscribeListenerRef: { current: StoreSubscribeListener | null } = { current: null }
   vi.doMock('../../store', () => ({
@@ -57,7 +70,17 @@ async function bootBridge(storeState: StoreLike): Promise<{
     api: {
       agentStatus: {
         onSet: () => () => {},
-        getSnapshot: () => Promise.resolve([SNAPSHOT_ENTRY])
+        onClear: (handler: (data: unknown) => void) => {
+          if (options?.clearHandler) {
+            options.clearHandler.current = handler
+          }
+          return () => {
+            if (options?.clearHandler) {
+              options.clearHandler.current = null
+            }
+          }
+        },
+        getSnapshot: options?.getSnapshot ?? (() => Promise.resolve([SNAPSHOT_ENTRY]))
       }
     }
   })
@@ -75,7 +98,15 @@ async function bootBridge(storeState: StoreLike): Promise<{
     dispose: () => {
       bridge.unsubscribeStore()
       bridge.disposeAsyncState()
-      gate.resetAgentStatusStartupSnapshotGate()
+    },
+    registerReplacement: () => {
+      const replacement = registerAgentStatusIpcBridge([])
+      return {
+        dispose: () => {
+          replacement.unsubscribeStore()
+          replacement.disposeAsyncState()
+        }
+      }
     }
   }
 }
@@ -102,14 +133,13 @@ describe('startup snapshot gate waits for a pending replay', () => {
     installMockAgentStatusTransaction(storeState)
 
     const harness = await bootBridge(storeState)
-    await Promise.resolve()
-    await Promise.resolve()
-
     let released = false
     const waiting = harness.waitForSnapshot().then(() => {
       released = true
     })
-    await Promise.resolve()
+    // The snapshot `.finally` has to run before this assertion. A no-op hold
+    // settles in that turn, so the gate must still be closed after it.
+    await flushMicrotasks()
     expect(released).toBe(false)
 
     harness.publish(routedTabs)
@@ -125,6 +155,7 @@ describe('startup snapshot gate waits for a pending replay', () => {
     vi.resetModules()
     vi.useFakeTimers()
     vi.setSystemTime(1_700_000_100_000)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const storeState = buildStoreState({
       workspaceSessionReady: true,
       settings: { terminalFontSize: 13, notifications: { enabled: false } }
@@ -134,6 +165,80 @@ describe('startup snapshot gate waits for a pending replay', () => {
 
     const harness = await bootBridge(storeState)
     await harness.waitForSnapshot()
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+    harness.dispose()
+  })
+
+  it('keeps a replacement bridge hold closed when the disposed snapshot settles', async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    vi.setSystemTime(1_700_000_100_000)
+    let resolveFirst: (entries: unknown[]) => void = () => {}
+    const firstSnapshot = new Promise<unknown[]>((resolve) => {
+      resolveFirst = resolve
+    })
+    let snapshots = 0
+    const storeState = buildStoreState({
+      setAgentStatuses: vi.fn(() => []),
+      workspaceSessionReady: true,
+      settings: { terminalFontSize: 13, notifications: { enabled: false } }
+    })
+    installMockAgentStatusTransaction(storeState)
+
+    const harness = await bootBridge(storeState, {
+      getSnapshot: () => {
+        snapshots += 1
+        return snapshots === 1 ? firstSnapshot : Promise.resolve([SNAPSHOT_ENTRY])
+      }
+    })
+    await flushMicrotasks()
+    harness.dispose()
+
+    const replacement = harness.registerReplacement()
+    let released = false
+    const waiting = harness.waitForSnapshot().then(() => {
+      released = true
+    })
+    await flushMicrotasks()
+    expect(released).toBe(false)
+
+    resolveFirst([SNAPSHOT_ENTRY])
+    await flushMicrotasks()
+    expect(released).toBe(false)
+
+    harness.publish(routedTabs)
+    await waiting
+    expect(released).toBe(true)
+    replacement.dispose()
+    harness.dispose()
+  })
+
+  it('releases the hold when a clear drops the queued replay entry', async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    vi.setSystemTime(1_700_000_100_000)
+    const clearHandler: { current: ((data: unknown) => void) | null } = { current: null }
+    const storeState = buildStoreState({
+      setAgentStatuses: vi.fn(() => []),
+      workspaceSessionReady: true,
+      settings: { terminalFontSize: 13, notifications: { enabled: false } },
+      removeAgentStatus: vi.fn()
+    })
+    installMockAgentStatusTransaction(storeState)
+
+    const harness = await bootBridge(storeState, { clearHandler })
+    let released = false
+    const waiting = harness.waitForSnapshot().then(() => {
+      released = true
+    })
+    await flushMicrotasks()
+    expect(released).toBe(false)
+    expect(clearHandler.current).toEqual(expect.any(Function))
+
+    clearHandler.current?.({ paneKey: FUTURE_PANE_KEY })
+    await waiting
+    expect(released).toBe(true)
     harness.dispose()
   })
 })

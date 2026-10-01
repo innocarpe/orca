@@ -13,18 +13,29 @@ type PendingGate = {
 let epoch = 0
 let gate: IdleGate | SettledGate | PendingGate = { phase: 'idle' }
 let replayHoldEpoch: number | null = null
+let replayHoldOwner: object | null = null
 
-/** Keeps the startup gate closed while a snapshot entry is waiting to be replayed. */
-export function holdAgentStatusStartupSnapshotForReplay(armedEpoch: number): void {
+/**
+ * Keeps the startup gate closed while a snapshot entry is waiting to be replayed.
+ * `owner` is the queue that armed the hold, so a disposed bridge cannot settle a newer one.
+ */
+export function holdAgentStatusStartupSnapshotForReplay(armedEpoch: number, owner: object): void {
   replayHoldEpoch = armedEpoch
+  replayHoldOwner = owner
 }
 
 /**
  * Settles a held arm once its replay entries are gone. Returns true while that hold exists,
- * including the turn it settles.
+ * including the turn it settles. A different owner leaves the hold untouched.
  */
-export function releaseAgentStatusStartupSnapshotReplayHold(replayStillQueued: boolean): boolean {
+export function releaseAgentStatusStartupSnapshotReplayHold(
+  replayStillQueued: boolean,
+  owner?: object
+): boolean {
   if (replayHoldEpoch === null) {
+    return false
+  }
+  if (owner !== undefined && replayHoldOwner !== owner) {
     return false
   }
   if (replayStillQueued) {
@@ -32,6 +43,7 @@ export function releaseAgentStatusStartupSnapshotReplayHold(replayStillQueued: b
   }
   const held = replayHoldEpoch
   replayHoldEpoch = null
+  replayHoldOwner = null
   settleAgentStatusStartupSnapshot(held)
   return true
 }
@@ -62,6 +74,7 @@ export function settleAgentStatusStartupSnapshot(armedEpoch: number): void {
 /** Drops an in-flight snapshot when the ready window ends, and wakes anyone still waiting. */
 export function resetAgentStatusStartupSnapshotGate(): void {
   replayHoldEpoch = null
+  replayHoldOwner = null
   epoch += 1
   if (gate.phase === 'pending') {
     gate.resolve()
