@@ -2,7 +2,6 @@ import { resolveAgentPromptSubmitDelayForAgent } from '../../shared/agent-prompt
 import type { TerminalAgent } from '../../shared/terminal-agent'
 import { iterateTerminalInputChunks } from '../../shared/terminal-input'
 import type { TerminalInputSource } from './terminal-input-admission'
-import { terminalInterruptBytes } from '../../shared/terminal-interrupt-bytes'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import {
   WRITE_ACCEPTED,
@@ -32,8 +31,7 @@ export class RuntimeTerminalWriter {
       ptyId: string,
       data: string,
       inputKind: TerminalInputKind
-    ) => WriteSettlement | Promise<WriteSettlement>,
-    private readonly getKittyKeyboardFlags: (ptyId: string) => number = () => 0
+    ) => WriteSettlement | Promise<WriteSettlement>
   ) {}
 
   async writeAction(
@@ -81,10 +79,9 @@ export class RuntimeTerminalWriter {
       }
     }
     if (hasSuffix) {
-      const interrupt = action.interrupt
-        ? terminalInterruptBytes(this.getKittyKeyboardFlags(ptyId))
-        : ''
-      const suffix = (action.enter ? '\r' : '') + interrupt
+      // The payload already chose the interrupt bytes. Reading the flags again
+      // after the write delay can send a different sequence than the one counted.
+      const suffix = payload.slice(text.length)
       if (text) {
         // Enter must wait for host ingestion; a flat 500ms cannot cover 16MB.
         await waitForTerminalWriteDelay(
