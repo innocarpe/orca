@@ -12,6 +12,29 @@ type PendingGate = {
 
 let epoch = 0
 let gate: IdleGate | SettledGate | PendingGate = { phase: 'idle' }
+let replayHoldEpoch: number | null = null
+
+/** Keeps the startup gate closed while a snapshot entry is waiting to be replayed. */
+export function holdAgentStatusStartupSnapshotForReplay(armedEpoch: number): void {
+  replayHoldEpoch = armedEpoch
+}
+
+/**
+ * Settles a held arm once its replay entries are gone. Returns true while that hold exists,
+ * including the turn it settles.
+ */
+export function releaseAgentStatusStartupSnapshotReplayHold(replayStillQueued: boolean): boolean {
+  if (replayHoldEpoch === null) {
+    return false
+  }
+  if (replayStillQueued) {
+    return true
+  }
+  const held = replayHoldEpoch
+  replayHoldEpoch = null
+  settleAgentStatusStartupSnapshot(held)
+  return true
+}
 
 /** Opens one in-flight startup snapshot. A second arm while one is open returns the same epoch. */
 export function armAgentStatusStartupSnapshot(): number {
@@ -38,6 +61,7 @@ export function settleAgentStatusStartupSnapshot(armedEpoch: number): void {
 
 /** Drops an in-flight snapshot when the ready window ends, and wakes anyone still waiting. */
 export function resetAgentStatusStartupSnapshotGate(): void {
+  replayHoldEpoch = null
   epoch += 1
   if (gate.phase === 'pending') {
     gate.resolve()

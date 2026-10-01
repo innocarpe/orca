@@ -22,11 +22,15 @@ async function startDeferredSessionReattachAfterStartupSnapshot(
   // Why: registerAgentStatusIpcBridge requests the startup snapshot in the same turn the first
   // restored pane connects. Building the resume command before that snapshot is applied returns
   // null, so the pane opens without its provider session (#24291). Later panes already see it.
+  // Why: a keystroke during this wait must count as a connect still settling. The marker used to
+  // be set only after the wait, so recovery treated the unbound transport as dead and remounted it.
+  session.transportConnectInFlightSince = Date.now()
   await waitForAgentStatusStartupSnapshot()
   if (
     session.disposed ||
     session.deps.paneTransportsRef.current.get(session.pane.id) !== session.transport
   ) {
+    session.transportConnectInFlightSince = null
     return
   }
   session.allowInitialIdleCacheSeed = true

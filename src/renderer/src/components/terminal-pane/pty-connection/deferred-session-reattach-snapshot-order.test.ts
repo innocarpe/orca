@@ -92,6 +92,7 @@ describe('deferred reattach waits for the startup status snapshot', () => {
     await Promise.resolve()
     expect(connect).not.toHaveBeenCalled()
     expect(buildStartup).not.toHaveBeenCalled()
+    expect(session.transportConnectInFlightSince).toEqual(expect.any(Number))
 
     buildStartup.mockReturnValue(RESUME)
     settleAgentStatusStartupSnapshot(epoch)
@@ -122,6 +123,7 @@ describe('deferred reattach waits for the startup status snapshot', () => {
 
     expect(connect).not.toHaveBeenCalled()
     expect(buildStartup).not.toHaveBeenCalled()
+    expect(session.transportConnectInFlightSince).toBeNull()
   })
 
   it('does not connect after the pane transport was replaced during the wait', async () => {
@@ -136,6 +138,7 @@ describe('deferred reattach waits for the startup status snapshot', () => {
     await Promise.resolve()
 
     expect(connect).not.toHaveBeenCalled()
+    expect(session.transportConnectInFlightSince).toBeNull()
   })
 
   it('connects without a resume command when the snapshot does not arrive in time', async () => {

@@ -16,6 +16,8 @@ import type {
 import { shouldRetryPendingAgentStatusesAfterStoreUpdate } from './agent-status-pending-retry-gate'
 import {
   armAgentStatusStartupSnapshot,
+  holdAgentStatusStartupSnapshotForReplay,
+  releaseAgentStatusStartupSnapshotReplayHold,
   resetAgentStatusStartupSnapshotGate,
   settleAgentStatusStartupSnapshot
 } from './agent-status-startup-snapshot-gate'
@@ -98,6 +100,9 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
         globalThis.clearTimeout(pendingAgentStatusRetryTimer)
         pendingAgentStatusRetryTimer = null
       }
+      releaseAgentStatusStartupSnapshotReplayHold(
+        pendingAgentStatusEvents.some((event) => event.replay)
+      )
     } finally {
       isFlushingAgentStatuses = false
       schedulePendingAgentStatusFlush()
@@ -142,7 +147,11 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
         if (!current.workspaceSessionReady) {
           return
         }
-        applyAgentStatusBatch(entries.map((data) => ({ data, replay: true })))
+        const results = applyAgentStatusBatch(entries.map((data) => ({ data, replay: true })))
+        // Why: an unroutable snapshot entry is replayed later. Hold the reattach gate until then (#24291).
+        if (results.some((result) => result === 'pending')) {
+          holdAgentStatusStartupSnapshotForReplay(snapshotEpoch)
+        }
         const getMigrationUnsupportedSnapshot =
           window.api.agentStatus.getMigrationUnsupportedSnapshot
         if (typeof getMigrationUnsupportedSnapshot !== 'function') {
@@ -172,6 +181,10 @@ export function registerAgentStatusIpcBridge(unsubs: (() => void)[]): AgentStatu
         console.warn('[agent-status] failed to load startup snapshot:', err)
       })
       .finally(() => {
+        const replayStillQueued = pendingAgentStatusEvents.some((event) => event.replay)
+        if (releaseAgentStatusStartupSnapshotReplayHold(replayStillQueued)) {
+          return
+        }
         settleAgentStatusStartupSnapshot(snapshotEpoch)
       })
   }
