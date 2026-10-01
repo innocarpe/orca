@@ -85,6 +85,47 @@ export async function shouldUseMergeQueueAutoMerge(
   return mergeMetadata.mergeQueueRequired === true
 }
 
+async function mergeQueueDisallowsAutoMerge(
+  pr: PRAutoMergeIdentity,
+  ownerRepo: GitHubApiRepository | null,
+  ghOptions: GhExecOptions,
+  executionScope?: string
+): Promise<boolean> {
+  if (!ownerRepo || !pr.baseRefName) {
+    return false
+  }
+  const mergeMetadata = await detectRepositoryMergeMetadata(
+    ownerRepo,
+    pr.baseRefName,
+    ghOptions,
+    executionScope
+  )
+  return mergeMetadata.mergeQueueRequired === true && mergeMetadata.autoMergeAllowed === false
+}
+
+async function enqueuePullRequest(
+  pr: PRAutoMergeIdentity,
+  ghOptions: GhExecOptions
+): Promise<void> {
+  const query = `mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID) {
+    enqueuePullRequest(input: {
+      pullRequestId: $pullRequestId,
+      expectedHeadOid: $expectedHeadOid
+    }) {
+      mergeQueueEntry { id }
+    }
+  }`
+  const args = ['api', 'graphql', '-f', `query=${query}`, '-f', `pullRequestId=${pr.id}`]
+  if (pr.headRefOid) {
+    args.push('-f', `expectedHeadOid=${pr.headRefOid}`)
+  }
+  // Why: `gh pr merge --auto` calls enablePullRequestAutoMerge, which GitHub rejects when the repository disables auto-merge.
+  await ghExecFileAsync(args, {
+    ...ghOptions,
+    env: { ...process.env, GH_PROMPT_DISABLED: '1' }
+  })
+}
+
 export async function enablePRAutoMerge(
   prNumber: number,
   method: GitHubPRMergeMethod,
@@ -110,6 +151,13 @@ export async function enablePRAutoMerge(
     return { ok: false, error: 'Could not resolve GitHub pull request ID' }
   }
   const useMergeQueue = await shouldUseMergeQueueAutoMerge(pr, ownerRepo, ghOptions, executionScope)
+  if (
+    useMergeQueue &&
+    (await mergeQueueDisallowsAutoMerge(pr, ownerRepo, ghOptions, executionScope))
+  ) {
+    await enqueuePullRequest(pr, ghOptions)
+    return { ok: true }
+  }
   if (useMergeQueue) {
     await runPRAutoMergeCommand(prNumber, method, ownerRepo, ghOptions)
     return { ok: true }
