@@ -22,3 +22,23 @@ export function pinScrollAnchorWhenCollapsingSection(
   }
   anchor.offset = 0
 }
+
+export function planCombinedDiffSectionToggle<T extends CollapsibleSection>(input: {
+  index: number
+  sections: readonly T[]
+  anchor: VirtualizedScrollAnchor
+}): {
+  next: (sections: readonly T[]) => T[]
+  shouldLoadAfterExpand: boolean
+} {
+  const section = input.sections[input.index]
+  const shouldLoadAfterExpand = section?.collapsed ?? false
+  pinScrollAnchorWhenCollapsingSection(input.anchor, section)
+  return {
+    shouldLoadAfterExpand,
+    next: (sections) =>
+      sections.map((row, index) =>
+        index === input.index ? { ...row, collapsed: !row.collapsed } : row
+      )
+  }
+}
