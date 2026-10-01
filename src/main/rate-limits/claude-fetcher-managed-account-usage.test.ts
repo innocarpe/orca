@@ -422,4 +422,54 @@ describe('fetchClaudeRateLimits', () => {
     )
     expect(usageCall?.[1]?.headers?.Authorization).toBe('Bearer fresh-access')
   })
+
+  it('returns a classified error when inactive OAuth usage is rejected', async () => {
+    setPlatform('linux')
+    tempDir = mkdtempSync(join(tmpdir(), 'orca-claude-fetcher-'))
+    appGetPathMock.mockReturnValue(tempDir)
+    const ownedAuthPath = join(tempDir, 'claude-accounts', 'account-1', 'auth')
+    mkdirSync(ownedAuthPath, { recursive: true })
+    writeFileSync(join(ownedAuthPath, '.orca-managed-claude-auth'), 'account-1\n', 'utf-8')
+    writeFileSync(
+      join(ownedAuthPath, '.credentials.json'),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: 'expired-access',
+          refreshToken: 'stale-refresh',
+          expiresAt: Date.now() - 60_000
+        }
+      }),
+      'utf-8'
+    )
+    netFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
+    )
+    netFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: { message: 'OAuth access token has expired. Re-authenticate to continue.' }
+        }),
+        { status: 401 }
+      )
+    )
+
+    await expect(
+      fetchManagedAccountUsage(
+        { id: 'account-1', managedAuthPath: ownedAuthPath },
+        { allowUsagePanelSupplement: true }
+      )
+    ).resolves.toMatchObject({
+      provider: 'claude',
+      status: 'error',
+      session: null,
+      weekly: null,
+      error: 'OAuth access token has expired. Re-authenticate to continue.',
+      usageMetadata: {
+        failureKind: 'stale-token',
+        attemptedSources: ['oauth'],
+        authProvenance: 'managed:account-1:inactive-preview'
+      }
+    })
+    expect(fetchViaPty).not.toHaveBeenCalled()
+  })
 })

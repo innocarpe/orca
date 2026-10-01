@@ -22,9 +22,9 @@ import { AccountRuntimeToggle, CodexRestartStatusPrompt } from './StatusBarAccou
 import {
   InlineUsageBars,
   InlineUsageSignInAction,
-  InlineUsageSkeleton,
-  isUnavailableInactiveUsage
+  InlineUsageSkeleton
 } from './InlineProviderUsage'
+import { previewInactiveAccountUsage } from './usage-roster-row-state'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { useCodexSwitcherController } from './use-codex-switcher-controller'
 
@@ -212,12 +212,14 @@ export function CodexSwitcherMenu({
                   const inactiveUsage = target.id
                     ? inactiveCodexAccounts.find((a) => a.accountId === target.id)
                     : null
+                  const inactivePreview = previewInactiveAccountUsage(inactiveUsage)
                   // Why: sign-in spawns a local `codex login`, so a remote-owned account can't be re-authed from this desktop.
+                  // A probe that failed for any other reason keeps its status line instead of a login button.
                   const showSignInAction =
                     !hasActiveRuntimeEnvironment &&
                     !target.active &&
                     target.id !== null &&
-                    isUnavailableInactiveUsage(inactiveUsage?.rateLimits)
+                    inactivePreview.kind === 'sign-in'
                   const isSigningIn = reauthenticatingAccountId === target.id
                   const isBusy = isSwitching || reauthenticatingAccountId !== null
 
@@ -251,7 +253,7 @@ export function CodexSwitcherMenu({
                             </span>
                           ) : null}
                         </div>
-                        {inactiveUsage?.isFetching && !inactiveUsage.rateLimits ? (
+                        {inactivePreview.kind === 'loading' ? (
                           <InlineUsageSkeleton />
                         ) : showSignInAction ? (
                           <InlineUsageSignInAction
@@ -266,11 +268,18 @@ export function CodexSwitcherMenu({
                               }
                             }}
                           />
-                        ) : inactiveUsage?.rateLimits ? (
+                        ) : inactivePreview.kind === 'usage' ? (
                           <InlineUsageBars
-                            limits={inactiveUsage.rateLimits}
-                            isFetching={inactiveUsage.isFetching}
+                            limits={inactivePreview.limits}
+                            isFetching={inactiveUsage?.isFetching ?? false}
                           />
+                        ) : inactivePreview.kind === 'message' ||
+                          inactivePreview.kind === 'sign-in' ? (
+                          <span
+                            className={`text-[10px] text-muted-foreground ${inactiveUsage?.isFetching ? 'animate-pulse' : ''}`}
+                          >
+                            {inactivePreview.label}
+                          </span>
                         ) : null}
                       </div>
                     </DropdownMenuItem>

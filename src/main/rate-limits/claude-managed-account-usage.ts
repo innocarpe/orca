@@ -11,11 +11,14 @@ import {
 } from './claude-managed-account-credentials'
 import { fetchClaudeManagedUsagePanelSupplement } from './claude-managed-usage-panel'
 import { parseClaudeOAuthCredentialsJson } from './claude-oauth-credentials'
+import { OAuthUsageError } from './claude-oauth-usage-error'
 import { fetchClaudeOAuthUsage } from './claude-oauth-usage-request'
+import { classifyClaudeOAuthUsageError } from './claude-usage-error-classification'
 import type { ClaudeManagedAccountUsageOptions } from './claude-usage-fetch-options'
 import {
   abortedClaudeRateLimitResult,
   canSupplementClaudeOAuthUsage,
+  makeClaudeUsageResult,
   mergeClaudeUsageWindows,
   warnClaudeUsageFetchFailure
 } from './claude-usage-result'
@@ -67,9 +70,9 @@ export async function fetchInactiveClaudeAccountUsage(
   if (!token) {
     return noClaudeManagedCredentialsResult()
   }
-  const oauthLimits = await fetchClaudeOAuthUsage(token, options.signal)
-  if (options.signal?.aborted) {
-    return abortedClaudeRateLimitResult()
+  const oauthLimits = await readInactiveClaudeOAuthUsage(account.id, token, options.signal)
+  if (options.signal?.aborted || oauthLimits.status !== 'ok') {
+    return oauthLimits
   }
   if (
     !canSupplementClaudeOAuthUsage({
@@ -100,5 +103,35 @@ export async function fetchInactiveClaudeAccountUsage(
       error
     )
     return oauthLimits
+  }
+}
+
+// Why: a failed OAuth read used to throw out of the inactive batch. The service
+// then kept no row, so the account list rendered blank instead of the limit or
+// a real status. The usage-panel supplement stays on the success path only —
+// after a 401 there is no window to prove a CLI reading belongs to this account.
+async function readInactiveClaudeOAuthUsage(
+  accountId: string,
+  token: string,
+  signal: AbortSignal | undefined
+): Promise<ProviderRateLimits> {
+  try {
+    return await fetchClaudeOAuthUsage(token, signal)
+  } catch (error) {
+    if (signal?.aborted) {
+      return abortedClaudeRateLimitResult()
+    }
+    const classification = classifyClaudeOAuthUsageError(error)
+    const retryAfterMs = error instanceof OAuthUsageError ? error.retryAfterMs : null
+    return makeClaudeUsageResult(
+      'error',
+      error instanceof Error ? error.message : 'Claude usage is unavailable',
+      {
+        attemptedSources: ['oauth'],
+        failureKind: classification.failureKind,
+        authProvenance: `managed:${accountId}:inactive-preview`,
+        retryAtMs: retryAfterMs ? Date.now() + retryAfterMs : undefined
+      }
+    )
   }
 }

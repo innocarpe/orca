@@ -33,6 +33,7 @@ import {
 } from './status-bar-claude-accounts'
 import { AccountRuntimeToggle } from './StatusBarAccountControls'
 import { InlineUsageBars, InlineUsageSkeleton } from './InlineProviderUsage'
+import { previewInactiveAccountUsage } from './usage-roster-row-state'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { getClaudeAccountSyncKey } from './provider-account-sync-key'
 
@@ -258,6 +259,7 @@ export function ClaudeSwitcherMenu({
               const inactiveUsage = target.id
                 ? inactiveClaudeAccounts.find((a) => a.accountId === target.id)
                 : null
+              const inactivePreview = previewInactiveAccountUsage(inactiveUsage)
 
               return (
                 <DropdownMenuItem
@@ -279,13 +281,19 @@ export function ClaudeSwitcherMenu({
                         </span>
                       ) : null}
                     </div>
-                    {inactiveUsage?.isFetching && !inactiveUsage.rateLimits ? (
+                    {inactivePreview.kind === 'loading' ? (
                       <InlineUsageSkeleton />
-                    ) : inactiveUsage?.rateLimits ? (
+                    ) : inactivePreview.kind === 'usage' ? (
                       <InlineUsageBars
-                        limits={inactiveUsage.rateLimits}
-                        isFetching={inactiveUsage.isFetching}
+                        limits={inactivePreview.limits}
+                        isFetching={inactiveUsage?.isFetching ?? false}
                       />
+                    ) : inactivePreview.kind === 'sign-in' || inactivePreview.kind === 'message' ? (
+                      <span
+                        className={`text-[10px] text-muted-foreground ${inactiveUsage?.isFetching ? 'animate-pulse' : ''}`}
+                      >
+                        {inactivePreview.label}
+                      </span>
                     ) : null}
                   </div>
                 </DropdownMenuItem>
