@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { z } from 'zod'
 import SyncDatabase from '../sqlite/sync-database'
 
@@ -7,6 +7,10 @@ const EMAIL_KEY = 'cursorAuth/cachedEmail'
 const MEMBERSHIP_KEY = 'cursorAuth/stripeMembershipType'
 const SUBSCRIPTION_KEY = 'cursorAuth/stripeSubscriptionStatus'
 const OPEN_TIMEOUT_MS = 250
+// Why: node:sqlite's timeout only bounds a lock wait. Opening a multi-GB WAL
+// replays it on the main thread before the first prepare returns (#24360).
+export const CURSOR_DESKTOP_WAL_SKIP_BYTES = 32 * 1024 * 1024
+const WAL_TOO_LARGE_ERROR = 'Cursor desktop login database is too large to open here'
 
 export type CursorDesktopProfile = {
   accessToken: string | null
@@ -33,9 +37,21 @@ function valueAsString(value: unknown): string | null {
 }
 
 /** Reads the Cursor IDE's stored session. Opens read-only in place; state.vscdb can be multi-GB. */
+function cursorDesktopWalBytes(dbPath: string): number {
+  try {
+    const stat = statSync(`${dbPath}-wal`)
+    return stat.isFile() ? stat.size : 0
+  } catch {
+    return 0
+  }
+}
+
 export function readCursorDesktopProfile(dbPath: string): CursorDesktopProfileReadResult {
   if (!existsSync(dbPath)) {
     return { status: 'missing' }
+  }
+  if (cursorDesktopWalBytes(dbPath) > CURSOR_DESKTOP_WAL_SKIP_BYTES) {
+    return { status: 'error', error: WAL_TOO_LARGE_ERROR }
   }
   let db: SyncDatabase | null = null
   try {
