@@ -51,17 +51,14 @@ export async function fetchInactiveClaudeAccountUsage(
   }
 
   let token = parseClaudeOAuthCredentialsJson(credentialsJson, 'credentials-file').token
+  let refreshedThisCall = false
   if (isOauthTokenExpiring(credentialsJson)) {
-    const refreshed = await refreshClaudeOauthCredentials(credentialsJson)
+    refreshedThisCall = true
+    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson)
     if (options.signal?.aborted) {
       return abortedClaudeRateLimitResult()
     }
     if (refreshed) {
-      try {
-        await writeClaudeManagedCredentialsJson(location, refreshed)
-      } catch {
-        // Keep the refreshed token for this fetch; a later poll can persist it.
-      }
       credentialsJson = refreshed
       token = parseClaudeOAuthCredentialsJson(refreshed, 'credentials-file').token
     }
@@ -70,7 +67,27 @@ export async function fetchInactiveClaudeAccountUsage(
   if (!token) {
     return noClaudeManagedCredentialsResult()
   }
-  const oauthLimits = await readInactiveClaudeOAuthUsage(account.id, token, options.signal)
+  let oauthLimits = await readInactiveClaudeOAuthUsage(account.id, token, options.signal)
+  // Why: a 401 can arrive while expiresAt is still in the future. One refresh
+  // then a second usage read turns that into session/weekly windows. A refresh
+  // that already ran (or returned nothing) is not tried again.
+  if (
+    !options.signal?.aborted &&
+    oauthLimits.usageMetadata?.failureKind === 'stale-token' &&
+    !refreshedThisCall
+  ) {
+    const refreshed = await persistRefreshedInactiveCredentials(location, credentialsJson)
+    if (options.signal?.aborted) {
+      return abortedClaudeRateLimitResult()
+    }
+    if (refreshed) {
+      const refreshedToken = parseClaudeOAuthCredentialsJson(refreshed, 'credentials-file').token
+      if (refreshedToken) {
+        credentialsJson = refreshed
+        oauthLimits = await readInactiveClaudeOAuthUsage(account.id, refreshedToken, options.signal)
+      }
+    }
+  }
   if (options.signal?.aborted || oauthLimits.status !== 'ok') {
     return oauthLimits
   }
@@ -104,6 +121,22 @@ export async function fetchInactiveClaudeAccountUsage(
     )
     return oauthLimits
   }
+}
+
+async function persistRefreshedInactiveCredentials(
+  location: NonNullable<ReturnType<typeof resolveClaudeManagedCredentialsLocation>>,
+  credentialsJson: string
+): Promise<string | null> {
+  const refreshed = await refreshClaudeOauthCredentials(credentialsJson)
+  if (!refreshed) {
+    return null
+  }
+  try {
+    await writeClaudeManagedCredentialsJson(location, refreshed)
+  } catch {
+    // Keep the refreshed token for this fetch; a later poll can persist it.
+  }
+  return refreshed
 }
 
 // Why: a failed OAuth read used to throw out of the inactive batch. The service

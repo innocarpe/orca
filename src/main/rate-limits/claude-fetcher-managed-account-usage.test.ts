@@ -471,5 +471,65 @@ describe('fetchClaudeRateLimits', () => {
       }
     })
     expect(fetchViaPty).not.toHaveBeenCalled()
+    expect(netFetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes once after a 401 whose access token is not yet expired and then reads windows', async () => {
+    setPlatform('linux')
+    tempDir = mkdtempSync(join(tmpdir(), 'orca-claude-fetcher-'))
+    appGetPathMock.mockReturnValue(tempDir)
+    const ownedAuthPath = join(tempDir, 'claude-accounts', 'account-1', 'auth')
+    mkdirSync(ownedAuthPath, { recursive: true })
+    writeFileSync(join(ownedAuthPath, '.orca-managed-claude-auth'), 'account-1\n', 'utf-8')
+    const credentialsPath = join(ownedAuthPath, '.credentials.json')
+    writeFileSync(
+      credentialsPath,
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: 'soon-stale-access',
+          refreshToken: 'still-valid-refresh',
+          expiresAt: Date.now() + 60 * 60 * 1000,
+          scopes: ['user:inference', 'user:profile']
+        }
+      }),
+      'utf-8'
+    )
+    netFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: { message: 'OAuth access token has expired. Re-authenticate to continue.' }
+        }),
+        { status: 401 }
+      )
+    )
+    netFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        access_token: 'fresh-access',
+        expires_in: 3600,
+        refresh_token: 'fresh-refresh'
+      })
+    })
+    netFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ five_hour: { utilization: 16 }, seven_day: { utilization: 20 } })
+    })
+
+    const result = await fetchManagedAccountUsage({
+      id: 'account-1',
+      managedAuthPath: ownedAuthPath
+    })
+
+    expect(result.status).toBe('ok')
+    expect(result.session?.usedPercent).toBe(16)
+    expect(result.weekly?.usedPercent).toBe(20)
+    expect(netFetchMock).toHaveBeenCalledTimes(3)
+    const usageCall = netFetchMock.mock.calls.find(
+      ([url], index) => String(url).includes('/api/oauth/usage') && index > 0
+    )
+    expect(usageCall?.[1]?.headers?.Authorization).toBe('Bearer fresh-access')
+    expect(fetchViaPty).not.toHaveBeenCalled()
+    const persisted = JSON.parse(readFileSync(credentialsPath, 'utf-8'))
+    expect(persisted.claudeAiOauth.accessToken).toBe('fresh-access')
   })
 })

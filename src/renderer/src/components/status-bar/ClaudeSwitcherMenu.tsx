@@ -33,7 +33,7 @@ import {
 } from './status-bar-claude-accounts'
 import { AccountRuntimeToggle } from './StatusBarAccountControls'
 import { InlineUsageBars, InlineUsageSkeleton } from './InlineProviderUsage'
-import { previewInactiveAccountUsage } from './usage-roster-row-state'
+import { previewAccountRowUsage } from './usage-roster-row-state'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { getClaudeAccountSyncKey } from './provider-account-sync-key'
 
@@ -259,7 +259,14 @@ export function ClaudeSwitcherMenu({
               const inactiveUsage = target.id
                 ? inactiveClaudeAccounts.find((a) => a.accountId === target.id)
                 : null
-              const inactivePreview = previewInactiveAccountUsage(inactiveUsage)
+              const rowPreview = previewAccountRowUsage({
+                active: target.active,
+                activeLimits: claude,
+                inactive: inactiveUsage
+              })
+              const rowFetching = target.active
+                ? claude.status === 'fetching'
+                : Boolean(inactiveUsage?.isFetching)
 
               return (
                 <DropdownMenuItem
@@ -281,18 +288,15 @@ export function ClaudeSwitcherMenu({
                         </span>
                       ) : null}
                     </div>
-                    {inactivePreview.kind === 'loading' ? (
+                    {rowPreview.kind === 'loading' ? (
                       <InlineUsageSkeleton />
-                    ) : inactivePreview.kind === 'usage' ? (
-                      <InlineUsageBars
-                        limits={inactivePreview.limits}
-                        isFetching={inactiveUsage?.isFetching ?? false}
-                      />
-                    ) : inactivePreview.kind === 'sign-in' || inactivePreview.kind === 'message' ? (
+                    ) : rowPreview.kind === 'usage' ? (
+                      <InlineUsageBars limits={rowPreview.limits} isFetching={rowFetching} />
+                    ) : rowPreview.kind === 'sign-in' || rowPreview.kind === 'message' ? (
                       <span
-                        className={`text-[10px] text-muted-foreground ${inactiveUsage?.isFetching ? 'animate-pulse' : ''}`}
+                        className={`text-[10px] text-muted-foreground ${rowFetching ? 'animate-pulse' : ''}`}
                       >
-                        {inactivePreview.label}
+                        {rowPreview.label}
                       </span>
                     ) : null}
                   </div>

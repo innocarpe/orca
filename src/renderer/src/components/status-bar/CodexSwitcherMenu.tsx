@@ -24,7 +24,7 @@ import {
   InlineUsageSignInAction,
   InlineUsageSkeleton
 } from './InlineProviderUsage'
-import { previewInactiveAccountUsage } from './usage-roster-row-state'
+import { previewAccountRowUsage } from './usage-roster-row-state'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { useCodexSwitcherController } from './use-codex-switcher-controller'
 
@@ -212,14 +212,21 @@ export function CodexSwitcherMenu({
                   const inactiveUsage = target.id
                     ? inactiveCodexAccounts.find((a) => a.accountId === target.id)
                     : null
-                  const inactivePreview = previewInactiveAccountUsage(inactiveUsage)
+                  const rowPreview = previewAccountRowUsage({
+                    active: target.active,
+                    activeLimits: codex,
+                    inactive: inactiveUsage
+                  })
+                  const rowFetching = target.active
+                    ? codex.status === 'fetching'
+                    : Boolean(inactiveUsage?.isFetching)
                   // Why: sign-in spawns a local `codex login`, so a remote-owned account can't be re-authed from this desktop.
                   // A probe that failed for any other reason keeps its status line instead of a login button.
                   const showSignInAction =
                     !hasActiveRuntimeEnvironment &&
                     !target.active &&
                     target.id !== null &&
-                    inactivePreview.kind === 'sign-in'
+                    rowPreview.kind === 'sign-in'
                   const isSigningIn = reauthenticatingAccountId === target.id
                   const isBusy = isSwitching || reauthenticatingAccountId !== null
 
@@ -253,11 +260,11 @@ export function CodexSwitcherMenu({
                             </span>
                           ) : null}
                         </div>
-                        {inactivePreview.kind === 'loading' ? (
+                        {rowPreview.kind === 'loading' ? (
                           <InlineUsageSkeleton />
                         ) : showSignInAction ? (
                           <InlineUsageSignInAction
-                            isFetching={inactiveUsage?.isFetching ?? false}
+                            isFetching={rowFetching}
                             isSigningIn={isSigningIn}
                             disabled={isBusy}
                             onSignInPointerDown={suppressNextAccountSelect}
@@ -268,17 +275,13 @@ export function CodexSwitcherMenu({
                               }
                             }}
                           />
-                        ) : inactivePreview.kind === 'usage' ? (
-                          <InlineUsageBars
-                            limits={inactivePreview.limits}
-                            isFetching={inactiveUsage?.isFetching ?? false}
-                          />
-                        ) : inactivePreview.kind === 'message' ||
-                          inactivePreview.kind === 'sign-in' ? (
+                        ) : rowPreview.kind === 'usage' ? (
+                          <InlineUsageBars limits={rowPreview.limits} isFetching={rowFetching} />
+                        ) : rowPreview.kind === 'message' || rowPreview.kind === 'sign-in' ? (
                           <span
-                            className={`text-[10px] text-muted-foreground ${inactiveUsage?.isFetching ? 'animate-pulse' : ''}`}
+                            className={`text-[10px] text-muted-foreground ${rowFetching ? 'animate-pulse' : ''}`}
                           >
-                            {inactivePreview.label}
+                            {rowPreview.label}
                           </span>
                         ) : null}
                       </div>
