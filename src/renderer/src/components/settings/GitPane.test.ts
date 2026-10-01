@@ -337,4 +337,16 @@ describe('GitPane branch prefix feedback', () => {
     const html = renderBranchPrefixGitPane(gitUsernamePrefixSettings(), 'jdoe/')
     expect(html).toContain('jdoe/feature')
   })
+
+  it('previews the lowercased git username that new branches use', () => {
+    const html = renderBranchPrefixGitPane(gitUsernamePrefixSettings(), 'EurFelux')
+    expect(html).toContain('eurfelux/feature')
+    expect(html).not.toContain('EurFelux')
+  })
+
+  it('keeps a mixed-case username in the preview when its lowercase form is not a valid ref', () => {
+    const html = renderBranchPrefixGitPane(gitUsernamePrefixSettings(), 'Alice.LOCK')
+    expect(html).toContain('Alice.LOCK/feature')
+    expect(html).not.toContain('alice.lock')
+  })
 })
