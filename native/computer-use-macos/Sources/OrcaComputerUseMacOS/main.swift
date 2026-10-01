@@ -2663,8 +2663,14 @@ private enum Input {
             else {
                 throw ProviderError.coded("accessibility_error", "failed to create keyboard event")
             }
-            down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
-            up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
+            let downUnits = KeyboardInputSafety.unicodeUnitCount(forKeyDown: true)
+            let upUnits = KeyboardInputSafety.unicodeUnitCount(forKeyDown: false)
+            if downUnits > 0 {
+                down.keyboardSetUnicodeString(stringLength: downUnits, unicodeString: &char)
+            }
+            if upUnits > 0 {
+                up.keyboardSetUnicodeString(stringLength: upUnits, unicodeString: &char)
+            }
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
         }
