@@ -8,7 +8,10 @@ import {
   deleteRuntimePath,
   deleteRuntimeRelativePath
 } from '@/runtime/runtime-file-mutation-client'
-import { statRuntimePath } from '@/runtime/runtime-file-metadata-client'
+import {
+  isMissingRuntimePathError,
+  statRuntimePath
+} from '@/runtime/runtime-file-metadata-client'
 import { selectWorktreesByRepo } from '../../../workspace-record-selectors'
 
 export function deleteUntouchedUntitledFile(
@@ -44,7 +47,11 @@ export function deleteUntouchedUntitledFile(
       }
       return true
     })
-    .catch(() => false)
+    .catch((error: unknown) => {
+      // A missing path was already removed. Callers treat false as "kept", which
+      // would offer Cmd+Shift+T for a file that is gone.
+      return isMissingRuntimePathError(error)
+    })
 }
 
 const EMPTY_DISK_SIGNATURE = getDiskBaselineSignature('')

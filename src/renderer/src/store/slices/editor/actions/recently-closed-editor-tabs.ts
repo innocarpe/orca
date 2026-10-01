@@ -266,20 +266,23 @@ export function createRecentlyClosedEditorTabs(
         })
         if (typeof window !== 'undefined') {
           void (async () => {
-            for (const file of [...untitledToDelete].toReversed()) {
-              if (kept.has(file.id)) {
-                continue
+            // Start every check together. A remote stat can take the full timeout,
+            // and waiting for one before the next stalls reopen for the rest.
+            const files = [...untitledToDelete].toReversed().filter((file) => !kept.has(file.id))
+            const deleted = await Promise.all(
+              files.map((file) => deleteUntouchedUntitledFile(get, file))
+            )
+            files.forEach((file, index) => {
+              if (deleted[index]) {
+                return
               }
-              const deleted = await deleteUntouchedUntitledFile(get, file)
-              if (!deleted) {
-                rememberKeptUntitledEditor(
-                  set,
-                  file,
-                  untitledReopenPosition.get(file.id),
-                  closeOrderByFileId.get(file.id) ?? takeClosedTabOrder()
-                )
-              }
-            }
+              rememberKeptUntitledEditor(
+                set,
+                file,
+                untitledReopenPosition.get(file.id),
+                closeOrderByFileId.get(file.id) ?? takeClosedTabOrder()
+              )
+            })
           })()
         }
       }

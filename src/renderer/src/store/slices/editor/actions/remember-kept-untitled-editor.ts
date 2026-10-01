@@ -1,3 +1,4 @@
+import { findWorktreeById } from '../../worktree-helpers'
 import type { EditorSet } from '../types/editor-set-get'
 import {
   type ClosedEditorTabSnapshot,
@@ -32,6 +33,11 @@ export function rememberKeptUntitledEditor(
   }
   const { id, isDirty: _dirty, mirroredFromRuntimeSession: _mirrored, ...snap } = file
   set((state) => {
+    // The stat can outlive the worktree. Writing the captured id after removal
+    // or rename puts history on a key that can no longer reopen.
+    if (!findWorktreeById(state.worktreesByRepo, file.worktreeId)) {
+      return state
+    }
     const stack = state.recentlyClosedEditorTabsByWorktree[file.worktreeId] ?? []
     if (stack.some((entry) => entry.reopenId === id)) {
       return state
