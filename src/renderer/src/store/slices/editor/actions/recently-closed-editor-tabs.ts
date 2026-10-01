@@ -11,6 +11,7 @@ import {
   deleteUntouchedUntitledFile,
   shouldDeleteUntouchedUntitledFile
 } from '../tabs/untitled-file-cleanup'
+import { rememberKeptUntitledEditor } from './remember-kept-untitled-editor'
 
 export function createRecentlyClosedEditorTabs(
   set: EditorSet,
@@ -48,6 +49,21 @@ export function createRecentlyClosedEditorTabs(
           shouldDeleteUntouchedUntitledFile(f, !!state.editorDrafts[f.id]) &&
           (!activeWorktreeId || f.worktreeId === activeWorktreeId)
       )
+      const untitledReopenPosition = new Map<
+        string,
+        ReturnType<ReturnType<typeof createRecentlyClosedTabPositionIndex>['positionFor']>
+      >()
+      for (const worktreeId of new Set(untitledToDelete.map((file) => file.worktreeId))) {
+        if (!worktreeId) {
+          continue
+        }
+        const positionIndex = createRecentlyClosedTabPositionIndex(state, worktreeId)
+        for (const file of untitledToDelete) {
+          if (file.worktreeId === worktreeId) {
+            untitledReopenPosition.set(file.id, positionIndex.positionFor(file.id))
+          }
+        }
+      }
       const closingFiles = state.openFiles.filter(
         (file) => !activeWorktreeId || file.worktreeId === activeWorktreeId
       )
@@ -208,9 +224,14 @@ export function createRecentlyClosedEditorTabs(
       })
       if (typeof window !== 'undefined') {
         const postCloseState = get()
-        for (const f of untitledToDelete) {
-          deleteUntouchedUntitledFile(postCloseState, f)
-        }
+        void (async () => {
+          for (const file of [...untitledToDelete].toReversed()) {
+            const deleted = await deleteUntouchedUntitledFile(postCloseState, file)
+            if (!deleted) {
+              rememberKeptUntitledEditor(set, file, untitledReopenPosition.get(file.id))
+            }
+          }
+        })()
       }
       for (const itemId of closingItemIds) {
         get().closeUnifiedTab?.(itemId)
