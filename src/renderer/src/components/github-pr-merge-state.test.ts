@@ -27,7 +27,7 @@ describe('presentGitHubPRMergeState', () => {
 
   it('says a disallowed merge queue was enqueued, not auto-merged', () => {
     expect(githubAutoMergeSuccessToast(true, { enqueued: true })).toBe('Added to the merge queue')
-    expect(githubAutoMergeSuccessToast(true, { ok: true })).toBe('Auto-merge enabled')
+    expect(githubAutoMergeSuccessToast(true, {})).toBe('Auto-merge enabled')
   })
 
   it('hides enqueue once the pull request is already in the merge queue', () => {
