@@ -44,6 +44,7 @@ import {
   InlineUsageSkeleton,
   isUnavailableInactiveUsage
 } from './InlineProviderUsage'
+import { previewInactiveAccountUsage } from './usage-roster-row-state'
 import { ProviderDetailsMenu } from './ProviderDetailsMenu'
 import { getClaudeAccountSyncKey } from './provider-account-sync-key'
 import { signInToClaudeAccount } from '@/lib/claude-account-sign-in'
@@ -327,6 +328,7 @@ export function ClaudeSwitcherMenu({
               const inactiveUsage = target.id
                 ? inactiveClaudeAccounts.find((a) => a.accountId === target.id)
                 : null
+              const inactivePreview = previewInactiveAccountUsage(inactiveUsage)
               // Why local only: the hidden sign-in runs on this device, not a remote server.
               const signInId = target.needsSignIn && !hasActiveRuntimeEnvironment ? target.id : null
 
@@ -369,15 +371,22 @@ export function ClaudeSwitcherMenu({
                         {target.hint}
                       </span>
                     ) : null}
-                    {inactiveUsage?.isFetching && !inactiveUsage.rateLimits ? (
+                    {inactivePreview.kind === 'loading' ? (
                       <InlineUsageSkeleton />
-                    ) : inactiveUsage?.rateLimits &&
+                    ) : inactivePreview.kind === 'usage' &&
                       // Why: the sign-in note above already says this; skip the repeat.
-                      !(signInId && isUnavailableInactiveUsage(inactiveUsage.rateLimits)) ? (
+                      !(signInId && isUnavailableInactiveUsage(inactivePreview.limits)) ? (
                       <InlineUsageBars
-                        limits={inactiveUsage.rateLimits}
-                        isFetching={inactiveUsage.isFetching}
+                        limits={inactivePreview.limits}
+                        isFetching={inactiveUsage?.isFetching ?? false}
                       />
+                    ) : !signInId &&
+                      (inactivePreview.kind === 'sign-in' || inactivePreview.kind === 'message') ? (
+                      <span
+                        className={`text-[10px] text-muted-foreground ${inactiveUsage?.isFetching ? 'animate-pulse' : ''}`}
+                      >
+                        {inactivePreview.label}
+                      </span>
                     ) : null}
                   </div>
                 </DropdownMenuItem>
