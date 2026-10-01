@@ -15,6 +15,7 @@ import {
 } from '@/store/slices/worktree-nav-history'
 import { useShortcutLabel } from '../hooks/useShortcutLabel'
 import { useAppStore } from '../store'
+import { isPairedWebClientWindow, shouldShowMacTrafficLightPad } from '@/lib/desktop-window-chrome'
 import { hasCustomTitleBar, isMac } from './app-window-chrome'
 import type { AppChromeLayout } from './use-app-chrome-layout'
 
@@ -42,7 +43,11 @@ export function TitlebarLeftControls({ layout }: { layout: AppChromeLayout }): R
       }`}
     >
       <div className="flex h-full items-center">
-        {isMac && !layout.isFullScreen ? (
+        {shouldShowMacTrafficLightPad({
+          isMac,
+          isWebClient: isPairedWebClientWindow(),
+          isFullScreen: layout.isFullScreen
+        }) ? (
           <div className="titlebar-traffic-light-pad" />
         ) : hasCustomTitleBar ? (
           /* Why: Windows/Linux remove the native title bar, so render the logo plus a ··· button that pops the application menu (as Alt does). */
