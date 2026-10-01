@@ -1,5 +1,7 @@
+import { useAppStore } from '@/store'
 import { normalizeBrowserNavigationUrl } from '../../../../../shared/browser-url'
 import { ORCA_BROWSER_BLANK_URL } from '../../../../../shared/constants'
+import { focusOwningGroupForBrowserGuest } from './browser-guest-owning-group'
 import { parkBrowserPageViewport } from './browser-page-viewport'
 import { subscribeBrowserSystemResume } from './browser-system-resume'
 import {
@@ -147,7 +149,18 @@ export function bindBrowserPageWebviewListeners({
   webview.addEventListener('dom-ready', handleDomReady)
   webview.addEventListener('render-process-gone', guestRecovery.recoverRenderer)
   webview.addEventListener('destroyed', handleGuestDestroyed)
-  webview.addEventListener('focus', dismissAddressBarSuggestions)
+  webview.addEventListener('focus', () => {
+    dismissAddressBarSuggestions()
+    // Why: the guest does not bubble focus to the overlay, so the owning split
+    // stays stale and Ctrl+Tab targets the previous group (#22144).
+    const state = useAppStore.getState()
+    focusOwningGroupForBrowserGuest({
+      worktreeId,
+      browserTabId,
+      unifiedTabsByWorktree: state.unifiedTabsByWorktree,
+      focusGroup: state.focusGroup
+    })
+  })
   webview.addEventListener('did-start-loading', handleDidStartLoading)
   webview.addEventListener('did-start-navigation', handleDidStartNavigation)
   webview.addEventListener('did-redirect-navigation', handleDidRedirectNavigation)
