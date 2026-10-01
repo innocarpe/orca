@@ -128,6 +128,68 @@ export class SessionTerminationController {
     await this.waitForPhysicalExit(timeoutMs)
   }
 
+  /**
+   * SIGTERM the PTY's process groups, then SIGKILL if the process is still alive.
+   * The two waits together stay inside `timeoutMs`. Handles without group signals
+   * keep the direct force-kill.
+   */
+  async signalGroupsThenForceKillWithinBudget(
+    timeoutMs = IMMEDIATE_KILL_PHYSICAL_EXIT_TIMEOUT_MS
+  ): Promise<void> {
+    if (this.deps.isExited()) {
+      return
+    }
+    if (!this._isTerminating) {
+      this._isTerminating = true
+      this.deps.releaseProducerPause({ resume: true })
+    }
+    // Win32's signalProcessGroups is a no-op. Waiting out the grace there would
+    // only delay the ConPTY force-kill that still owns the tree.
+    if (process.platform === 'win32' || !this.deps.subprocess.signalProcessGroups) {
+      await this.requestForceKillWithRetry()
+      await this.waitForPhysicalExit(timeoutMs)
+      return
+    }
+    // The graceful 5s timer would SIGKILL during this grace and skip SessionEnd.
+    this.cancelForceKillFallback()
+    const startedAt = Date.now()
+    // Why not a shared constant: this grace is only the catchable-signal window
+    // before the existing force-kill, and it must not grow the close budgets.
+    const groupSignalGraceMs = 2_000
+    const graceMs = Math.min(groupSignalGraceMs, Math.max(0, timeoutMs))
+    try {
+      this.deps.subprocess.signalProcessGroups('SIGTERM')
+    } catch (error) {
+      console.warn('[Session] failed to signal PTY process groups before force-kill:', error)
+    }
+    if (this.deps.isExited()) {
+      return
+    }
+    if (graceMs > 0) {
+      try {
+        await this.physicalExit.waitForExit(
+          graceMs,
+          () => new Error(`Timed out waiting for PTY process exit: ${this.deps.sessionId}`)
+        )
+        return
+      } catch {
+        // The group ignored SIGTERM. SIGKILL still has to run inside the same budget.
+      }
+    }
+    if (this.deps.isExited()) {
+      return
+    }
+    await this.requestForceKillWithRetry()
+    if (this.deps.isExited()) {
+      return
+    }
+    const remainingMs = Math.max(0, timeoutMs - (Date.now() - startedAt))
+    if (remainingMs === 0) {
+      throw new Error(`Timed out waiting for PTY process exit: ${this.deps.sessionId}`)
+    }
+    await this.waitForPhysicalExit(remainingMs)
+  }
+
   signal(sig: string): void {
     if (this.deps.isExited()) {
       return
