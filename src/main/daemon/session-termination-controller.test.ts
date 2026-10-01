@@ -66,15 +66,36 @@ describe('signalGroupsThenForceKillWithinBudget', () => {
     expect(order).toEqual(['SIGTERM', 'SIGKILL'])
   })
 
-  it('does not force-kill when the process exits during the grace', async () => {
+  it('SIGKILLs leftover groups when the root exits during SIGTERM', async () => {
     const harness = createController()
-    harness.signalProcessGroups.mockImplementation(() => {
-      harness.markExited()
+    const signals: NodeJS.Signals[] = []
+    harness.signalProcessGroups.mockImplementation((signal) => {
+      signals.push(signal)
+      if (signal === 'SIGTERM') {
+        harness.markExited()
+      }
     })
 
     await harness.controller.signalGroupsThenForceKillWithinBudget()
 
-    expect(harness.signalProcessGroups).toHaveBeenCalledWith('SIGTERM')
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL'])
+    expect(harness.forceKill).not.toHaveBeenCalled()
+  })
+
+  it('SIGKILLs leftover groups when the root exits during the grace', async () => {
+    vi.useFakeTimers()
+    const harness = createController()
+    const signals: NodeJS.Signals[] = []
+    harness.signalProcessGroups.mockImplementation((signal) => {
+      signals.push(signal)
+    })
+
+    const pending = harness.controller.signalGroupsThenForceKillWithinBudget()
+    expect(signals).toEqual(['SIGTERM'])
+    harness.markExited()
+    await pending
+
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL'])
     expect(harness.forceKill).not.toHaveBeenCalled()
   })
 
