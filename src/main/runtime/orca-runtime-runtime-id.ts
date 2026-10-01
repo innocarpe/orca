@@ -1,5 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { randomUUID } from 'node:crypto'
+import { releaseEchoedManualTerminalTitles } from './mobile-session-custom-title'
 import { preserveTerminalRetirementProofs } from './mobile-session-terminal-retirement-proof'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
@@ -110,6 +111,11 @@ export class OrcaRuntimeWithRuntimeId {
     }
     const existing = this.mobileSessionTabsByWorktree.get(worktreeId)
     snapshot = preserveTerminalRetirementProofs(snapshot, existing)
+    // Why: `manualTitle` only bridges the gap until the renderer snapshot echoes
+    // the same custom title. Releasing it earlier lets a stale frame win.
+    if (this.ptysById && this.leaves) {
+      releaseEchoedManualTerminalTitles(snapshot, this.ptysById, this.leaves.values())
+    }
     const snapshotVersion = existing
       ? Math.max(snapshot.snapshotVersion, existing.snapshotVersion + 1)
       : snapshot.snapshotVersion
