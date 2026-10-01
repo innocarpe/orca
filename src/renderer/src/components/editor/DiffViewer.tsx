@@ -270,7 +270,6 @@ export default function DiffViewer({
       })
     },
     [
-      diffWordWrap,
       editable,
       setupCopy,
       modelKey,
