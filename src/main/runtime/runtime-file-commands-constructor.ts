@@ -202,10 +202,12 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     filePath: string,
     route: RuntimeFileRoute
   ): Promise<void> {
+    let stats: { isDirectory: () => boolean }
     try {
-      await (route.kind === 'ssh'
-        ? this.statRemoteTerminalPath(filePath, route.connectionId)
-        : stat(await resolveAuthorizedPath(filePath, this.host.requireStore())))
+      stats =
+        route.kind === 'ssh'
+          ? await this.statRemoteTerminalPath(filePath, route.connectionId)
+          : await stat(await resolveAuthorizedPath(filePath, this.host.requireStore()))
     } catch (error) {
       if (
         isENOENT(error) ||
@@ -214,6 +216,11 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
         throw new Error(`ENOENT: no such file or directory, open '${filePath}'`)
       }
       throw error
+    }
+    // Why: a directory named `notes.pdf` still exists, so an existence check would report
+    // opened:true and leave a PDF tab that cannot load it. Open is for a file.
+    if (stats.isDirectory()) {
+      throw new Error(`EISDIR: illegal operation on a directory, open '${filePath}'`)
     }
   }
 

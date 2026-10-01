@@ -195,6 +195,43 @@ describe('RuntimeFileCommands', () => {
     })
   })
 
+  it('rejects a directory named like a PDF without creating an editor tab', async () => {
+    const openFile = vi.fn()
+    const { commands } = createRuntimeFileCommands({ openFile })
+    resolveAuthorizedPathMock.mockResolvedValue('/repo/docs/notes.pdf')
+    statMock.mockResolvedValue({ isDirectory: () => true })
+
+    await expect(commands.openMobileFile('id:wt-1', 'docs/notes.pdf')).rejects.toThrow(
+      "EISDIR: illegal operation on a directory, open '/repo/docs/notes.pdf'"
+    )
+    expect(openFile).not.toHaveBeenCalled()
+  })
+
+  it('rejects a remote directory named like a PDF without creating an editor tab', async () => {
+    const openFile = vi.fn()
+    const resolveRuntimeFileTarget = vi.fn(async () => ({
+      worktree: {
+        id: 'wt-1',
+        repoId: 'repo-1',
+        path: '/remote/repo'
+      },
+      executionHostId: 'ssh:ssh-1'
+    }))
+    const { commands } = createRuntimeFileCommands({
+      openFile,
+      path: '/remote/repo',
+      resolveRuntimeFileTarget
+    })
+    vi.mocked(getSshFilesystemProvider).mockReturnValue({
+      stat: vi.fn().mockResolvedValue({ type: 'directory', size: 0, mtime: 0 })
+    } as never)
+
+    await expect(commands.openMobileFile('id:wt-1', 'docs/notes.pdf')).rejects.toThrow(
+      "EISDIR: illegal operation on a directory, open '/remote/repo/docs/notes.pdf'"
+    )
+    expect(openFile).not.toHaveBeenCalled()
+  })
+
   it('rejects missing local files without creating an editor tab', async () => {
     const openFile = vi.fn()
     const { commands } = createRuntimeFileCommands({ openFile })
