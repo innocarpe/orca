@@ -76,6 +76,9 @@ export default function DiffViewer({
   const { registerDiffEditor, unregisterDiffEditor } = useDiffEditorRegistration()
   const lineNumberOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
   const wordWrapOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
+  const wordWrapMountFrameRef = useRef(0)
+  const diffWordWrapRef = useRef(diffWordWrap)
+  diffWordWrapRef.current = diffWordWrap
   const [modifiedEditor, setModifiedEditor] = useState<editor.ICodeEditor | null>(null)
 
   const renderLimit = useMemo(
@@ -201,12 +204,15 @@ export default function DiffViewer({
       diffEditorRef.current = diffEditor
       registerDiffEditor(diffEditor)
       // Why: Monaco applies the inline-layout wrap override after mount, once width is known.
-      requestAnimationFrame(() => {
+      wordWrapMountFrameRef.current = requestAnimationFrame(() => {
         if (diffEditorRef.current !== diffEditor) {
           return
         }
         wordWrapOptionsSubRef.current?.dispose()
-        wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+        wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(
+          diffEditor,
+          diffWordWrapRef.current
+        )
       })
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
@@ -289,15 +295,19 @@ export default function DiffViewer({
   }, [modelKey])
 
   useEffect(() => {
+    cancelAnimationFrame(wordWrapMountFrameRef.current)
     const diffEditor = diffEditorRef.current
     if (!diffEditor) {
-      return
+      return () => {
+        cancelAnimationFrame(wordWrapMountFrameRef.current)
+      }
     }
     lineNumberOptionsSubRef.current?.dispose()
     lineNumberOptionsSubRef.current = applyDiffEditorLineNumberOptions(diffEditor, sideBySide)
     wordWrapOptionsSubRef.current?.dispose()
     wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
     return () => {
+      cancelAnimationFrame(wordWrapMountFrameRef.current)
       lineNumberOptionsSubRef.current?.dispose()
       lineNumberOptionsSubRef.current = null
       wordWrapOptionsSubRef.current?.dispose()

@@ -54,7 +54,31 @@ describe('syncDiffEditorOriginalWordWrap', () => {
     return editorStub
   }
 
-  function fakeDiffEditor(root?: { classList: { contains: (name: string) => boolean } }): {
+  function monacoDiffHost(sideBySide: boolean): {
+    classList: { contains: (name: string) => boolean }
+    querySelector: (selector: string) => { classList: { contains: (name: string) => boolean } }
+  } {
+    const widget = {
+      classList: {
+        contains: (name: string) =>
+          name === 'monaco-diff-editor' || (sideBySide && name === 'side-by-side')
+      }
+    }
+    return {
+      classList: { contains: () => false },
+      querySelector: (selector: string) => {
+        if (selector !== '.monaco-diff-editor') {
+          throw new Error(`unexpected selector ${selector}`)
+        }
+        return widget
+      }
+    }
+  }
+
+  function fakeDiffEditor(root?: {
+    classList: { contains: (name: string) => boolean }
+    querySelector?: (selector: string) => { classList: { contains: (name: string) => boolean } }
+  }): {
     diffEditor: editor.IStandaloneDiffEditor
     original: ReturnType<typeof fakeEditor>
     modified: ReturnType<typeof fakeEditor>
@@ -97,9 +121,8 @@ describe('syncDiffEditorOriginalWordWrap', () => {
   })
 
   it('reapplies the original pane wrap after Monaco clears it, and stops after dispose', async () => {
-    const root = {
-      classList: { contains: (name: string) => name === 'side-by-side' }
-    }
+    const root = monacoDiffHost(true)
+    expect(root.classList.contains('side-by-side')).toBe(false)
     const { diffEditor, original } = fakeDiffEditor(root)
     const disposable = syncDiffEditorOriginalWordWrap(diffEditor, true)
     original.updateOptions.mockClear()
@@ -121,7 +144,7 @@ describe('syncDiffEditorOriginalWordWrap', () => {
   })
 
   it('leaves the hidden original pane unwrapped while Monaco is inline', async () => {
-    const root = { classList: { contains: () => false } }
+    const root = monacoDiffHost(false)
     const { diffEditor, original } = fakeDiffEditor(root)
 
     syncDiffEditorOriginalWordWrap(diffEditor, true)

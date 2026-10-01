@@ -65,6 +65,9 @@ export function DiffSectionBody({
   const renderLimit = section.largeDiffRenderLimit?.limited ? section.largeDiffRenderLimit : null
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
   const wordWrapOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
+  const wordWrapMountFrameRef = useRef(0)
+  const diffWordWrapRef = useRef(diffWordWrap)
+  diffWordWrapRef.current = diffWordWrap
   const handleEditorMount: DiffOnMount = (diffEditor, monaco) => {
     diffEditorRef.current = diffEditor
     const cleanupShiftWheelScroll = installDiffEditorShiftWheelScroll(diffEditor)
@@ -77,24 +80,31 @@ export function DiffSectionBody({
       }
     })
     // Why: Monaco applies the inline-layout wrap override after mount, once width is known.
-    requestAnimationFrame(() => {
+    wordWrapMountFrameRef.current = requestAnimationFrame(() => {
       if (diffEditorRef.current !== diffEditor) {
         return
       }
       wordWrapOptionsSubRef.current?.dispose()
-      wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
+      wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(
+        diffEditor,
+        diffWordWrapRef.current
+      )
     })
     onMount(diffEditor, monaco)
   }
 
   useEffect(() => {
+    cancelAnimationFrame(wordWrapMountFrameRef.current)
     const diffEditor = diffEditorRef.current
     if (!diffEditor) {
-      return
+      return () => {
+        cancelAnimationFrame(wordWrapMountFrameRef.current)
+      }
     }
     wordWrapOptionsSubRef.current?.dispose()
     wordWrapOptionsSubRef.current = syncDiffEditorOriginalWordWrap(diffEditor, diffWordWrap)
     return () => {
+      cancelAnimationFrame(wordWrapMountFrameRef.current)
       wordWrapOptionsSubRef.current?.dispose()
       wordWrapOptionsSubRef.current = null
     }

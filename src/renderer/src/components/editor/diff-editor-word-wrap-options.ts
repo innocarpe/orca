@@ -18,13 +18,19 @@ export function buildDiffEditorWordWrapOptions(
 type Disposable = { dispose: () => void }
 
 function diffEditorIsSideBySide(diffEditor: editor.IStandaloneDiffEditor): boolean {
-  const root = diffEditor.getContainerDomNode?.()
-  // Callers without a container (unit tests) keep the explicit preference.
-  if (!root) {
+  const host = diffEditor.getContainerDomNode?.()
+  if (!host) {
     return true
   }
-  // Why: the construction option stays side-by-side while Monaco drops this class for the narrow inline fallback.
-  return root.classList.contains('side-by-side')
+  // Why: createDiffEditor's container never receives the class. Monaco appends
+  // `div.monaco-diff-editor` and toggles `side-by-side` on that child.
+  const widget = host.classList.contains('monaco-diff-editor')
+    ? host
+    : host.querySelector?.('.monaco-diff-editor')
+  if (!widget) {
+    return true
+  }
+  return widget.classList.contains('side-by-side')
 }
 
 export function syncDiffEditorOriginalWordWrap(
