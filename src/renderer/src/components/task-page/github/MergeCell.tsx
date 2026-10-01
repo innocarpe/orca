@@ -167,6 +167,13 @@ export function PRMergeCell({
         },
         sourceContext,
         successToastFromResult: (result) => githubAutoMergeSuccessToast(enabled, result),
+        serverEntityFromResult: (result) => {
+          const typed = result as { enqueued?: boolean } | void
+          if (!typed || typed.enqueued !== true) {
+            return undefined
+          }
+          return { autoMergeEnabled: false, inMergeQueue: true }
+        },
         errorToast: enabled
           ? translate('auto.components.TaskPage.a3318684bc', 'Failed to enable auto-merge')
           : translate('auto.components.TaskPage.1a9ea003dc', 'Failed to disable auto-merge'),
