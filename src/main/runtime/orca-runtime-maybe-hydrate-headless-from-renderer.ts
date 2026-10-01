@@ -63,11 +63,16 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
         const rendered = await controller.serializeBuffer!(ptyId, {
           scrollbackRows: MOBILE_SUBSCRIBE_SCROLLBACK_ROWS
         })
-        if (
-          this.headlessTerminals.get(ptyId) !== state ||
-          !rendered ||
-          rendered.data.length === 0
-        ) {
+        if (this.headlessTerminals.get(ptyId) !== state || !rendered) {
+          return
+        }
+        // Why: a blank renderer buffer can still carry kitty flags beside the
+        // payload. Returning on empty data left the new emulator at 0, so an
+        // interrupt sent ETX while the TUI was in the protocol.
+        if (rendered.data.length === 0) {
+          if (typeof rendered.kittyKeyboardFlags === 'number') {
+            await state.emulator.applyKittyKeyboardFlags(rendered.kittyKeyboardFlags)
+          }
           return
         }
         this.recordOsc7MetadataForPty(ptyId, rendered.data)
