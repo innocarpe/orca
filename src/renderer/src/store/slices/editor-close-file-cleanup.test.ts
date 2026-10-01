@@ -488,6 +488,97 @@ describe('createEditorSlice editor drafts', () => {
     expect(store.getState().activeTabType).toBe('terminal')
   })
 
+  it('keeps the workspace selected when a structured chat remains after the last editor closes', () => {
+    const store = createEditorStore()
+
+    store.getState().openFile({
+      filePath: '/repo/notes.md',
+      relativePath: 'notes.md',
+      worktreeId: 'wt-1',
+      language: 'markdown',
+      mode: 'edit'
+    })
+    store.setState({
+      unifiedTabsByWorktree: {
+        'wt-1': [
+          {
+            id: 'chat-1',
+            entityId: 'session-1',
+            worktreeId: 'wt-1',
+            groupId: 'wt-1:group',
+            contentType: 'agent-session',
+            label: 'Codex',
+            customLabel: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 0
+          }
+        ]
+      }
+    })
+
+    store.getState().closeFile('/repo/notes.md')
+
+    expect(store.getState().activeWorktreeId).toBe('wt-1')
+    expect(store.getState().openFiles).toEqual([])
+  })
+
+  it('keeps the workspace selected when close-all leaves a structured chat', () => {
+    const store = createEditorStore()
+
+    store.getState().openFile({
+      filePath: '/repo/notes.md',
+      relativePath: 'notes.md',
+      worktreeId: 'wt-1',
+      language: 'markdown',
+      mode: 'edit'
+    })
+    store.setState({
+      unifiedTabsByWorktree: {
+        'wt-1': [
+          {
+            id: 'chat-1',
+            entityId: 'session-1',
+            worktreeId: 'wt-1',
+            groupId: 'wt-1:group',
+            contentType: 'agent-session',
+            label: 'Codex',
+            customLabel: null,
+            color: null,
+            sortOrder: 0,
+            createdAt: 0
+          }
+        ]
+      }
+    })
+
+    store.getState().closeAllFiles()
+
+    expect(store.getState().activeWorktreeId).toBe('wt-1')
+  })
+
+  it('still returns to the landing state when the only unified tab is the editor being closed', () => {
+    const store = createEditorStore()
+
+    store.getState().openFile({
+      filePath: '/repo/notes.md',
+      relativePath: 'notes.md',
+      worktreeId: 'wt-1',
+      language: 'markdown',
+      mode: 'edit'
+    })
+    store.setState({
+      closeUnifiedTab: () => {},
+      unifiedTabsByWorktree: {
+        'wt-1': [mirroredEditorUnifiedTab('editor-1', '/repo/notes.md', 'wt-1')]
+      }
+    } as Partial<AppState>)
+
+    store.getState().closeFile('/repo/notes.md')
+
+    expect(store.getState().activeWorktreeId).toBeNull()
+  })
+
   it('falls back to a browser tab when closing all editors in the active worktree', () => {
     const store = createEditorStore()
 

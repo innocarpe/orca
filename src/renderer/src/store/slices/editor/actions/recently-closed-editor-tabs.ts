@@ -11,6 +11,7 @@ import {
   deleteUntouchedUntitledFile,
   shouldDeleteUntouchedUntitledFile
 } from '../tabs/untitled-file-cleanup'
+import { unifiedTabsKeepWorktreeSelected } from './unified-tabs-keep-worktree-selected'
 
 export function createRecentlyClosedEditorTabs(
   set: EditorSet,
@@ -122,8 +123,18 @@ export function createRecentlyClosedEditorTabs(
         const terminalTabsForWorktree = s.tabsByWorktree[activeWorktreeId] ?? []
         newActiveTabTypeByWorktree[activeWorktreeId] =
           browserTabsForWorktree.length > 0 ? 'browser' : 'terminal'
+        // Why: close-all uses the same surface check as closeFile; a remaining chat is still a selected workspace (#24263).
+        const closedEditorIds = new Set(
+          s.openFiles.filter((file) => file.worktreeId === activeWorktreeId).map((file) => file.id)
+        )
+        const chatStillOpen = unifiedTabsKeepWorktreeSelected(
+          s.unifiedTabsByWorktree?.[activeWorktreeId],
+          closedEditorIds
+        )
         const shouldDeactivateWorktree =
-          browserTabsForWorktree.length === 0 && terminalTabsForWorktree.length === 0
+          browserTabsForWorktree.length === 0 &&
+          terminalTabsForWorktree.length === 0 &&
+          !chatStillOpen
 
         // Why: mirrored tabs use host tab ids in tab order while local entries use file ids; remove both shapes.
         const closedFileIds = new Set(

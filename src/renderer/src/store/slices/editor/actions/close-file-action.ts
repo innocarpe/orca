@@ -8,6 +8,7 @@ import {
   deleteUntouchedUntitledFile,
   shouldDeleteUntouchedUntitledFile
 } from '../tabs/untitled-file-cleanup'
+import { unifiedTabsKeepWorktreeSelected } from './unified-tabs-keep-worktree-selected'
 
 export function createCloseFileAction(
   set: EditorSet,
@@ -111,11 +112,19 @@ export function createCloseFileAction(
           newActiveTabTypeByWorktree[activeWorktreeId] =
             browserTabsForWorktree.length > 0 ? 'browser' : 'terminal'
         }
+        // Why: a structured chat lives only in unified tabs, so an editor close must not drop the workspace while it remains (#24263).
+        const chatStillOpen =
+          activeWorktreeId !== null &&
+          unifiedTabsKeepWorktreeSelected(
+            s.unifiedTabsByWorktree?.[activeWorktreeId],
+            new Set([fileId])
+          )
         const shouldDeactivateWorktree =
           activeWorktreeId !== null &&
           remainingForWorktree.length === 0 &&
           browserTabsForWorktree.length === 0 &&
-          terminalTabsForWorktree.length === 0
+          terminalTabsForWorktree.length === 0 &&
+          !chatStillOpen
 
         // Why: prune the closed id from tabBarOrderByWorktree so stale ids don't shift positions on the next reconcile.
         const worktreeId = closedFile?.worktreeId ?? activeWorktreeId
