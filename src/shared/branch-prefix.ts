@@ -7,19 +7,33 @@ export type BranchPrefixSettings = {
 }
 
 /**
- * Pick the raw, un-normalized value the configured strategy contributes, or
- * null when no prefix applies. Shared so the main-process branch builder and
- * the renderer's live settings feedback agree on which field each strategy uses.
+ * Pick the value the configured strategy contributes, or null when no prefix
+ * applies. Shared so the main-process branch builder and the renderer's live
+ * settings feedback agree on which field each strategy uses.
+ *
+ * A git username is lowercased so a mixed-case login cannot collide with an
+ * existing lowercase ref directory on a case-insensitive filesystem. When that
+ * lowercase form is a ref git rejects (`Alice.LOCK` becomes `alice.lock`), keep
+ * the original login if it is still valid so worktree creation does not drop it.
  */
 export function selectBranchPrefixInput(
   settings: BranchPrefixSettings,
   gitUsername: string | null
 ): string | null {
   switch (settings.branchPrefix) {
-    case 'git-username':
-      // Why: GitHub keeps the signup case and treats the login as case-insensitive.
-      // A mixed-case prefix collides with an existing lowercase ref directory on APFS.
-      return gitUsername === null ? null : gitUsername.toLowerCase()
+    case 'git-username': {
+      if (gitUsername === null) {
+        return null
+      }
+      const lower = gitUsername.toLowerCase()
+      if (getBranchPrefixIssue(lower) === null) {
+        return lower
+      }
+      if (lower !== gitUsername && getBranchPrefixIssue(gitUsername) === null) {
+        return gitUsername
+      }
+      return lower
+    }
     case 'custom':
       return settings.branchPrefixCustom ?? null
     case 'none':

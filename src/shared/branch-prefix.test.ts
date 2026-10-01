@@ -117,6 +117,12 @@ describe('selectBranchPrefixInput', () => {
     expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'EurFelux')).toBe('eurfelux')
   })
 
+  it('keeps the original login when lowercasing would make the prefix a rejected ref', () => {
+    expect(selectBranchPrefixInput({ branchPrefix: 'git-username' }, 'Alice.LOCK')).toBe(
+      'Alice.LOCK'
+    )
+  })
+
   it('leaves a custom prefix in the case the user typed', () => {
     expect(
       selectBranchPrefixInput(

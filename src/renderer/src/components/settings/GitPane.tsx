@@ -9,6 +9,7 @@ import { Switch } from '../ui/switch'
 import { useAppStore } from '../../store'
 import { getGitPaneSearchEntries } from './git-search'
 import { SearchableSetting } from './SearchableSetting'
+import { selectBranchPrefixInput } from '../../../../shared/branch-prefix'
 import { BranchPrefixFeedback } from './BranchPrefixFeedback'
 import { matchesSettingsSearch } from './settings-search'
 import { AutoRenameBranchFromWorkSetting } from './AutoRenameBranchFromWorkSetting'
@@ -164,7 +165,9 @@ export function GitPane({
     }
   }, [settings.branchPrefixCustom])
   const branchPrefixInputValue =
-    settings.branchPrefix === 'git-username' ? displayedGitUsername : customPrefixDraft
+    settings.branchPrefix === 'git-username'
+      ? (selectBranchPrefixInput(settings, displayedGitUsername || null) ?? '')
+      : customPrefixDraft
 
   const visibleSections = [
     matchesSettingsSearch(searchQuery, {
