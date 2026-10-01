@@ -258,6 +258,59 @@ describe('createEditorSlice untitled cleanup routing', () => {
     expect(store.getState().openFiles.map((file) => file.filePath)).toEqual(['/remote/wt/notes.md'])
   })
 
+  it('closeFile keeps a retained untitled note behind a preview replaced while its file check was still running', async () => {
+    let releaseStat: (() => void) | undefined
+    runtimeEnvironmentCallMock.mockImplementation(async (args: RuntimeEnvironmentCallRequest) => {
+      if (args.method === 'files.stat') {
+        return new Promise((resolve) => {
+          releaseStat = () =>
+            resolve({ ok: true, result: { size: 42, isDirectory: false, mtime: 0 } })
+        })
+      }
+      return { ok: true, result: { deleted: true } }
+    })
+    const store = createEditorStore()
+    seedRemoteWorktree(store)
+    store.getState().openFile(
+      {
+        filePath: '/remote/wt/notes.md',
+        relativePath: 'notes.md',
+        worktreeId: 'wt-1',
+        language: 'markdown',
+        mode: 'edit'
+      },
+      { preview: true }
+    )
+    store.getState().openFile({
+      filePath: '/remote/wt/untitled.md',
+      relativePath: 'untitled.md',
+      worktreeId: 'wt-1',
+      language: 'markdown',
+      isUntitled: true,
+      mode: 'edit'
+    })
+    const untitledId = store.getState().openFiles.find((file) => file.isUntitled)?.id
+    store.getState().closeFile(untitledId!)
+    await vi.waitFor(() => expect(releaseStat).toBeTypeOf('function'))
+
+    store.getState().openFile(
+      {
+        filePath: '/remote/wt/guide.md',
+        relativePath: 'guide.md',
+        worktreeId: 'wt-1',
+        language: 'markdown',
+        mode: 'edit'
+      },
+      { preview: true, recordReplacedPreview: true }
+    )
+    releaseStat?.()
+    await vi.waitFor(() =>
+      expect(
+        store.getState().recentlyClosedEditorTabsByWorktree['wt-1']?.map((entry) => entry.filePath)
+      ).toEqual(['/remote/wt/notes.md', '/remote/wt/untitled.md'])
+    )
+  })
+
   it('closeAllFiles keeps a retained untitled note in close order with the tabs closed beside it', async () => {
     remoteUntitledFileSize = 42
     const store = createEditorStore()
