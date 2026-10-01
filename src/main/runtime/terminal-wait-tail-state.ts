@@ -3,6 +3,7 @@ import { buildTailLines } from './terminal-tail-state'
 import { tailMayContainBlockedSignal } from './terminal-tail-sentinel-index'
 import {
   findActionableTerminalWaitBlockedSignal,
+  isKnownReadyPromptSettled,
   TERMINAL_WAIT_BLOCKED_SENTINEL_RE
 } from './terminal-wait-detection'
 
@@ -96,4 +97,30 @@ export function tailGainedNewerBlockedReason(
     `${previous.waitText}${appendedText}`.toLowerCase()
   )
   return appendCandidateSignal !== null && appendCandidateSignal.index > previous.signal.index
+}
+
+// Why: a blocked stamp is otherwise sticky, and a pane that has gone quiet never
+// runs another check. Only a settled ready tail is positive evidence the dialog
+// is gone. Empty fast-path text, a preview fallback, and a tail that still has
+// a blocked signal are not — failing to gain a newer reason must not clear.
+export function tailSettledReadyClearsBlockedWait(state: TerminalTailWaitState): boolean {
+  if (!state.fromTail || state.signal !== null || state.waitText.length === 0) {
+    return false
+  }
+  return isKnownReadyPromptSettled(state.waitText)
+}
+
+export function resolveWaitBlockedAt(
+  current: number | null,
+  gainedNewerBlockedReason: boolean,
+  next: TerminalTailWaitState,
+  at: number
+): number | null {
+  if (gainedNewerBlockedReason) {
+    return at
+  }
+  if (tailSettledReadyClearsBlockedWait(next)) {
+    return null
+  }
+  return current
 }
