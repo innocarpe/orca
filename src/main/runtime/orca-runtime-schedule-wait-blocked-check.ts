@@ -13,6 +13,7 @@ import {
   type WaitBlockedCheckState
 } from './wait-blocked-check-state'
 import {
+  clearMirroredLeafWaitStamps,
   computeTerminalTailWaitState,
   resolveWaitBlockedAt,
   tailGainedNewerBlockedReason
@@ -86,13 +87,12 @@ export class OrcaRuntimeWithScheduleWaitBlockedCheck extends OrcaRuntimeWithOnPt
     )
     // Why: the mirror copy in onPtyData already ran when this check was deferred,
     // so a quiet pane would keep the leaf stamp after the pty one is cleared.
-    if (pty.waitBlockedAt !== null && nextBlockedAt === null) {
-      for (const leaf of this.getLeavesForPty(ptyId)) {
-        if (leaf.tailBuffer === pty.tailBuffer) {
-          leaf.waitBlockedAt = null
-        }
-      }
-    }
+    clearMirroredLeafWaitStamps(
+      pty.waitBlockedAt,
+      nextBlockedAt,
+      pty.tailBuffer,
+      this.getLeavesForPty(ptyId)
+    )
     pty.waitBlockedAt = nextBlockedAt
     state.lastAt = at
     state.lastWaitState = nextWaitState

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   computeTerminalTailWaitState,
+  clearMirroredLeafWaitStamps,
   resolveWaitBlockedAt,
   tailSettledReadyClearsBlockedWait
 } from './terminal-wait-tail-state'
@@ -61,5 +62,18 @@ describe('terminal tail wait state', () => {
     expect(resolveWaitBlockedAt(12, false, preview, 99)).toBe(12)
     expect(resolveWaitBlockedAt(12, false, inconclusive, 99)).toBe(12)
     expect(resolveWaitBlockedAt(null, false, ready, 99)).toBeNull()
+  })
+
+  it('clears deferred stamps only on leaves that share the PTY tail', () => {
+    const tail = ['ready tail']
+    const matching = { tailBuffer: tail, waitBlockedAt: 4 }
+    const other = { tailBuffer: ['other tail'], waitBlockedAt: 4 }
+
+    clearMirroredLeafWaitStamps(4, null, tail, [matching, other])
+
+    expect(matching.waitBlockedAt).toBeNull()
+    expect(other.waitBlockedAt).toBe(4)
+    clearMirroredLeafWaitStamps(null, null, tail, [other])
+    expect(other.waitBlockedAt).toBe(4)
   })
 })
