@@ -2657,20 +2657,12 @@ private enum Input {
 
     static func typeText(_ text: String, pid: pid_t) throws {
         for unit in text.utf16 {
-            var char = unit
             guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
             else {
                 throw ProviderError.coded("accessibility_error", "failed to create keyboard event")
             }
-            let downUnits = KeyboardInputSafety.unicodeUnitCount(forKeyDown: true)
-            let upUnits = KeyboardInputSafety.unicodeUnitCount(forKeyDown: false)
-            if downUnits > 0 {
-                down.keyboardSetUnicodeString(stringLength: downUnits, unicodeString: &char)
-            }
-            if upUnits > 0 {
-                up.keyboardSetUnicodeString(stringLength: upUnits, unicodeString: &char)
-            }
+            KeyboardInputSafety.attachCharacter(unit, keyDown: down, keyUp: up)
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
         }
