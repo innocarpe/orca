@@ -190,7 +190,7 @@ export function projectRuntimeMobileSessionTabs(
         ? sticky.title
         : normalizeCompatibleAgentTitleForOwner(
             sticky.kind === 'cleared'
-              ? (oscTitle ?? 'Terminal')
+              ? (trackerOnlyTitle ?? oscTitle ?? 'Terminal')
               : (trackerOnlyTitle ?? oscTitle ?? syncedTab?.title ?? tab.title),
             ownerAgent,
             ownerOptions
