@@ -78,7 +78,9 @@ export default function DiffViewer({
   const wordWrapOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
   const wordWrapMountFrameRef = useRef(0)
   const diffWordWrapRef = useRef(diffWordWrap)
-  diffWordWrapRef.current = diffWordWrap
+  useLayoutEffect(() => {
+    diffWordWrapRef.current = diffWordWrap
+  }, [diffWordWrap])
   const [modifiedEditor, setModifiedEditor] = useState<editor.ICodeEditor | null>(null)
 
   const renderLimit = useMemo(

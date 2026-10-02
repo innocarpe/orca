@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { editor } from 'monaco-editor'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { AlertCircle, RefreshCw } from 'lucide-react'
@@ -67,7 +67,9 @@ export function DiffSectionBody({
   const wordWrapOptionsSubRef = useRef<{ dispose: () => void } | null>(null)
   const wordWrapMountFrameRef = useRef(0)
   const diffWordWrapRef = useRef(diffWordWrap)
-  diffWordWrapRef.current = diffWordWrap
+  useLayoutEffect(() => {
+    diffWordWrapRef.current = diffWordWrap
+  }, [diffWordWrap])
   const handleEditorMount: DiffOnMount = (diffEditor, monaco) => {
     diffEditorRef.current = diffEditor
     const cleanupShiftWheelScroll = installDiffEditorShiftWheelScroll(diffEditor)
