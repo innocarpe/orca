@@ -222,17 +222,21 @@ describe('svelte tokenization', () => {
   })
 
   it('keeps repeated closer reentry within the embed budget and recovers on the next line', () => {
-    const longLine = `<p>${'{/if}'.repeat(1000)}<p>after</p>`
+    // HTML text between closers forces repeated embed reentry after the fallback.
+    const closerWithText = '{/if}a'
+    const longLine = `<p>${closerWithText.repeat(1000)}<p>after</p>`
     const tokenizer = createMonarchTokenizer('svelte', svelteMonarchLanguage)
-    const measurement = measureNestedDepth(tokenizer, [longLine, '<p>next</p>'])
+    const measurement = measureNestedDepth(tokenizer, ['<p>before</p>', longLine, '<p>next</p>'])
     expect(measurement.error).toBeUndefined()
-    expect(measurement.maxNestedDepth).toBeGreaterThan(0)
+    expect(measurement.maxNestedDepth).toBeGreaterThan(1)
     expect(measurement.maxNestedDepth).toBeLessThanOrEqual(EMBED_ENTRY_REST_OF_LINE_BUDGET)
 
-    const lines = tokenizeSvelte(`${longLine}\n<p>next</p>`)
-    expect(tokenTypeAt(lines[0], '<p>'.length)).toBe('keyword.control')
-    expect(tokenTypeAt(lines[0], '<p>'.length + '{/if}'.length * 999)).toBe('keyword.control')
-    expect(tokenLanguages(lines[1])).toEqual(['html'])
+    const lines = tokenizeSvelte(`<p>before</p>\n${longLine}\n<p>next</p>`)
+    expect(tokenTypeAt(lines[1], '<p>'.length)).toBe('keyword.control')
+    expect(tokenTypeAt(lines[1], '<p>'.length + closerWithText.length * 999)).toBe(
+      'keyword.control'
+    )
+    expect(tokenLanguages(lines[2])).toEqual(['html'])
   })
 
   it('keeps markup highlighted across a whole multi-line file', () => {
