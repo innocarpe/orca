@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
+import { EMBED_ENTRY_REST_OF_LINE_BUDGET } from './monarch-embed-entry-budget'
 import {
+  createMonarchTokenizer,
   endEmbeddedLanguages,
   formatTokenizedLines,
+  measureNestedDepth,
   tokenizeMonarchDocument,
   tokenLanguages,
   tokenLanguagesPerLine,
@@ -164,25 +167,27 @@ describe('svelte tokenization', () => {
     ])
   })
 
-  it('highlights a block closer that follows markup', () => {
-    // Once html is active, Monaco only consults parent rules that pop the embed.
-    // `{/each}` in the reported SFC was left inside that embed and painted as HTML.
-    for (const closer of ['if', 'each', 'await', 'key', 'snippet']) {
-      const lines = tokenizeSvelte(`<p>before</p>\n{/${closer}}\n<p>after</p>`)
+  it.each(['if', 'each', 'await', 'key', 'snippet'])(
+    'highlights %s closers and resumes HTML with or without whitespace',
+    (name) => {
+      for (const closer of [`{/${name}}`, `{ \t/${name} \t}`]) {
+        const lines = tokenizeSvelte(`<p>before</p>\n${closer}\n<p>after</p>`)
+        expect(tokenTypeAt(lines[1], 0)).toBe('keyword.control')
+        expect(tokenLanguages(lines[1])).toEqual(['svelte'])
+        expect(tokenLanguages(lines[2])).toEqual(['html'])
 
-      expect(tokenTypeAt(lines[1], 0)).toBe('keyword.control')
-      expect(tokenLanguages(lines[1])).toEqual(['svelte'])
-      expect(tokenLanguages(lines[2])).toEqual(['html'])
+        const [sameLine] = tokenizeSvelte(`<p>before</p>${closer}<p>after</p>`)
+        expect(tokenTypeAt(sameLine, '<p>before</p>'.length)).toBe('keyword.control')
+        expect(tokenLanguages(sameLine)).toEqual(['html', 'svelte', 'html'])
+
+        const [fileStartCloser] = tokenizeSvelte(closer)
+        expect(tokenTypeAt(fileStartCloser, 0)).toBe('keyword.control')
+        expect(tokenLanguages(fileStartCloser)).toEqual(['svelte'])
+      }
     }
+  )
 
-    const [fileStartCloser] = tokenizeSvelte('{/each}')
-    expect(tokenTypeAt(fileStartCloser, 0)).toBe('keyword.control')
-
-    const [sameLine] = tokenizeSvelte('<p>before</p>{/if}<p>after</p>')
-    const closerAt = '<p>before</p>'.length
-    expect(tokenTypeAt(sameLine, closerAt)).toBe('keyword.control')
-    expect(tokenLanguages(sameLine)).toEqual(['html', 'svelte', 'html'])
-
+  it('preserves a CSS block after a Svelte closer', () => {
     expect(
       languagesPerLine(
         '{#each items as item}\n  <p>{item}</p>\n{/each}\n<style>\n  p { color: red; }\n</style>'
@@ -195,6 +200,39 @@ describe('svelte tokenization', () => {
       ['css'],
       ['svelte']
     ])
+  })
+
+  it('resumes HTML, expressions, script and CSS after an inline closer', () => {
+    const source =
+      '<p>before</p>{/if}<p>{value}</p><script>let a = 1</script><style>p {color:red}</style>'
+    expect(tokenLanguages(tokenizeSvelte(source)[0])).toEqual([
+      'html',
+      'svelte',
+      'html',
+      'svelte',
+      'typescript',
+      'svelte',
+      'html',
+      'svelte',
+      'typescript',
+      'svelte',
+      'css',
+      'svelte'
+    ])
+  })
+
+  it('keeps repeated closer reentry within the embed budget and recovers on the next line', () => {
+    const longLine = `<p>${'{/if}'.repeat(1000)}<p>after</p>`
+    const tokenizer = createMonarchTokenizer('svelte', svelteMonarchLanguage)
+    const measurement = measureNestedDepth(tokenizer, [longLine, '<p>next</p>'])
+    expect(measurement.error).toBeUndefined()
+    expect(measurement.maxNestedDepth).toBeGreaterThan(0)
+    expect(measurement.maxNestedDepth).toBeLessThanOrEqual(EMBED_ENTRY_REST_OF_LINE_BUDGET)
+
+    const lines = tokenizeSvelte(`${longLine}\n<p>next</p>`)
+    expect(tokenTypeAt(lines[0], '<p>'.length)).toBe('keyword.control')
+    expect(tokenTypeAt(lines[0], '<p>'.length + '{/if}'.length * 999)).toBe('keyword.control')
+    expect(tokenLanguages(lines[1])).toEqual(['html'])
   })
 
   it('keeps markup highlighted across a whole multi-line file', () => {
