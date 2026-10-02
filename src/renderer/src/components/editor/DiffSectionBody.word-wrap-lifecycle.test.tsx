@@ -34,7 +34,7 @@ vi.mock('@monaco-editor/react', () => ({
   DiffEditor: ({
     onMount
   }: {
-    onMount: (editor: (typeof mountedEditors)[number]['editor'], monaco: object) => void
+    onMount: (editor: (typeof mountedEditors)[number]['editor']) => void
   }) => {
     const mount = useRef(onMount)
     useEffect(() => {
@@ -44,7 +44,7 @@ vi.mock('@monaco-editor/react', () => ({
       // Monaco's React wrapper mounts asynchronously, after the parent's first effect.
       queueMicrotask(() => {
         if (!disposed) {
-          mount.current(instance.editor, {})
+          mount.current(instance.editor)
         }
       })
       return () => {

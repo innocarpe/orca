@@ -45,7 +45,7 @@ vi.mock('@monaco-editor/react', () => ({
   DiffEditor: ({
     onMount
   }: {
-    onMount: (editor: ReturnType<typeof fixture.createEditor>['editor'], monaco: object) => void
+    onMount: (editor: ReturnType<typeof fixture.createEditor>['editor']) => void
   }) => {
     const mount = useRef(onMount)
     useEffect(() => {
@@ -54,7 +54,7 @@ vi.mock('@monaco-editor/react', () => ({
       let disposed = false
       queueMicrotask(() => {
         if (!disposed) {
-          mount.current(instance.editor, {})
+          mount.current(instance.editor)
         }
       })
       return () => {
