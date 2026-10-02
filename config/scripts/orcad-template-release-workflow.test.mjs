@@ -25,7 +25,9 @@ describe('orcad template release wiring (design D2)', () => {
       build_template: { type: 'boolean', default: false }
     })
     // A release call shares github.ref with main's push runs; neither may cancel the other.
-    expect(nodeServer.concurrency['cancel-in-progress']).toBe('${{ !inputs.build_template }}')
+    expect(nodeServer.concurrency['cancel-in-progress']).toBe(
+      "${{ !inputs.build_template && github.event_name != 'push' }}"
+    )
     expect(nodeServer.concurrency.group).toContain('github.run_id')
     for (const lane of LANES) {
       const steps = nodeServer.jobs[lane].steps
@@ -105,7 +107,11 @@ describe('orcad template release wiring (design D2)', () => {
     }
 
     const macSteps = releaseMac.jobs['build-mac'].steps
-    const macDownload = stepIndex(macSteps, (step) => step.uses === 'actions/download-artifact@v8')
+    // Why by name: the mac job also downloads the relay Windows process-tree addons.
+    const macDownload = stepIndex(
+      macSteps,
+      (step) => step.uses === 'actions/download-artifact@v8' && step.with?.name === 'orcad-template'
+    )
     expect(macSteps[macDownload].with).toMatchObject({
       name: 'orcad-template',
       path: 'out/orcad-template',
