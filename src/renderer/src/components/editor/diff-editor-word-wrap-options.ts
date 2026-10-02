@@ -17,7 +17,16 @@ export function buildDiffEditorWordWrapOptions(
 
 type Disposable = { dispose: () => void }
 
-function diffEditorIsSideBySide(diffEditor: editor.IStandaloneDiffEditor): boolean {
+type WordWrapEditor = Pick<editor.ICodeEditor, 'getRawOptions' | 'updateOptions'> & {
+  onDidChangeConfiguration: (listener: () => void) => Disposable
+}
+
+type WordWrapDiffEditor = Pick<editor.IStandaloneDiffEditor, 'getContainerDomNode'> & {
+  getOriginalEditor: () => WordWrapEditor
+  getModifiedEditor: () => WordWrapEditor
+}
+
+function diffEditorIsSideBySide(diffEditor: WordWrapDiffEditor): boolean {
   const host = diffEditor.getContainerDomNode?.()
   if (!host) {
     return true
@@ -34,7 +43,7 @@ function diffEditorIsSideBySide(diffEditor: editor.IStandaloneDiffEditor): boole
 }
 
 export function syncDiffEditorOriginalWordWrap(
-  diffEditor: editor.IStandaloneDiffEditor,
+  diffEditor: WordWrapDiffEditor,
   diffWordWrap: boolean | undefined
 ): Disposable {
   const originalEditor = diffEditor.getOriginalEditor()

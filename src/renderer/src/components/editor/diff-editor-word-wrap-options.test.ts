@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
 import type { editor } from 'monaco-editor'
 import {
@@ -26,12 +27,7 @@ describe('buildDiffEditorWordWrapOptions', () => {
 })
 
 describe('syncDiffEditorOriginalWordWrap', () => {
-  function fakeEditor(): {
-    updateOptions: ReturnType<typeof vi.fn>
-    getRawOptions: () => editor.IEditorOptions
-    onDidChangeConfiguration: (listener: () => void) => { dispose: () => void }
-    emitDidChangeConfiguration: () => void
-  } {
+  function fakeEditor() {
     const listeners = new Set<() => void>()
     let options: editor.IEditorOptions = {}
     const editorStub = {
@@ -54,32 +50,17 @@ describe('syncDiffEditorOriginalWordWrap', () => {
     return editorStub
   }
 
-  function monacoDiffHost(sideBySide: boolean): {
-    classList: { contains: (name: string) => boolean }
-    querySelector: (selector: string) => { classList: { contains: (name: string) => boolean } }
-  } {
-    const widget = {
-      classList: {
-        contains: (name: string) =>
-          name === 'monaco-diff-editor' || (sideBySide && name === 'side-by-side')
-      }
-    }
-    return {
-      classList: { contains: () => false },
-      querySelector: (selector: string) => {
-        if (selector !== '.monaco-diff-editor') {
-          throw new Error(`unexpected selector ${selector}`)
-        }
-        return widget
-      }
-    }
+  function monacoDiffHost(sideBySide: boolean): HTMLElement {
+    const host = document.createElement('div')
+    const widget = document.createElement('div')
+    widget.classList.add('monaco-diff-editor')
+    widget.classList.toggle('side-by-side', sideBySide)
+    host.append(widget)
+    return host
   }
 
-  function fakeDiffEditor(root?: {
-    classList: { contains: (name: string) => boolean }
-    querySelector?: (selector: string) => { classList: { contains: (name: string) => boolean } }
-  }): {
-    diffEditor: editor.IStandaloneDiffEditor
+  function fakeDiffEditor(root = monacoDiffHost(true)): {
+    diffEditor: Parameters<typeof syncDiffEditorOriginalWordWrap>[0]
     original: ReturnType<typeof fakeEditor>
     modified: ReturnType<typeof fakeEditor>
   } {
@@ -91,8 +72,8 @@ describe('syncDiffEditorOriginalWordWrap', () => {
       diffEditor: {
         getOriginalEditor: () => original,
         getModifiedEditor: () => modified,
-        ...(root ? { getContainerDomNode: () => root } : {})
-      } as unknown as editor.IStandaloneDiffEditor
+        getContainerDomNode: () => root
+      }
     }
   }
 
@@ -153,6 +134,31 @@ describe('syncDiffEditorOriginalWordWrap', () => {
 
     original.updateOptions({ wordWrapOverride2: 'inherit' })
     original.emitDidChangeConfiguration()
+    await Promise.resolve()
+
+    expect(original.getRawOptions().wordWrapOverride2).toBe('off')
+  })
+
+  it('observes the settled layout after an inline-to-side-by-side transition', async () => {
+    const host = monacoDiffHost(false)
+    const { diffEditor, original, modified } = fakeDiffEditor(host)
+    const disposable = syncDiffEditorOriginalWordWrap(diffEditor, true)
+
+    original.emitDidChangeConfiguration()
+    modified.emitDidChangeConfiguration()
+    host.querySelector('.monaco-diff-editor')?.classList.add('side-by-side')
+    await Promise.resolve()
+
+    expect(original.getRawOptions().wordWrapOverride2).toBe('inherit')
+    disposable.dispose()
+  })
+
+  it('cancels a queued update when the editor is disposed', async () => {
+    const { diffEditor, original } = fakeDiffEditor()
+    const disposable = syncDiffEditorOriginalWordWrap(diffEditor, true)
+    original.updateOptions({ wordWrapOverride2: 'off' })
+    original.emitDidChangeConfiguration()
+    disposable.dispose()
     await Promise.resolve()
 
     expect(original.getRawOptions().wordWrapOverride2).toBe('off')
