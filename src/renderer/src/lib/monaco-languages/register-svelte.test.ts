@@ -94,8 +94,8 @@ describe('svelte tokenization', () => {
         "  <p>{count} clicked</p> | 0:-@html 5:delimiter.curly.svelte@svelte 6:-@typescript 11:delimiter.curly.svelte@svelte 12:-@html | embed=html",
         "{:else} | 0:keyword.control.svelte@svelte | embed=none",
         "  <p>not yet</p> | 0:-@html | embed=html",
-        "{/if} | 0:-@html | embed=html",
-        " | 0:-@html | embed=html",
+        "{/if} | 0:keyword.control.svelte@svelte | embed=none",
+        " |  | embed=html",
         "<button on:click={increment}>{count}</button> | 0:-@html 17:delimiter.curly.svelte@svelte 18:-@typescript 27:delimiter.curly.svelte@svelte 28:-@html 29:delimiter.curly.svelte@svelte 30:-@typescript 35:delimiter.curly.svelte@svelte 36:-@html | embed=html",
         "{@html '<em>raw</em>'} | 0:keyword.control.svelte@svelte 6:-@typescript 21:delimiter.curly.svelte@svelte | embed=none",
         " |  | embed=html",
@@ -159,8 +159,41 @@ describe('svelte tokenization', () => {
       ['html'],
       ['svelte'],
       ['html'],
-      ['html'],
+      ['svelte'],
       ['html']
+    ])
+  })
+
+  it('highlights a block closer that follows markup', () => {
+    // Once html is active, Monaco only consults parent rules that pop the embed.
+    // `{/each}` in the reported SFC was left inside that embed and painted as HTML.
+    for (const closer of ['if', 'each', 'await', 'key', 'snippet']) {
+      const lines = tokenizeSvelte(`<p>before</p>\n{/${closer}}\n<p>after</p>`)
+
+      expect(tokenTypeAt(lines[1], 0)).toBe('keyword.control')
+      expect(tokenLanguages(lines[1])).toEqual(['svelte'])
+      expect(tokenLanguages(lines[2])).toEqual(['html'])
+    }
+
+    const [fileStartCloser] = tokenizeSvelte('{/each}')
+    expect(tokenTypeAt(fileStartCloser, 0)).toBe('keyword.control')
+
+    const [sameLine] = tokenizeSvelte('<p>before</p>{/if}<p>after</p>')
+    const closerAt = '<p>before</p>'.length
+    expect(tokenTypeAt(sameLine, closerAt)).toBe('keyword.control')
+    expect(tokenLanguages(sameLine)).toEqual(['html', 'svelte', 'html'])
+
+    expect(
+      languagesPerLine(
+        '{#each items as item}\n  <p>{item}</p>\n{/each}\n<style>\n  p { color: red; }\n</style>'
+      )
+    ).toEqual([
+      ['svelte', 'typescript', 'svelte'],
+      ['html', 'svelte', 'typescript', 'svelte', 'html'],
+      ['svelte'],
+      ['svelte'],
+      ['css'],
+      ['svelte']
     ])
   })
 
