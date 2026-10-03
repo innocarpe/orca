@@ -112,7 +112,11 @@ export function failDispatch(
   this: OrchestrationDb,
   ctxId: string,
   error: string,
-  options: { workerProcessExited?: boolean; terminationReason?: string } = {}
+  options: {
+    workerProcessExited?: boolean
+    workerSessionUnrecoverable?: boolean
+    terminationReason?: string
+  } = {}
 ): DispatchContextRow | undefined {
   // Why: reserve the WAL writer before lifecycle reads so a concurrent commit cannot cause SQLITE_BUSY_SNAPSHOT.
   const transaction = beginLifecycleWriteTransaction(this.db, FAIL_DISPATCH_SAVEPOINT)
@@ -121,13 +125,18 @@ export function failDispatch(
       | DispatchContextRow
       | undefined
     const workerBefore = this.getWorkerDispatch(ctxId)
+    const settlesWorker = options.workerProcessExited || options.workerSessionUnrecoverable
     if (!before || !['pending', 'dispatched'].includes(before.status)) {
+      if (options.workerSessionUnrecoverable) {
+        commitLifecycleWriteTransaction(this.db, transaction)
+        return undefined
+      }
       const worker = workerBefore
       if (
         before &&
         worker &&
         !['failed', 'succeeded', 'stopped', 'abandoned'].includes(worker.state) &&
-        !options.workerProcessExited
+        !settlesWorker
       ) {
         throw new OrchestrationError(
           'task_not_startable',
@@ -138,8 +147,15 @@ export function failDispatch(
       commitLifecycleWriteTransaction(this.db, transaction)
       return before
     }
+    // Why: an explicit, unrecoverable agent-session verdict can settle the worker while its PTY
+    // remains live. It is valid only for a ready worker; a concurrent stop or other settlement
+    // keeps ownership and the Dispatch untouched.
+    if (options.workerSessionUnrecoverable && workerBefore?.state !== 'ready') {
+      commitLifecycleWriteTransaction(this.db, transaction)
+      return undefined
+    }
     if (
-      !options.workerProcessExited &&
+      !settlesWorker &&
       workerBefore &&
       !['failed', 'succeeded', 'stopped', 'abandoned'].includes(workerBefore.state)
     ) {
@@ -180,6 +196,18 @@ export function failDispatch(
         to: 'failed',
         projection: {
           stage: 'process_exited',
+          last_error: error,
+          updated_at: new Date().toISOString()
+        }
+      })
+    } else if (worker && options.workerSessionUnrecoverable) {
+      transitionLifecycleWithDb(this.db, {
+        entity: 'worker',
+        id: ctxId,
+        from: 'ready',
+        to: 'failed',
+        projection: {
+          stage: 'session_unrecoverable',
           last_error: error,
           updated_at: new Date().toISOString()
         }
