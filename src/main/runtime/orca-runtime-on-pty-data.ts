@@ -183,7 +183,7 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
       pty.preview = buildPreview(pty.tailBuffer, pty.tailPartialLine)
       this.scheduleWaitBlockedCheck(ptyId, normalized.text, at)
       const leaf = this.getLeavesForPty(ptyId)[0]
-      const handle = this.handleByPtyId.get(ptyId) ?? this.findHandleForPtyRecord(pty)
+      const handle = this.handleByPtyId.get(ptyId) ?? this.findHandleForPtyRecord(ptyId)
       const paneKey = leaf ? this.makeRuntimePaneKey(leaf) : (pty.paneKey ?? null)
       if (handle) {
         this.observeCodexReconnectFailureOutput(handle, paneKey, pty, normalized.text)

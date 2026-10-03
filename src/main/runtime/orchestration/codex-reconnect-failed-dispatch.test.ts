@@ -136,6 +136,17 @@ describe('Codex reconnect failure settles its worker dispatch', () => {
         db.failDispatch(started.dispatch.id, 'no authoritative session failure')
       ).toThrow(/active supervised worker/)
       expect(db.getDispatchContextById(started.dispatch.id)?.status).toBe('dispatched')
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: emulate a remaining synthetic PTY handle after its cached PTY ID index is absent.
+      const runtimeHandleIndexes = runtime as unknown as {
+        handleByPtyId: Map<string, string>
+        handles: Map<string, { ptyId: string; tabId: string }>
+      }
+      const syntheticHandle = runtimeHandleIndexes.handles.get(workerHandle)
+      expect(syntheticHandle?.ptyId).toBe(WORKER_PTY_ID)
+      if (syntheticHandle) {
+        syntheticHandle.tabId = `pty:${WORKER_PTY_ID}`
+      }
+      runtimeHandleIndexes.handleByPtyId.delete(WORKER_PTY_ID)
 
       runtime.onPtyData(
         WORKER_PTY_ID,
