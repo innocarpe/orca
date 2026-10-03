@@ -22,6 +22,13 @@ import {
   classifyWorkerTerminalProcessIncarnation,
   parseWorkerTerminalHostScope
 } from './orchestration/worker-terminal-process-liveness'
+import {
+  CODEX_RECONNECT_SCAN_CONTEXT_CHARS,
+  codexReconnectOutputScans,
+  createCodexReconnectOutputScan,
+  findCodexReconnectFailureBanner,
+  stripTerminalControlSequences
+} from './orca-runtime-on-pty-data'
 import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 import { buildOrchestrationTaskDisplayMetadata } from '../../shared/orchestration-task-display'
 
@@ -110,41 +117,66 @@ export class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRuntimeWithApp
     })
   }
 
-  protected failActiveDispatchOnCodexSessionUnrecoverable(
+  protected observeCodexReconnectFailureOutput(
     handle: string,
-    paneKey: string | null
-  ): boolean {
+    paneKey: string | null,
+    pty: object,
+    output: string
+  ): void {
+    const db = this._orchestrationDb
+    const scan = codexReconnectOutputScans.get(pty) ?? createCodexReconnectOutputScan()
+    const dispatch = db?.getActiveDispatchForTerminal(handle, paneKey ?? undefined)
+    const dispatchId = dispatch?.id ?? null
+    if (dispatchId !== scan.dispatchId) {
+      scan.dispatchId = dispatchId
+      scan.tail = ''
+      scan.pendingDispatchId = null
+      scan.handledDispatchId = null
+    }
+    const combinedOutput = scan.tail + stripTerminalControlSequences(output)
+    if (
+      dispatch &&
+      scan.pendingDispatchId !== dispatchId &&
+      scan.handledDispatchId !== dispatchId
+    ) {
+      const match = findCodexReconnectFailureBanner(combinedOutput)
+      if (match && match.end > scan.tail.length) {
+        scan.pendingDispatchId = dispatchId
+      }
+    }
+    if (dispatch && scan.pendingDispatchId === dispatchId) {
+      const result = this.failCodexSessionUnrecoverableDispatch(dispatch, handle)
+      if (result === 'settled' || result === 'ignored') {
+        scan.handledDispatchId = dispatchId
+        scan.pendingDispatchId = null
+      }
+    }
+    scan.tail = dispatch ? combinedOutput.slice(-CODEX_RECONNECT_SCAN_CONTEXT_CHARS) : ''
+    codexReconnectOutputScans.set(pty, scan)
+  }
+
+  protected failCodexSessionUnrecoverableDispatch(
+    dispatch: { id: string; run_id: string; task_id: string },
+    handle: string
+  ): 'settled' | 'retry' | 'ignored' {
     const db = this._orchestrationDb
     if (!db) {
-      return false
+      return 'ignored'
     }
-    const dispatch = db.getActiveDispatchForTerminal(handle, paneKey ?? undefined)
-    if (!dispatch) {
-      return false
-    }
-    const worker = db.getWorkerDispatch?.(dispatch.id)
-    if (worker?.state !== 'ready' || worker.stage !== 'input_accepted') {
-      return false
-    }
-    let startOptions: unknown
-    try {
-      startOptions = JSON.parse(worker.start_options)
-    } catch {
-      return false
-    }
-    if (!startOptions || typeof startOptions !== 'object' || startOptions.agent !== 'codex') {
-      return false
-    }
-
     const reason = 'Codex could not restore its app-server session'
-    const settled = db.failDispatch(dispatch.id, reason, { workerSessionUnrecoverable: true })
-    if (!settled || !['failed', 'circuit_broken'].includes(settled.status)) {
-      return false
+    const settledStatus = db.failCodexSessionUnrecoverableDispatch(dispatch.id, reason)
+    if (settledStatus === 'retry') {
+      return 'retry'
+    }
+    if (settledStatus !== 'failed' && settledStatus !== 'circuit_broken') {
+      return 'ignored'
     }
     this.notifyWorkerDispatchFailure({
       dispatch,
       handle,
       failureLogLabel: 'worker failure',
+      taskDispositionNote:
+        ' The task was marked failed pending coordinator review and will not be retried automatically.',
       subject: `Agent session failed (${reason})`,
       reason,
       bodyPrefix: `Worker ${handle} could not continue task`,
@@ -157,9 +189,9 @@ export class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRuntimeWithApp
         terminalPreserved: true,
         worktreePreserved: true
       },
-      settledStatus: settled.status
+      settledStatus
     })
-    return true
+    return 'settled'
   }
 
   private notifyWorkerDispatchFailure(params: {
@@ -170,6 +202,7 @@ export class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRuntimeWithApp
     reason: string
     bodyPrefix: string
     bodySuffix?: string
+    taskDispositionNote?: string
     payload: Record<string, unknown>
     settledStatus?: string
   }): void {
@@ -204,11 +237,12 @@ export class OrcaRuntimeWithSubscribeToTerminalResize extends OrcaRuntimeWithApp
           : ''
       const named = title ? `"${title}" (${params.dispatch.task_id})` : params.dispatch.task_id
       const settlementNote =
-        params.settledStatus === 'circuit_broken'
+        params.taskDispositionNote ??
+        (params.settledStatus === 'circuit_broken'
           ? ' This task has now failed too many times, so it will not be retried automatically.'
           : params.settledStatus === 'failed'
             ? ' The task is ready to be dispatched again.'
-            : ''
+            : '')
       const escalation = db.insertMessage({
         from: params.handle,
         to: recipient.to,

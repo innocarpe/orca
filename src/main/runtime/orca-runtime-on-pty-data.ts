@@ -21,17 +21,22 @@ const CODEX_RECONNECT_FAILURE_BANNER = [
   'app-server session could not be restored',
   'Reconnect failed — check the endpoint, then relaunch'
 ]
-const codexReconnectFailureHandledPtys = new WeakSet<object>()
+export const CODEX_RECONNECT_SCAN_CONTEXT_CHARS = 512
 
-function hasCodexReconnectFailureBanner(preview: string): boolean {
-  const visible = stripTerminalControlSequences(preview)
-  const lines = visible.split(/\r\n|\r|\n/).map((line) => line.trim())
-  return lines.some((line, index) =>
-    CODEX_RECONNECT_FAILURE_BANNER.every((expected, offset) => lines[index + offset] === expected)
-  )
+export type CodexReconnectOutputScan = {
+  tail: string
+  dispatchId: string | null
+  pendingDispatchId: string | null
+  handledDispatchId: string | null
 }
 
-function stripTerminalControlSequences(value: string): string {
+export function createCodexReconnectOutputScan(): CodexReconnectOutputScan {
+  return { tail: '', dispatchId: null, pendingDispatchId: null, handledDispatchId: null }
+}
+
+export const codexReconnectOutputScans = new WeakMap<object, CodexReconnectOutputScan>()
+
+export function stripTerminalControlSequences(value: string): string {
   const visibleParts: string[] = []
   let textStart = 0
   for (let index = 0; index < value.length; index += 1) {
@@ -47,6 +52,35 @@ function stripTerminalControlSequences(value: string): string {
   }
   visibleParts.push(value.slice(textStart))
   return visibleParts.join('')
+}
+
+export function findCodexReconnectFailureBanner(
+  output: string
+): { start: number; end: number } | undefined {
+  const lines: { text: string; start: number; end: number }[] = []
+  let lineStart = 0
+  for (let index = 0; index <= output.length; index += 1) {
+    const character = output[index]
+    if (index !== output.length && character !== '\r' && character !== '\n') {
+      continue
+    }
+    lines.push({ text: output.slice(lineStart, index).trim(), start: lineStart, end: index })
+    if (character === '\r' && output[index + 1] === '\n') {
+      index += 1
+    }
+    lineStart = index + 1
+  }
+  for (let index = 0; index <= lines.length - CODEX_RECONNECT_FAILURE_BANNER.length; index += 1) {
+    const start = lines[index]
+    if (
+      CODEX_RECONNECT_FAILURE_BANNER.every(
+        (expected, offset) => lines[index + offset].text === expected
+      )
+    ) {
+      return { start: start.start, end: lines[index + 2].end }
+    }
+  }
+  return undefined
 }
 
 export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecutionContext {
@@ -148,16 +182,11 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
       pty.tailLinesTotal += nextTail.newCompleteLines
       pty.preview = buildPreview(pty.tailBuffer, pty.tailPartialLine)
       this.scheduleWaitBlockedCheck(ptyId, normalized.text, at)
-      if (
-        !codexReconnectFailureHandledPtys.has(pty) &&
-        hasCodexReconnectFailureBanner(pty.preview)
-      ) {
-        const leaf = this.getLeavesForPty(ptyId)[0]
-        const handle = this.handleByPtyId.get(ptyId) ?? this.findHandleForPtyRecord(pty)
-        const paneKey = leaf ? this.makeRuntimePaneKey(leaf) : (pty.paneKey ?? null)
-        if (handle && this.failActiveDispatchOnCodexSessionUnrecoverable(handle, paneKey)) {
-          codexReconnectFailureHandledPtys.add(pty)
-        }
+      const leaf = this.getLeavesForPty(ptyId)[0]
+      const handle = this.handleByPtyId.get(ptyId) ?? this.findHandleForPtyRecord(pty)
+      const paneKey = leaf ? this.makeRuntimePaneKey(leaf) : (pty.paneKey ?? null)
+      if (handle) {
+        this.observeCodexReconnectFailureOutput(handle, paneKey, pty, normalized.text)
       }
     }
 

@@ -149,7 +149,7 @@ describe('Codex reconnect failure settles its worker dispatch', () => {
         status: 'failed',
         termination_reason: null
       })
-      expect(db.getTask(started.task.id)?.status).toBe('ready')
+      expect(db.getTask(started.task.id)?.status).toBe('failed')
       expect(db.getWorkerDispatch(started.dispatch.id)).toMatchObject({
         state: 'failed',
         stage: 'session_unrecoverable'
@@ -166,9 +166,90 @@ describe('Codex reconnect failure settles its worker dispatch', () => {
       ).toEqual([
         {
           subject: 'Agent session failed (Codex could not restore its app-server session)',
-          body: expect.stringContaining('The terminal and worktree were kept for diagnosis.')
+          body: expect.stringContaining(
+            'The task was marked failed pending coordinator review and will not be retried automatically.'
+          )
         }
       ])
+      expect(kill).not.toHaveBeenCalled()
+
+      const nextTask = db.createTask({ runId: run.id, spec: 'run the next Codex worker task' })
+      const next = db.createStartingWorkerDispatch({
+        creator: { kind: 'system' },
+        maxDepth: Number.MAX_SAFE_INTEGER,
+        taskId: nextTask.id,
+        startOptions: { topology: 'current', agent: 'codex' }
+      })
+      db.prepareStartingWorkerAuthority({
+        dispatchId: next.dispatch.id,
+        handle: workerHandle,
+        paneKey: WORKER_PANE_KEY,
+        processIncarnation: 'runtime:pty:codex-worker',
+        worktreeId: WORKTREE_ID,
+        setupState: 'not_applicable',
+        effects: [],
+        terminalOwnership: 'external'
+      })
+      db.markWorkerDispatchReady(next.dispatch.id)
+
+      runtime.onPtyData(WORKER_PTY_ID, 'next task started\r\n', 102)
+      expect(db.getDispatchContextById(next.dispatch.id)?.status).toBe('dispatched')
+      expect(db.getWorkerDispatch(next.dispatch.id)?.state).toBe('ready')
+
+      runtime.onPtyData(WORKER_PTY_ID, RECONNECT_FAILURE_BANNER, 103)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(db.getDispatchContextById(next.dispatch.id)?.status).toBe('failed')
+      expect(db.getTask(nextTask.id)?.status).toBe('failed')
+      expect(
+        db
+          .getUnreadRunMailbox(run.id, 100, ['escalation'])
+          .filter(({ subject }) => subject.includes('Agent session failed'))
+      ).toHaveLength(2)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('ignores a reconnect banner that began before a later dispatch started', () => {
+    const { runtime, kill, workerHandle, coordinatorHandle } = makeRuntime()
+    const db = new OrchestrationDb(':memory:')
+    try {
+      const run = db.createRun({
+        objective: 'start a Codex worker after old terminal output',
+        coordinatorHandle,
+        coordinatorPaneKey: COORDINATOR_PANE_KEY
+      })
+      attachOrchestrationDb(runtime, db)
+      runtime.onPtyData(
+        WORKER_PTY_ID,
+        'Automatic reconnect could not restore this session\r\napp-server session could not be restored\r\n',
+        100
+      )
+
+      const task = db.createTask({ runId: run.id, spec: 'keep the new dispatch active' })
+      const started = db.createStartingWorkerDispatch({
+        creator: { kind: 'system' },
+        maxDepth: Number.MAX_SAFE_INTEGER,
+        taskId: task.id,
+        startOptions: { topology: 'current', agent: 'codex' }
+      })
+      db.prepareStartingWorkerAuthority({
+        dispatchId: started.dispatch.id,
+        handle: workerHandle,
+        paneKey: WORKER_PANE_KEY,
+        processIncarnation: 'runtime:pty:codex-worker',
+        worktreeId: WORKTREE_ID,
+        setupState: 'not_applicable',
+        effects: [],
+        terminalOwnership: 'external'
+      })
+      db.markWorkerDispatchReady(started.dispatch.id)
+
+      runtime.onPtyData(WORKER_PTY_ID, 'Reconnect failed — check the endpoint, then relaunch', 101)
+
+      expect(db.getDispatchContextById(started.dispatch.id)?.status).toBe('dispatched')
+      expect(db.getWorkerDispatch(started.dispatch.id)?.state).toBe('ready')
       expect(kill).not.toHaveBeenCalled()
     } finally {
       db.close()

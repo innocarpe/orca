@@ -214,8 +214,11 @@ export function failDispatch(
       })
     }
 
-    // Why: back to 'ready' not 'pending' — 'pending' would strand it since promoteReadyTasks only runs when a dep completes.
-    const taskStatus: TaskStatus = ctx.status === 'circuit_broken' ? 'failed' : 'ready'
+    // Why: a terminal banner can be emitted by displayed worker output, so avoid automatically
+    // replaying side effects while the original PTY remains alive; a coordinator can review and retry.
+    // Worker process exits keep the existing retry behavior until the circuit breaker trips.
+    const taskStatus: TaskStatus =
+      ctx.status === 'circuit_broken' || options.workerSessionUnrecoverable ? 'failed' : 'ready'
     // Why: the status guard keeps a late failure from reopening a task that already completed or was retried elsewhere.
     const task = this.getTask(ctx.task_id)
     if (
@@ -246,6 +249,42 @@ export function failDispatch(
   }
 }
 
+export function failCodexSessionUnrecoverableDispatch(
+  this: OrchestrationDb,
+  dispatchId: string,
+  error: string
+): 'retry' | 'ignored' | 'failed' | 'circuit_broken' {
+  const worker = this.getWorkerDispatch(dispatchId)
+  if (!worker || !['starting', 'start_unknown', 'ready'].includes(worker.state)) {
+    return 'ignored'
+  }
+  if (worker.state !== 'ready') {
+    return 'retry'
+  }
+  if (worker.stage !== 'input_accepted') {
+    return 'ignored'
+  }
+  let startOptions: unknown
+  try {
+    startOptions = JSON.parse(worker.start_options)
+  } catch {
+    return 'ignored'
+  }
+  if (
+    !startOptions ||
+    typeof startOptions !== 'object' ||
+    !('agent' in startOptions) ||
+    startOptions.agent !== 'codex'
+  ) {
+    return 'ignored'
+  }
+  const settled = this.failDispatch(dispatchId, error, { workerSessionUnrecoverable: true })
+  if (settled?.status === 'failed' || settled?.status === 'circuit_broken') {
+    return settled.status
+  }
+  return 'ignored'
+}
+
 export type DispatchCompletionMethods = {
   completeDispatch: typeof completeDispatch
   completeActiveDispatchesForTask: typeof completeActiveDispatchesForTask
@@ -253,6 +292,7 @@ export type DispatchCompletionMethods = {
   recordHeartbeat: typeof recordHeartbeat
   getStaleDispatches: typeof getStaleDispatches
   failDispatch: typeof failDispatch
+  failCodexSessionUnrecoverableDispatch: typeof failCodexSessionUnrecoverableDispatch
 }
 
 export function attachDispatchCompletion(ctor: { prototype: object }): void {
@@ -262,6 +302,7 @@ export function attachDispatchCompletion(ctor: { prototype: object }): void {
     failActiveDispatchForTask,
     recordHeartbeat,
     getStaleDispatches,
-    failDispatch
+    failDispatch,
+    failCodexSessionUnrecoverableDispatch
   })
 }
