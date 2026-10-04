@@ -160,6 +160,7 @@ export async function resolvePRForBranchOutcome(input: {
     const branchLookup = await lookupPRByBranchName({
       candidates,
       headRepo,
+      headRepoInferred: true,
       branchName,
       ghOptions,
       executionScope
@@ -179,13 +180,13 @@ export async function resolvePRForBranchOutcome(input: {
         localGitOptions
       )
       if (upstreamBranch) {
-        const upstreamHeadRepo =
-          (await getGitHubApiRepositoryForRemote(
-            repoPath,
-            upstreamBranch.remoteName,
-            connectionId,
-            localGitOptions
-          )) ?? headRepo
+        const trackedHeadRepo = await getGitHubApiRepositoryForRemote(
+          repoPath,
+          upstreamBranch.remoteName,
+          connectionId,
+          localGitOptions
+        )
+        const upstreamHeadRepo = trackedHeadRepo ?? headRepo
         if (
           upstreamHeadRepo &&
           shouldRetryTrackedUpstreamBranch(upstreamBranch, branchName, upstreamHeadRepo, headRepo)
@@ -193,6 +194,7 @@ export async function resolvePRForBranchOutcome(input: {
           const upstreamLookup = await lookupPRByBranchName({
             candidates,
             headRepo: upstreamHeadRepo,
+            headRepoInferred: trackedHeadRepo === null,
             branchName: upstreamBranch.branchName,
             ghOptions,
             executionScope
