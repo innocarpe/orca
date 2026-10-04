@@ -63,6 +63,72 @@ describe('closeAllFiles untitled stat concurrency', () => {
     releaseStats?.()
     await vi.waitFor(() => expect(inFlight).toBe(0))
   })
+
+  it('records a retained note as soon as its check finishes', async () => {
+    clearRuntimeCompatibilityCacheForTests()
+    let inFlight = 0
+    let slowChecksStarted = 0
+    let releaseSlowStats: (() => void) | undefined
+    const slowStats = new Promise<void>((resolve) => {
+      releaseSlowStats = resolve
+    })
+    runtimeEnvironmentCallMock.mockImplementation(async (args: RuntimeEnvironmentCallRequest) => {
+      if (args.method !== 'files.stat') {
+        return { ok: true, result: { deleted: true } }
+      }
+      inFlight += 1
+      const relativePath = (args.params as { relativePath?: string } | undefined)?.relativePath
+      if (relativePath === 'untitled-4.md') {
+        inFlight -= 1
+        return { ok: true, result: { size: 42, isDirectory: false, mtime: 0 } }
+      }
+      slowChecksStarted += 1
+      await slowStats
+      inFlight -= 1
+      return { ok: true, result: { size: 0, isDirectory: false, mtime: 0 } }
+    })
+    runtimeEnvironmentTransportCallMock.mockImplementation(
+      (args: RuntimeEnvironmentCallRequest) =>
+        createCompatibleRuntimeStatusResponseIfNeeded(args) ?? runtimeEnvironmentCallMock(args)
+    )
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: { call: runtimeEnvironmentTransportCallMock },
+        fs: { deletePath: vi.fn() }
+      }
+    })
+    const store = createEditorStore()
+    seedRemoteWorktree(store)
+    for (let index = 0; index < 5; index += 1) {
+      store.getState().openFile({
+        filePath: `/remote/wt/untitled-${index}.md`,
+        relativePath: `untitled-${index}.md`,
+        worktreeId: 'wt-1',
+        language: 'markdown',
+        isUntitled: true,
+        mode: 'edit'
+      })
+    }
+
+    store.getState().closeAllFiles()
+    await vi.waitFor(() => expect(slowChecksStarted).toBeGreaterThanOrEqual(3))
+    await vi.waitFor(() =>
+      expect(
+        store
+          .getState()
+          .recentlyClosedEditorTabsByWorktree['wt-1']?.some(
+            (entry) => entry.filePath === '/remote/wt/untitled-4.md'
+          )
+      ).toBe(true)
+    )
+    expect(inFlight).toBeGreaterThan(0)
+
+    releaseSlowStats?.()
+    await vi.waitFor(() => expect(inFlight).toBe(0))
+    expect(
+      store.getState().recentlyClosedEditorTabsByWorktree['wt-1']?.map((entry) => entry.filePath)
+    ).toEqual(['/remote/wt/untitled-4.md'])
+  })
 })
 
 function seedRemoteWorktree(store: StoreApi<AppState>): void {
