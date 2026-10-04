@@ -2,7 +2,7 @@ import { isWslHookRelayConnectionId } from '../../../../shared/wsl-hook-relay-co
 import type { AgentStatusIpcPayload } from '../../../../shared/agent-status-types'
 import {
   resolveAgentStatusIdentity,
-  shouldRetainInheritedProviderSession,
+  shouldRetainInheritedPaneContext,
   shouldSuppressInheritedTerminalStatus
 } from '../../../../shared/agent-status-identity'
 import { isDecorativeAgentTitleFrameChange } from '../../../../shared/agent-decorative-title-signature'
@@ -221,7 +221,7 @@ export function createAgentStatusEventApplicator(args: {
     // there, so comparing the raw id never treats that pane as this terminal.
     const metadataSource =
       existingStatus &&
-      shouldRetainInheritedProviderSession({
+      shouldRetainInheritedPaneContext({
         inheritedFromActivePane: identity.inheritedFromActivePane,
         incomingState: statusPayload.state,
         sameTerminalOwner: (existingStatus.connectionId ?? null) === (ownershipConnectionId ?? null)

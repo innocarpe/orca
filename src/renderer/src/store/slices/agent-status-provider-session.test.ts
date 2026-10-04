@@ -63,8 +63,8 @@ describe('recordAgentProviderSession', () => {
     )
   })
 
-  // Why: a background Codex CLI inherits the foreground pane's ORCA_PANE_KEY. Mobile
-  // Chat UI subscribes to providerSession, so the nested session must not replace it (#22767).
+  // Why: a background Codex CLI inherits the foreground pane's ORCA_PANE_KEY. Mobile needs
+  // the foreground transcript, model, and prompt to stay paired (#22767, #22866).
   it('keeps the foreground transcript when a nested agent reports its own session', () => {
     const store = createTestStore()
     const foreground = {
@@ -73,21 +73,25 @@ describe('recordAgentProviderSession', () => {
       transcriptPath: '/tmp/claude.jsonl'
     }
 
-    store
-      .getState()
-      .setAgentStatus(
-        'tab-1:leaf-1',
-        { state: 'working', prompt: 'foreground claude', agentType: 'claude' },
-        'Claude',
-        { updatedAt: 10, stateStartedAt: 10 },
-        undefined,
-        { providerSession: foreground }
-      )
+    store.getState().setAgentStatus(
+      'tab-1:leaf-1',
+      {
+        state: 'working',
+        prompt: 'foreground claude',
+        model: 'claude-sonnet',
+        agentType: 'claude'
+      },
+      'Claude',
+      { updatedAt: 10, stateStartedAt: 10 },
+      undefined,
+      { providerSession: foreground }
+    )
     store.getState().setAgentStatus(
       'tab-1:leaf-1',
       {
         state: 'working',
         prompt: 'background codex',
+        model: 'gpt-6-astra',
         agentType: 'codex',
         lastAssistantMessage: 'codex output'
       },
@@ -105,7 +109,8 @@ describe('recordAgentProviderSession', () => {
 
     expect(store.getState().agentStatusByPaneKey['tab-1:leaf-1']).toMatchObject({
       state: 'working',
-      prompt: 'background codex',
+      prompt: 'foreground claude',
+      model: 'claude-sonnet',
       agentType: 'claude',
       providerSession: foreground,
       lastAssistantMessage: 'codex output'
@@ -122,7 +127,12 @@ describe('recordAgentProviderSession', () => {
 
     store.getState().setAgentStatus(
       'tab-1:leaf-1',
-      { state: 'working', prompt: 'foreground claude', agentType: 'claude' },
+      {
+        state: 'working',
+        prompt: 'foreground claude',
+        model: 'claude-sonnet',
+        agentType: 'claude'
+      },
       'Claude',
       { updatedAt: 10, stateStartedAt: 10 },
       { connectionId: 'conn-a' },
@@ -138,7 +148,7 @@ describe('recordAgentProviderSession', () => {
       .getState()
       .setAgentStatus(
         'tab-1:leaf-1',
-        { state: 'working', prompt: 'other connection', agentType: 'codex' },
+        { state: 'working', prompt: 'other connection', model: 'gpt-6-astra', agentType: 'codex' },
         'Codex',
         { updatedAt: 20, stateStartedAt: 20 },
         { connectionId: 'conn-b' },
@@ -148,6 +158,7 @@ describe('recordAgentProviderSession', () => {
     expect(store.getState().agentStatusByPaneKey['tab-1:leaf-1']).toMatchObject({
       state: 'working',
       prompt: 'other connection',
+      model: 'gpt-6-astra',
       agentType: 'claude',
       providerSession: nested,
       connectionId: 'conn-b'

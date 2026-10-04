@@ -5,7 +5,7 @@ import {
 } from '../../../shared/agent-hook-listener/providers/codex-state'
 import {
   resolveAgentStatusIdentity,
-  shouldRetainInheritedProviderSession,
+  shouldRetainInheritedPaneContext,
   shouldSuppressInheritedTerminalStatus
 } from '../../../shared/agent-status-identity'
 import type { EnrichedAgentHookEventPayload } from './server-types'
@@ -160,21 +160,29 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       this.commitStatusRowMutation(rowBefore, previous)
       return previous
     }
-    const sessionPinnedPayload =
+    const contextPinnedPayload =
       previous &&
-      shouldRetainInheritedProviderSession({
+      shouldRetainInheritedPaneContext({
         inheritedFromActivePane: identity.inheritedFromActivePane,
         incomingState: rootContextPreservingPayload.payload.state,
         sameTerminalOwner: this.sameTerminalOwner(previous, rootContextPreservingPayload)
       })
-        ? { ...rootContextPreservingPayload, providerSession: previous.providerSession }
+        ? {
+            ...rootContextPreservingPayload,
+            providerSession: previous.providerSession,
+            payload: {
+              ...rootContextPreservingPayload.payload,
+              model: previous.payload.model,
+              prompt: previous.payload.prompt
+            }
+          }
         : rootContextPreservingPayload
     const identityResolvedPayload =
-      identity.agentType === sessionPinnedPayload.payload.agentType
-        ? sessionPinnedPayload
+      identity.agentType === contextPinnedPayload.payload.agentType
+        ? contextPinnedPayload
         : {
-            ...sessionPinnedPayload,
-            payload: { ...sessionPinnedPayload.payload, agentType: identity.agentType }
+            ...contextPinnedPayload,
+            payload: { ...contextPinnedPayload.payload, agentType: identity.agentType }
           }
     const attachedPayload = attachClaudePermissionToolUseId(previous, identityResolvedPayload)
     // Why before the permission hold: that hold adopts the event's `mainAgent`, and a relay's

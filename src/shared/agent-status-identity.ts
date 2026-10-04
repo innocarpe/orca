@@ -27,13 +27,13 @@ export function shouldSuppressInheritedTerminalStatus(args: {
   return args.inheritedFromActivePane && args.incomingState === 'done'
 }
 
-export function shouldRetainInheritedProviderSession(args: {
+export function shouldRetainInheritedPaneContext(args: {
   inheritedFromActivePane: boolean
   incomingState: AgentStatusState
   /** False when another connection collides on this pane key and may own it. */
   sameTerminalOwner: boolean
 }): boolean {
-  // Why: a nested CLI inherits ORCA_PANE_KEY. Pin the transcript, not the hook.
+  // Why: a nested CLI inherits ORCA_PANE_KEY. Preserve the foreground identity context, not just its transcript.
   return args.inheritedFromActivePane && args.sameTerminalOwner && args.incomingState !== 'done'
 }
 

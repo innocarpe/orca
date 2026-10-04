@@ -15,7 +15,7 @@ import {
 } from '../../../../shared/agent-session-resume'
 import {
   resolveAgentStatusIdentity,
-  shouldRetainInheritedProviderSession,
+  shouldRetainInheritedPaneContext,
   shouldSuppressInheritedTerminalStatus
 } from '../../../../shared/agent-status-identity'
 import { isCommandCodeNewTurnWhileWorking } from '../../../../shared/command-code-turn-boundary'
@@ -93,6 +93,19 @@ export function buildAgentStatusLiveEntry(
     incoming: payload.agentType,
     now: updatedAt
   })
+  const retainInheritedContext = Boolean(
+    existing &&
+    shouldRetainInheritedPaneContext({
+      inheritedFromActivePane: identity.inheritedFromActivePane,
+      incomingState: payload.state,
+      sameTerminalOwner: (existing.connectionId ?? null) === (routing?.connectionId ?? null)
+    })
+  )
+  const effectivePrompt = retainInheritedContext ? existing?.prompt : payload.prompt
+  const promptInteractionKey = retainInheritedContext
+    ? existing?.promptInteractionKey
+    : (payload.promptInteractionKey ??
+      (payload.prompt === existing?.prompt ? existing?.promptInteractionKey : undefined))
   const commandCodeNewTurn =
     existing !== undefined &&
     isCommandCodeNewTurnWhileWorking({
@@ -100,13 +113,10 @@ export function buildAgentStatusLiveEntry(
       previousState: existing.state,
       incomingState: payload.state,
       previousPrompt: existing.prompt,
-      incomingPrompt: payload.prompt,
+      incomingPrompt: effectivePrompt,
       previousPromptInteractionKey: existing.promptInteractionKey,
-      incomingPromptInteractionKey: payload.promptInteractionKey
+      incomingPromptInteractionKey: promptInteractionKey
     })
-  const promptInteractionKey =
-    payload.promptInteractionKey ??
-    (payload.prompt === existing?.prompt ? existing?.promptInteractionKey : undefined)
   const stateStartedAt =
     timing?.stateStartedAt ??
     (commandCodeNewTurn
@@ -128,14 +138,6 @@ export function buildAgentStatusLiveEntry(
   ) {
     return { entry: null, reason: 'suppressed-inherited-terminal' }
   }
-  const retainProviderSession = Boolean(
-    existing &&
-    shouldRetainInheritedProviderSession({
-      inheritedFromActivePane: identity.inheritedFromActivePane,
-      incomingState: payload.state,
-      sameTerminalOwner: (existing.connectionId ?? null) === (routing?.connectionId ?? null)
-    })
-  )
   const runtimeOrchestration = state.runtimeAgentOrchestrationByPaneKey[paneKey]
   const runtimeMergedOrchestration = runtimeOrchestration
     ? mergeCurrentOrchestrationContext(existing?.orchestration, runtimeOrchestration)
@@ -153,7 +155,7 @@ export function buildAgentStatusLiveEntry(
   const canReuseExistingProviderSession =
     existing?.agentType === identity.agentType &&
     (existing.state !== 'done' || payload.state === 'done')
-  const providerSession = retainProviderSession
+  const providerSession = retainInheritedContext
     ? existing?.providerSession
     : (metadata?.providerSession ??
       (canReuseExistingProviderSession ? existing.providerSession : undefined))
@@ -161,7 +163,7 @@ export function buildAgentStatusLiveEntry(
     ? existing.providerSession
     : undefined
   const providerSessionChanged =
-    !retainProviderSession &&
+    !retainInheritedContext &&
     Boolean(metadata?.providerSession && existingProviderSession) &&
     !agentProviderSessionsEqual(
       identity.agentType,
@@ -211,7 +213,7 @@ export function buildAgentStatusLiveEntry(
   const entry: AgentStatusEntry = {
     state: payload.state,
     workingMode: payload.workingMode,
-    prompt: payload.prompt,
+    prompt: effectivePrompt,
     updatedAt,
     // Why: a writer that carries no observation clock (OSC bytes, launch seeds) is itself
     // fresh evidence, so it must not inherit the previous row's older observation time.
@@ -223,8 +225,10 @@ export function buildAgentStatusLiveEntry(
     stateObservedAt,
     ...(turnStartedAt !== undefined ? { turnStartedAt } : {}),
     agentType: identity.agentType,
-    model:
-      payload.model ?? (existing?.agentType === identity.agentType ? existing.model : undefined),
+    model: retainInheritedContext
+      ? existing?.model
+      : (payload.model ??
+        (existing?.agentType === identity.agentType ? existing.model : undefined)),
     ...(payload.modelSwitchCommand ? { modelSwitchCommand: payload.modelSwitchCommand } : {}),
     paneKey,
     terminalHandle: statusTerminalHandle,

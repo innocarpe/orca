@@ -229,7 +229,12 @@ describe('AgentHookServer listener replay', () => {
       {
         paneKey: PANE,
         providerSession: foreground,
-        payload: { state: 'working', prompt: 'foreground claude', agentType: 'claude' }
+        payload: {
+          state: 'working',
+          prompt: 'foreground claude',
+          model: 'claude-sonnet',
+          agentType: 'claude'
+        }
       },
       null
     )
@@ -244,6 +249,7 @@ describe('AgentHookServer listener replay', () => {
         payload: {
           state: 'working',
           prompt: 'background codex',
+          model: 'gpt-6-astra',
           agentType: 'codex',
           lastAssistantMessage: 'codex output'
         }
@@ -255,7 +261,8 @@ describe('AgentHookServer listener replay', () => {
       expect.objectContaining({
         paneKey: PANE,
         state: 'working',
-        prompt: 'background codex',
+        prompt: 'foreground claude',
+        model: 'claude-sonnet',
         agentType: 'claude',
         providerSession: foreground,
         lastAssistantMessage: 'codex output'
@@ -278,7 +285,12 @@ describe('AgentHookServer listener replay', () => {
           id: 'claude-session',
           transcriptPath: '/tmp/claude.jsonl'
         },
-        payload: { state: 'working', prompt: 'foreground claude', agentType: 'claude' }
+        payload: {
+          state: 'working',
+          prompt: 'foreground claude',
+          model: 'claude-sonnet',
+          agentType: 'claude'
+        }
       },
       'conn-a'
     )
@@ -286,7 +298,12 @@ describe('AgentHookServer listener replay', () => {
       {
         paneKey: PANE,
         providerSession: nested,
-        payload: { state: 'working', prompt: 'other connection', agentType: 'codex' }
+        payload: {
+          state: 'working',
+          prompt: 'other connection',
+          model: 'gpt-6-astra',
+          agentType: 'codex'
+        }
       },
       'conn-b'
     )
@@ -296,6 +313,7 @@ describe('AgentHookServer listener replay', () => {
         paneKey: PANE,
         state: 'working',
         prompt: 'other connection',
+        model: 'gpt-6-astra',
         providerSession: nested,
         connectionId: 'conn-b'
       })
