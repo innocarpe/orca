@@ -28,6 +28,9 @@ function watchForegroundLoss(onLeave: () => void): () => void {
       onLeave()
     }
   })
+  if (AppState.currentState === 'background' || AppState.currentState === 'inactive') {
+    onLeave()
+  }
   return () => {
     subscription.remove()
   }

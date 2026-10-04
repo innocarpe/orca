@@ -40,10 +40,10 @@ export function describeSocketDeadline(input: SocketDeadlineInput): SocketDeadli
   const monotonicFrozen =
     input.monotonicElapsedMs !== undefined &&
     elapsedLooksFrozen(input.monotonicElapsedMs, input.timeoutMs)
-  // A wall-clock step while the app stays up moves only the wall elapsed.
-  // Suspension still shows up as a foreground loss, or as both clocks running long.
+  // A foreground loss supports suspension only when at least one clock also ran long.
+  // Without an AppState event, both clocks must run long to distinguish a wall-clock step.
   const suspended =
-    input.leftForeground === true ||
+    (input.leftForeground === true && (wallFrozen || monotonicFrozen)) ||
     (input.monotonicElapsedMs === undefined ? wallFrozen : wallFrozen && monotonicFrozen)
   const consoleFields = {
     timeoutMs: input.timeoutMs,

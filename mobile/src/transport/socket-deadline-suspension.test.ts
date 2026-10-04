@@ -26,6 +26,20 @@ describe('describeSocketDeadline', () => {
     })
   })
 
+  it('does not classify an on-budget deadline as suspension after foreground loss', () => {
+    const report = describeSocketDeadline({
+      kind: 'connect',
+      armedAtMs: 1_000,
+      firedAtMs: 1_000 + CONNECT_TIMEOUT_MS,
+      timeoutMs: CONNECT_TIMEOUT_MS,
+      monotonicElapsedMs: CONNECT_TIMEOUT_MS,
+      leftForeground: true
+    })
+
+    expect(report.suspended).toBe(false)
+    expect(report.code).toBe('connect-timeout')
+  })
+
   it('keeps a handshake that fires just past its budget as a handshake timeout', () => {
     const armedAtMs = 5_000
     const report = describeSocketDeadline({
@@ -77,7 +91,7 @@ describe('describeSocketDeadline', () => {
     expect(report.code).toBe('connect-timeout')
   })
 
-  it('still reads a foreground loss as suspension when the wall clock jumps backward', () => {
+  it('does not treat foreground loss and a backward wall-clock step as suspension alone', () => {
     const armedAtMs = 50_000
     const report = describeSocketDeadline({
       kind: 'connect',
@@ -88,9 +102,9 @@ describe('describeSocketDeadline', () => {
       leftForeground: true
     })
 
-    expect(report.code).toBe('suspended-dial')
-    expect(report.detail).toBe('App suspended; connection state unknown, re-dialing')
-    expect(report.detail).not.toContain('endpoint unreachable')
+    expect(report.suspended).toBe(false)
+    expect(report.code).toBe('connect-timeout')
+    expect(report.detail).toContain('endpoint unreachable')
   })
 
   it('reads suspension when the wall clock and the monotonic clock both run long', () => {
