@@ -195,6 +195,55 @@ describe('RuntimePairingUrlGenerator', () => {
     )
   })
 
+  it('keeps the returned Bridge address after it changes and drops again', async () => {
+    runtimePairingLinkCache.selectedAddress = ''
+    mocks.settings = {
+      runtimePairingAdvertisedInterfaceName: 'bridge0',
+      runtimePairingAdvertisedAddress: '10.99.88.1'
+    }
+    mocks.listNetworkInterfaces
+      .mockResolvedValueOnce({
+        interfaces: [
+          { name: 'en0', address: '192.168.4.191' },
+          { name: 'bridge0', address: '10.99.88.1' }
+        ]
+      })
+      .mockResolvedValueOnce({ interfaces: [{ name: 'en0', address: '192.168.4.191' }] })
+      .mockResolvedValueOnce({
+        interfaces: [
+          { name: 'en0', address: '192.168.4.191' },
+          { name: 'bridge0', address: '10.99.88.2' }
+        ]
+      })
+      .mockResolvedValueOnce({ interfaces: [{ name: 'en0', address: '192.168.4.191' }] })
+
+    render(<RuntimePairingUrlGenerator />)
+    await waitFor(() =>
+      expect(screen.getByTestId('selected-address')).toHaveTextContent('10.99.88.1')
+    )
+
+    screen.getByRole('button', { name: 'Refresh' }).click()
+    await waitFor(() => expect(mocks.listNetworkInterfaces).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('10.99.88.1')
+
+    screen.getByRole('button', { name: 'Refresh' }).click()
+    await waitFor(() => expect(mocks.listNetworkInterfaces).toHaveBeenCalledTimes(3))
+    await waitFor(() =>
+      expect(screen.getByTestId('selected-address')).toHaveTextContent('10.99.88.2')
+    )
+    await waitFor(() =>
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        runtimePairingAdvertisedInterfaceName: 'bridge0',
+        runtimePairingAdvertisedAddress: '10.99.88.2'
+      })
+    )
+
+    screen.getByRole('button', { name: 'Refresh' }).click()
+    await waitFor(() => expect(mocks.listNetworkInterfaces).toHaveBeenCalledTimes(4))
+    expect(screen.getByTestId('selected-address')).toHaveTextContent('10.99.88.2')
+    expect(runtimePairingLinkCache.advertisedAddress).toBe('10.99.88.2')
+  })
+
   it('keeps an explicit Thunderbolt pick when refresh reports only Ethernet', async () => {
     runtimePairingLinkCache.selectedAddress = ''
     mocks.listNetworkInterfaces
