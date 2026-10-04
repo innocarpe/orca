@@ -85,7 +85,8 @@ export abstract class OrcaRuntimeWithScheduleWaitBlockedCheck extends OrcaRuntim
     const nextWaitState = computeTerminalTailWaitState(
       pty.tailBuffer,
       pty.tailPartialLine,
-      pty.preview
+      pty.preview,
+      pty.waitBlockedAt !== null
     )
     const previousWaitState = state.lastWaitState ?? {
       waitText: '',
