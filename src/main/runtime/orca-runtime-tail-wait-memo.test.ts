@@ -40,6 +40,28 @@ describe('terminal tail wait state', () => {
     }
   })
 
+  it('reads a ready tail only when a blocked stamp needs settled-ready evidence', () => {
+    const lines = [
+      '╭───╮',
+      '│ >_ openai codex (v0.157.0) │',
+      '│ model: gpt-5 │',
+      '│ directory: ~/repo │',
+      '╰───╯'
+    ]
+
+    const unstamped = computeTerminalTailWaitState(lines, '', '')
+    expect(unstamped.fromTail).toBe(true)
+    expect(unstamped.waitText).toBe('')
+
+    const stamped = computeTerminalTailWaitState(lines, '', '', true)
+    expect(stamped.fromTail).toBe(true)
+    expect(stamped.waitText).toBe('')
+    expect(stamped.signal).toBeNull()
+    expect(stamped.settledReadyPrompt).toBe(true)
+    expect(tailSettledReadyClearsBlockedWait(stamped)).toBe(true)
+    expect(resolveWaitBlockedAt(12, false, stamped, 99)).toBeNull()
+  })
+
   it('clears a blocked stamp only for a settled ready tail', () => {
     const ready = {
       waitText:

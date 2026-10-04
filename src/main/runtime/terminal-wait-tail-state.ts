@@ -23,6 +23,8 @@ export function buildTerminalWaitText(
 export type TerminalTailWaitState = {
   waitText: string
   signal: { reason: RuntimeTerminalWaitBlockedReason; index: number } | null
+  // Why optional: stamped checks record the settled-ready decision without retaining a rebuilt tail.
+  settledReadyPrompt?: boolean
   // Why: preview is only an empty-tail fallback, recomputed each append, so a preview-derived state can't be reused as the next previous state (gated on fromTail).
   fromTail: boolean
 }
@@ -31,7 +33,8 @@ export type TerminalTailWaitState = {
 export function computeTerminalTailWaitState(
   lines: string[],
   partialLine: string,
-  preview: string
+  preview: string,
+  inspectTailForReadyPrompt = false
 ): TerminalTailWaitState {
   const tailInspection = inspectTerminalWaitTail(lines, partialLine)
   if (!tailInspection.fromTail) {
@@ -41,7 +44,7 @@ export function computeTerminalTailWaitState(
       fromTail: false
     }
   }
-  if (!tailInspection.mayContainBlockedSignal) {
+  if (!tailInspection.mayContainBlockedSignal && !inspectTailForReadyPrompt) {
     // Why: reads waitText only when a signal exists; avoid retaining a rebuilt 256 KiB string in the common case.
     return { waitText: '', signal: null, fromTail: true }
   }
@@ -51,9 +54,14 @@ export function computeTerminalTailWaitState(
     .join('\n')
   const fromTail = tailText.length > 0
   const waitText = fromTail ? tailText : preview
+  const checkedReadyPrompt = inspectTailForReadyPrompt && !tailInspection.mayContainBlockedSignal
   return {
-    waitText,
-    signal: findActionableTerminalWaitBlockedSignal(waitText.toLowerCase()),
+    waitText: checkedReadyPrompt ? '' : waitText,
+    signal: tailInspection.mayContainBlockedSignal
+      ? findActionableTerminalWaitBlockedSignal(waitText.toLowerCase())
+      : null,
+    settledReadyPrompt:
+      checkedReadyPrompt && fromTail ? isKnownReadyPromptSettled(waitText) : undefined,
     fromTail
   }
 }
@@ -104,7 +112,13 @@ export function tailGainedNewerBlockedReason(
 // is gone. Empty fast-path text, a preview fallback, and a tail that still has
 // a blocked signal are not — failing to gain a newer reason must not clear.
 export function tailSettledReadyClearsBlockedWait(state: TerminalTailWaitState): boolean {
-  if (!state.fromTail || state.signal !== null || state.waitText.length === 0) {
+  if (!state.fromTail || state.signal !== null) {
+    return false
+  }
+  if (state.settledReadyPrompt === true) {
+    return true
+  }
+  if (state.waitText.length === 0) {
     return false
   }
   return isKnownReadyPromptSettled(state.waitText)

@@ -184,7 +184,8 @@ export class OrcaRuntimeWithOnPtyData extends OrcaRuntimeWithPreparePtyExecution
         const nextWaitState = computeTerminalTailWaitState(
           nextTail.lines,
           nextTail.partialLine,
-          leaf.preview
+          leaf.preview,
+          leaf.waitBlockedAt !== null
         )
         leaf.waitBlockedAt = resolveWaitBlockedAt(
           leaf.waitBlockedAt,
