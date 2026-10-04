@@ -270,17 +270,12 @@ describe('issue source operations', () => {
       url: 'https://github.com/stablyai/orca/issues/924'
     })
     expect(ghExecFileAsyncMock).toHaveBeenCalledWith(
-      [
-        'api',
-        '-X',
-        'POST',
-        'repos/stablyai/orca/issues',
-        '--raw-field',
-        'title=New issue',
-        '--raw-field',
-        'body=Body'
-      ],
-      { cwd: '/repo-root', host: 'github.com' }
+      ['api', '-X', 'POST', 'repos/stablyai/orca/issues', '--input', '-'],
+      {
+        cwd: '/repo-root',
+        host: 'github.com',
+        stdin: JSON.stringify({ title: 'New issue', body: 'Body' })
+      }
     )
   })
 
@@ -304,23 +299,17 @@ describe('issue source operations', () => {
       url: 'https://github.com/stablyai/orca/issues/925'
     })
     expect(ghExecFileAsyncMock).toHaveBeenCalledWith(
-      [
-        'api',
-        '-X',
-        'POST',
-        'repos/stablyai/orca/issues',
-        '--raw-field',
-        'title=New issue',
-        '--raw-field',
-        'body=Body',
-        '--raw-field',
-        'labels[]=bug',
-        '--raw-field',
-        'labels[]=frontend',
-        '--raw-field',
-        'assignees[]=octo'
-      ],
-      { cwd: '/repo-root', host: 'github.com' }
+      ['api', '-X', 'POST', 'repos/stablyai/orca/issues', '--input', '-'],
+      {
+        cwd: '/repo-root',
+        host: 'github.com',
+        stdin: JSON.stringify({
+          title: 'New issue',
+          body: 'Body',
+          labels: ['bug', 'frontend'],
+          assignees: ['octo']
+        })
+      }
     )
   })
 
@@ -353,23 +342,36 @@ describe('issue source operations', () => {
     })
     expect(ghExecFileAsyncMock).toHaveBeenNthCalledWith(
       1,
-      expect.arrayContaining([
-        `body=${body}`,
-        'title=Image issue',
-        'labels[]=bug',
-        'assignees[]=octo'
-      ]),
-      { cwd: '/repo-root', host: 'github.com' }
+      ['api', '-X', 'POST', 'repos/stablyai/orca/issues', '--input', '-'],
+      {
+        cwd: '/repo-root',
+        host: 'github.com',
+        stdin: JSON.stringify({
+          title: 'Image issue',
+          body,
+          labels: ['bug'],
+          assignees: ['octo']
+        })
+      }
     )
     expect(ghExecFileAsyncMock).toHaveBeenNthCalledWith(
       2,
-      expect.arrayContaining(['body=', 'title=Image issue', 'labels[]=bug', 'assignees[]=octo']),
-      { cwd: '/repo-root', host: 'github.com' }
+      ['api', '-X', 'POST', 'repos/stablyai/orca/issues', '--input', '-'],
+      {
+        cwd: '/repo-root',
+        host: 'github.com',
+        stdin: JSON.stringify({
+          title: 'Image issue',
+          body: '',
+          labels: ['bug'],
+          assignees: ['octo']
+        })
+      }
     )
     expect(ghExecFileAsyncMock).toHaveBeenNthCalledWith(
       3,
-      ['api', '-X', 'PATCH', 'repos/stablyai/orca/issues/926', '--raw-field', `body=${body}`],
-      { cwd: '/repo-root', host: 'github.com' }
+      ['api', '-X', 'PATCH', 'repos/stablyai/orca/issues/926', '--input', '-'],
+      { cwd: '/repo-root', host: 'github.com', stdin: JSON.stringify({ body }) }
     )
   })
 
@@ -445,10 +447,15 @@ describe('issue source operations', () => {
         localGitOptions
       )
     ).resolves.toEqual({ ok: true, number: 927, url: 'issue-url' })
-    const firstCreateArgs = [...ghExecFileAsyncMock.mock.calls[0][0]]
-    const fallbackCreateArgs = [...ghExecFileAsyncMock.mock.calls[1][0]]
-    firstCreateArgs[firstCreateArgs.indexOf(`body=${body}`)] = 'body='
-    expect(fallbackCreateArgs).toEqual(firstCreateArgs)
+    const createArgs = ['api', '-X', 'POST', 'repos/stablyai/orca/issues', '--input', '-']
+    expect(ghExecFileAsyncMock.mock.calls[0][0]).toEqual(createArgs)
+    expect(ghExecFileAsyncMock.mock.calls[0][1]?.stdin).toBe(
+      JSON.stringify({ title: 'Fields issue', body, labels: ['bug'], assignees: ['octo'] })
+    )
+    expect(ghExecFileAsyncMock.mock.calls[1][0]).toEqual(createArgs)
+    expect(ghExecFileAsyncMock.mock.calls[1][1]?.stdin).toBe(
+      JSON.stringify({ title: 'Fields issue', body: '', labels: ['bug'], assignees: ['octo'] })
+    )
     expect(ghExecFileAsyncMock.mock.calls.every((call) => call[1]?.wslDistro === 'Ubuntu')).toBe(
       true
     )
