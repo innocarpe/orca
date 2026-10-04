@@ -130,11 +130,19 @@ export function useDashboardSnapshot(): DashboardSnapshot {
       }
       // flushSync so the DOM reflects `next` synchronously inside the transition
       // callback — the browser captures the "after" state from it.
-      // Why: `ready` rejects when the window is occluded after the transition
-      // starts. Nothing else observes it, so consume the rejection here.
+      // Consume only the abort caused by occlusion; other ready failures remain visible.
       void startViewTransition(() => {
         flushSync(() => setSnapshot(next))
-      }).ready.catch(() => {})
+      }).ready.catch((error: unknown) => {
+        if (
+          documentIsHidden() &&
+          error instanceof DOMException &&
+          error.name === 'InvalidStateError'
+        ) {
+          return
+        }
+        throw error
+      })
     }
 
     const unsubscribe = window.api.dashboard.onSnapshot(apply)
