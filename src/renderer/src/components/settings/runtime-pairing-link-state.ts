@@ -1,5 +1,8 @@
 import { normalizeMobilePairingCustomAddress } from '../../../../shared/mobile-pairing-custom-address'
-import { selectAutoAdvertisedPairingAddress } from '../../../../shared/pairing-address-auto-selection'
+import {
+  isThunderboltBridgeInterface,
+  selectAutoAdvertisedPairingAddress
+} from '../../../../shared/pairing-address-auto-selection'
 import type { RuntimePairingReach } from '../../../../shared/runtime-pairing-reach'
 
 export const RUNTIME_PAIRING_LOOPBACK_ADDRESS = '127.0.0.1'
@@ -123,8 +126,11 @@ export function resolveAnotherDevicePairingAddress(args: {
   if (args.interfaces.some((iface) => iface.address === args.selectedAddress)) {
     return args.selectedAddress
   }
+  const autoAdvertisedAddress = selectAutoAdvertisedPairingAddress(args.interfaces)
   return (
-    selectAutoAdvertisedPairingAddress(args.interfaces, args.platform) ??
+    autoAdvertisedAddress ??
+    args.interfaces.find((iface) => isThunderboltBridgeInterface(iface.name, args.platform))
+      ?.address ??
     args.interfaces[0]?.address ??
     ''
   )
