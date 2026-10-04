@@ -162,11 +162,13 @@ export async function resolvePRForBranchOutcome(input: {
       headRepo,
       headRepoInferred: true,
       branchName,
+      currentHeadOid: explicitCurrentHeadOid,
       ghOptions,
       executionScope
     })
     data = branchLookup.data
     dataRepo = branchLookup.dataRepo
+    dataHeadRepo = branchLookup.dataHeadRepo ?? headRepo
     if ('pendingError' in branchLookup) {
       pendingBranchLookupError = branchLookup.pendingError
       hasPendingBranchLookupError = true
@@ -196,6 +198,7 @@ export async function resolvePRForBranchOutcome(input: {
             headRepo: upstreamHeadRepo,
             headRepoInferred: trackedHeadRepo === null,
             branchName: upstreamBranch.branchName,
+            currentHeadOid: explicitCurrentHeadOid,
             ghOptions,
             executionScope
           })
@@ -206,7 +209,7 @@ export async function resolvePRForBranchOutcome(input: {
             hasPendingBranchLookupError = true
           }
           if (data) {
-            dataHeadRepo = upstreamHeadRepo
+            dataHeadRepo = upstreamLookup.dataHeadRepo ?? upstreamHeadRepo
           }
         }
       }
