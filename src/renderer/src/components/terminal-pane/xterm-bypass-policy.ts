@@ -305,8 +305,8 @@ export function isAppOwnedCopyChord(
 }
 
 /**
- * Decide whether plain Ctrl+C should bypass xterm's kitty CSI-u encoder and
- * be sent as ETX through Terminal.input() instead.
+ * Decide whether plain Ctrl+C should bypass xterm's key encoder so the shared
+ * interrupt encoder can select ETX or Kitty CSI-u for the pane's negotiated flags.
  */
 export function shouldHandleTerminalInterruptKeyboardEvent(
   event: XtermBypassEvent,
