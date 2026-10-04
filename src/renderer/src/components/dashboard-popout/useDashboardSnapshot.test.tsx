@@ -43,14 +43,16 @@ let apply: (next: DashboardSnapshot) => void
 let applyStatus: (next: AgentStatusIpcPayload) => void
 let applyClear: (next: AgentStatusClearIpcPayload) => void
 const requestSnapshot = vi.fn(async () => {})
-let readyRejects = false
+let readyRejection: unknown = null
+let hideDocumentAfterTransitionStart = false
 const startViewTransition = vi.fn((cb: () => void) => {
   cb()
+  if (hideDocumentAfterTransitionStart) {
+    hideDocument()
+  }
   return {
     finished: Promise.resolve(),
-    ready: readyRejects
-      ? Promise.reject(new Error('Transition was aborted because of invalid state'))
-      : Promise.resolve(),
+    ready: readyRejection !== null ? Promise.reject(readyRejection) : Promise.resolve(),
     updateCallbackDone: Promise.resolve()
   }
 })
@@ -116,7 +118,8 @@ describe('useDashboardSnapshot', () => {
   })
   afterEach(() => {
     document.body.innerHTML = ''
-    readyRejects = false
+    readyRejection = null
+    hideDocumentAfterTransitionStart = false
     delete (document as { visibilityState?: string }).visibilityState
     vi.clearAllMocks()
   })
@@ -158,7 +161,11 @@ describe('useDashboardSnapshot', () => {
   it('swallows the ready rejection when the window is occluded mid-transition', async () => {
     const { result } = renderHook(() => useDashboardSnapshot())
     act(() => apply(snapshot([card({ bucket: 'idle' })])))
-    readyRejects = true
+    readyRejection = new DOMException(
+      'Transition was aborted because of invalid state',
+      'InvalidStateError'
+    )
+    hideDocumentAfterTransitionStart = true
 
     const reasons = await collectUnhandledRejections(() => {
       act(() => apply(snapshot([card({ bucket: 'working' })])))
@@ -166,6 +173,24 @@ describe('useDashboardSnapshot', () => {
 
     expect(startViewTransition).toHaveBeenCalled()
     expect(reasons).toEqual([])
+    expect(result.current.cards[0].bucket).toBe('working')
+  })
+
+  it('reports an InvalidStateError when the visible transition fails', async () => {
+    const { result } = renderHook(() => useDashboardSnapshot())
+    act(() => apply(snapshot([card({ bucket: 'idle' })])))
+    const readyError = new DOMException(
+      'Duplicate transition names are not allowed',
+      'InvalidStateError'
+    )
+    readyRejection = readyError
+
+    const reasons = await collectUnhandledRejections(() => {
+      act(() => apply(snapshot([card({ bucket: 'working' })])))
+    })
+
+    expect(startViewTransition).toHaveBeenCalled()
+    expect(reasons).toEqual([readyError])
     expect(result.current.cards[0].bucket).toBe('working')
   })
 
