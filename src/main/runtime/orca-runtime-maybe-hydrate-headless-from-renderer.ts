@@ -7,12 +7,7 @@ import { detectAgentStatusFromTitle, normalizeTerminalTitle } from '../../shared
 import { shouldModelAnswerHiddenPtyQueries } from './terminal-model-query-authority'
 
 export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntimeWithSerializeMainTerminalBuffer {
-  // Why: hydrate the runtime headless emulator from the desktop renderer's
-  // xterm buffer on the first onPtyData byte after a PTY is taken over by a
-  // pane. Eager-state pattern matches seedHeadlessTerminal: headlessTerminals
-  // is populated synchronously so concurrent live writes from
-  // trackHeadlessTerminalData chain after the seed via the same writeChain.
-  // See docs/mobile-prefer-renderer-scrollback.md.
+  /** Hydrates a taken-over PTY from the renderer buffer before live writes use its headless emulator. */
   protected maybeHydrateHeadlessFromRenderer(ptyId: string): void {
     if (this.headlessHydrationState.has(ptyId)) {
       return
