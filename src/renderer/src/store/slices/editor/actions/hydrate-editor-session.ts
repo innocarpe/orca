@@ -17,6 +17,7 @@ import {
   shouldHydrateWithOwnedEditorFileId
 } from '../file-ids/hydrated-editor-file-ids'
 
+/** Restores persisted editor files and reuses their stored IDs when available. */
 export function createHydrateEditorSession(
   set: EditorSet,
   _get: EditorGet
