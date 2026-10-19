@@ -103,6 +103,10 @@ export function attachSurfaceEventHandlers(
       if (targetSurface !== scope.surface || dispatcherShouldBlockSurface(scope)) {
         return
       }
+      // Why: a touch that only stops a program's scroll slide must not also tap.
+      if (scope.term?.consumeRemoteScrollTouchCatch?.()) {
+        scope.tapCandidate = null
+      }
       if (scope.touchGesture.momentumId) {
         cancelDocumentFrame(scope, scope.touchGesture.momentumId)
         scope.touchGesture.momentumId = null
