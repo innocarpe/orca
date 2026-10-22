@@ -3,7 +3,7 @@ import { useAppStore } from '@/store'
 import type { AgentType } from '../../../../../shared/agent-status-types'
 import { AGENT_INTERRUPT_SETTLE_MS } from '../../../../../shared/agent-interrupt-intent'
 import { resolvePaneAgentOwner } from '../../../../../shared/pane-agent-owner'
-import { isOpenCodeNativeTitle } from '../../../../../shared/opencode-terminal-title'
+import { titleSignalsLiveAgentReattach } from '../../../../../shared/live-agent-reattach-title-signal'
 import { titleAfterInferredInterrupt } from '../../../../../shared/terminal-pane-title-reset'
 
 import { MANUAL_AGENT_COMMAND_MAX_CHARS } from './pty-connect-limits'
@@ -244,11 +244,7 @@ export function installShellCommandInference(session: ConnectPanePtySession): vo
     // and PTY byte injection, so only exact/status titles count here.
     // OpenCode OSC titles are `OC | <task>` with no status glyph. Without
     // that marker, reattach used the shell reset and disarmed mouse tracking (#11123).
-    return (
-      detectAgentStatusFromTitle(title) !== null ||
-      session.isCursorAgentNativeTitle(title) ||
-      isOpenCodeNativeTitle(title)
-    )
+    return titleSignalsLiveAgentReattach(title, detectAgentStatusFromTitle(title))
   }
   session.hasLiveAgentReattachSignal = (): boolean => {
     return (
