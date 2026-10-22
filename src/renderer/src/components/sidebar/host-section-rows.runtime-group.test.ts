@@ -135,7 +135,8 @@ function renderedHostFilter(rows: Row[]) {
     workspaceHostScope: 'all',
     visibleWorkspaceHostIds: [FOCUSED, OWNER],
     defaultHostId: FOCUSED,
-    preferProjectGrouping: true
+    preferProjectGrouping: true,
+    localHostLabel: 'Local Mac'
   })
 }
 
@@ -217,7 +218,8 @@ describe('runtime-stamped project groups', () => {
       workspaceHostScope: 'all',
       visibleWorkspaceHostIds: null,
       defaultHostId: FOCUSED,
-      preferProjectGrouping: true
+      preferProjectGrouping: true,
+      localHostLabel: 'Local Mac'
     })
 
     expect(rows.map(rowKey)).toEqual(['group:group-a', 'owner-wt'])
