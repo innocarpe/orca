@@ -12,6 +12,27 @@ import { terminalTitleBlocksExplicitAgentStatus } from './runtime-worktree-statu
 import type { HookLiveAgentRow } from './runtime-terminal-contracts'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 
+export function demoteRuntimeMobileAgentStatus(
+  status: AgentStatusEntry,
+  pty: RuntimePtyWorktreeRecord | null
+): AgentStatusEntry {
+  return {
+    state: 'done',
+    prompt: '',
+    updatedAt: pty?.lastOscTitleEpochMs ?? status.updatedAt,
+    stateStartedAt: pty?.lastAgentStatusStartedAtEpochMs ?? status.stateStartedAt,
+    paneKey: status.paneKey,
+    stateHistory: [],
+    agentType: status.agentType,
+    ...(status.lastAssistantMessage ? { lastAssistantMessage: status.lastAssistantMessage } : {}),
+    ...(status.lastAssistantMessageIsToolOutput != null
+      ? { lastAssistantMessageIsToolOutput: status.lastAssistantMessageIsToolOutput }
+      : {}),
+    ...(status.interrupted != null ? { interrupted: status.interrupted } : {}),
+    ...(status.providerSession ? { providerSession: status.providerSession } : {})
+  }
+}
+
 export function renewRuntimeMobileAgentStatusFromPtyTitle(
   status: AgentStatusEntry | null,
   pty: RuntimePtyWorktreeRecord | null,
