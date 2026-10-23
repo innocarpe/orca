@@ -29,13 +29,11 @@ import {
 } from './agent-hook-listener/opencode-session-registry'
 import { claudeRowHasUnlistedLiveWork } from './agent-hook-listener/providers/claude-pane-hold-evidence'
 import { readString } from './agent-hook-listener/tool-input-preview'
+import {
+  CLAUDE_EXIT_SESSION_END_REASONS,
+  clearEndedClaudeElicitations
+} from './agent-hook-listener/providers/claude-session-end'
 /** Canonical transport-agnostic normalization entry shared by main and relay listeners. */
-const CLAUDE_EXIT_SESSION_END_REASONS = new Set([
-  'prompt_input_exit',
-  'logout',
-  'other',
-  'bypass_permissions_disabled'
-])
 
 export function normalizeHookPayload(
   state: HookListenerState,
@@ -227,16 +225,7 @@ export function normalizeHookPayload(
   const agentPresence = agentProcess
     ? { agent: source, process: agentProcess, sessionOwner: true as const }
     : undefined
-  if (
-    source === 'claude' &&
-    eventName === 'SessionEnd' &&
-    !readString(hookPayloadRecord, 'agent_id')
-  ) {
-    const sessionId = readString(hookPayloadRecord, 'session_id')
-    if (sessionId !== undefined && sessionId === state.claudeSessionOwnerByPaneKey.get(paneKey)) {
-      state.claudeElicitationByPaneKey.delete(paneKey)
-    }
-  }
+  clearEndedClaudeElicitations(state, source, eventName, paneKey, hookPayloadRecord)
   const sessionEndReason = readString(hookPayloadRecord, 'reason')
   if (
     eventName === 'SessionEnd' &&
