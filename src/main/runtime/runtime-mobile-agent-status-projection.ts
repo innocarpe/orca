@@ -61,7 +61,10 @@ export function renewRuntimeMobileAgentStatusFromPtyTitle(
     ...(status.terminalTitle ? { terminalTitle: status.terminalTitle } : {}),
     ...(status.providerSession ? { providerSession: status.providerSession } : {}),
     ...(status.lastAssistantMessage ? { lastAssistantMessage: status.lastAssistantMessage } : {}),
-    ...(status.interrupted != null ? { interrupted: status.interrupted } : {})
+    ...(status.lastAssistantMessageIsToolOutput != null
+      ? { lastAssistantMessageIsToolOutput: status.lastAssistantMessageIsToolOutput }
+      : {}),
+    ...(state === 'done' && status.interrupted != null ? { interrupted: status.interrupted } : {})
   })
   const titleConfirmsState =
     (pty.lastAgentStatus === 'working' && status.state === 'working') ||

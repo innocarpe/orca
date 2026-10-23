@@ -255,6 +255,12 @@ export function projectRuntimeMobileSessionTabs(
               ...(normalizedTabAgentStatus.lastAssistantMessage
                 ? { lastAssistantMessage: normalizedTabAgentStatus.lastAssistantMessage }
                 : {}),
+              ...(normalizedTabAgentStatus.lastAssistantMessageIsToolOutput != null
+                ? {
+                    lastAssistantMessageIsToolOutput:
+                      normalizedTabAgentStatus.lastAssistantMessageIsToolOutput
+                  }
+                : {}),
               ...(normalizedTabAgentStatus.interrupted != null
                 ? { interrupted: normalizedTabAgentStatus.interrupted }
                 : {}),
