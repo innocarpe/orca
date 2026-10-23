@@ -30,6 +30,11 @@ import {
   claudeRowHasUnlistedLiveWork
 } from './claude-pane-hold-evidence'
 import { buildClaudeStatusPayload } from './claude-status-build'
+import {
+  applyClaudeElicitationEvent,
+  clearClaudeElicitationsForOwner,
+  trackClaudeElicitationToolBoundary
+} from './claude-elicitation-state'
 import { trackClaudeTaskNotificationDelivery } from './claude-task-notification-delivery'
 
 export function normalizeClaudeEvent(
@@ -48,6 +53,25 @@ export function normalizeClaudeEvent(
     return normalizeClaudeSubagentLifecycleEvent(state, eventName, paneKey, hookPayload)
   }
   voidClaimsOfReplacedClaudeSession(state, eventName, eventAgentId, paneKey, hookPayload)
+  if (eventName === 'Elicitation' || eventName === 'ElicitationResult') {
+    if (!applyClaudeElicitationEvent(state, paneKey, eventName, hookPayload)) {
+      return null
+    }
+    if (eventName === 'Elicitation' && eventAgentId) {
+      upsertWorkingClaudeSubagent(
+        getOrCreateClaudeSubagentRoster(state, paneKey),
+        eventAgentId,
+        { agentType: readString(hookPayload, 'agent_type') },
+        Date.now()
+      )
+    }
+    const lead = state.claudeLeadStateByPaneKey.get(paneKey) ?? { state: 'working' as const }
+    return buildClaudeStatusPayload(state, eventName, '', paneKey, hookPayload, {
+      ...resolveClaudePaneStatus(state, paneKey, lead),
+      updateToolSnapshot: false
+    })
+  }
+  trackClaudeElicitationToolBoundary(state, paneKey, eventName, hookPayload)
   if (eventName === 'SessionStart') {
     // Why: SessionStart is the only signal a resumed session emits before its first prompt
     // (STA-3386). Land it as a session-boundary 'done' row: 'working' would show a phantom
@@ -67,6 +91,7 @@ export function normalizeClaudeEvent(
     }
     // Why: a new process owns the pane; stale children/tasks/crons must not gate the
     // fresh session's idle row back up to 'working' (same reset Codex does on SessionStart).
+    state.claudeElicitationByPaneKey.delete(paneKey)
     state.claudeSubagentRosterByPaneKey.delete(paneKey)
     state.claudeRunningNonAgentTaskPaneKeys.delete(paneKey)
     state.claudeActiveSessionCronPaneKeys.delete(paneKey)
@@ -84,6 +109,9 @@ export function normalizeClaudeEvent(
   // other event starts a fresh turn and drops it. The verdict is a fact about the main agent's turn and
   // nothing else: a cancel never touches the shell, cron or subagent the turn left running.
   const isTurnBoundary = eventName === 'Stop' || eventName === 'StopFailure'
+  if (eventAgentId === undefined && (isTurnBoundary || eventName === 'UserPromptSubmit')) {
+    clearClaudeElicitationsForOwner(state, paneKey, (agentId) => agentId === undefined)
+  }
   // Why: absent means unknown — a plain Stop never becomes `success`, so a cancel can never read as a
   // success. Current Claude sends NO hook on a cancel and no `is_interrupt` on Stop, so the
   // cancellation normally arrives through Orca's own inferred interrupt
@@ -122,17 +150,13 @@ export function normalizeClaudeEvent(
   // the compact is validated (an aborted compact emits it alone), so it is neither registered nor
   // mapped — see claude-compact-completion.ts.
   const isManualCompactCompletion = eventName === 'PostCompact' && hookPayload.trigger === 'manual'
-  // Why: Claude's MCP elicitation dialog is a human wait (#25020). Other providers already map
-  // notification_type elicitation_dialog to waiting. ElicitationResult means the person answered
-  // and the in-flight tool continues, so the pane returns to working rather than done.
   const reportedStateName =
     eventName === 'UserPromptSubmit' ||
     eventName === 'PostToolUse' ||
     eventName === 'PostToolUseFailure' ||
-    eventName === 'ElicitationResult' ||
     (eventName === 'PreToolUse' && !isAskUserQuestion)
       ? 'working'
-      : eventName === 'PermissionRequest' || eventName === 'Elicitation' || isAskUserQuestion
+      : eventName === 'PermissionRequest' || isAskUserQuestion
         ? 'waiting'
         : isTurnBoundary || isManualCompactCompletion
           ? 'done'

@@ -61,17 +61,6 @@ export const CLAUDE_EVENTS = [
     eventName: 'PermissionRequest',
     definition: { matcher: '*', hooks: [{ type: 'command', command: '' }] }
   },
-  // Why: an MCP elicitation/create dialog blocks on the person (#25020). The matcher is the MCP
-  // server name, and '*' observes every server. The hook only reports status: exit 2 would decline
-  // the elicitation, so the script stays the neutral observer used by every other event.
-  {
-    eventName: 'Elicitation',
-    definition: { matcher: '*', hooks: [{ type: 'command', command: '' }] }
-  },
-  {
-    eventName: 'ElicitationResult',
-    definition: { matcher: '*', hooks: [{ type: 'command', command: '' }] }
-  },
   // Why: a manual /compact ends at an idle prompt without emitting Stop, so PostCompact is the only
   // signal that can clear the pane (STA-2915). PreCompact is deliberately NOT registered: it fires
   // before the compact is validated, and an aborted compact emits it alone — mapping it to 'working'
@@ -89,7 +78,22 @@ const CLAUDE_SESSION_END_EVENT = {
   definition: { hooks: [{ type: 'command', command: '' }] }
 } as const
 
-export const CLAUDE_MANAGED_EVENTS = [...CLAUDE_EVENTS, CLAUDE_SESSION_END_EVENT] as const
+const CLAUDE_ELICITATION_EVENTS = [
+  {
+    eventName: 'Elicitation',
+    definition: { matcher: '*', hooks: [{ type: 'command', command: '' }] }
+  },
+  {
+    eventName: 'ElicitationResult',
+    definition: { matcher: '*', hooks: [{ type: 'command', command: '' }] }
+  }
+] as const
+
+export const CLAUDE_MANAGED_EVENTS = [
+  ...CLAUDE_EVENTS,
+  ...CLAUDE_ELICITATION_EVENTS,
+  CLAUDE_SESSION_END_EVENT
+] as const
 
 export type ManagedHookEvent = {
   eventName: string
