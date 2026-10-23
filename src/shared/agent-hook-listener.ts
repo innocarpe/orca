@@ -227,6 +227,16 @@ export function normalizeHookPayload(
   const agentPresence = agentProcess
     ? { agent: source, process: agentProcess, sessionOwner: true as const }
     : undefined
+  if (
+    source === 'claude' &&
+    eventName === 'SessionEnd' &&
+    !readString(hookPayloadRecord, 'agent_id')
+  ) {
+    const sessionId = readString(hookPayloadRecord, 'session_id')
+    if (sessionId !== undefined && sessionId === state.claudeSessionOwnerByPaneKey.get(paneKey)) {
+      state.claudeElicitationByPaneKey.delete(paneKey)
+    }
+  }
   const sessionEndReason = readString(hookPayloadRecord, 'reason')
   if (
     eventName === 'SessionEnd' &&
