@@ -68,11 +68,17 @@ describe('mobile completion status projection', () => {
       } as RuntimePtyWorktreeRecord
 
       const renewed = renewRuntimeMobileAgentStatusFromPtyTitle(
-        workingStatus({ state: 'done', interrupted: true }),
+        workingStatus({
+          state: 'done',
+          interrupted: true,
+          lastAssistantMessageIsToolOutput: false
+        }),
         pty
       )
       expect(renewed?.state).toBe(titleState === 'working' ? 'working' : 'blocked')
       expect(renewed?.interrupted).toBeUndefined()
+      expect(renewed?.lastAssistantMessage).toBeUndefined()
+      expect(renewed?.lastAssistantMessageIsToolOutput).toBeUndefined()
     }
   )
 
