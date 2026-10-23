@@ -252,8 +252,6 @@ export function projectRuntimeMobileSessionTabs(
               paneKey: normalizedTabAgentStatus.paneKey,
               stateHistory: [],
               agentType: normalizedTabAgentStatus.agentType,
-              // Why: paired clients mirror this projection. Keep the completion
-              // subtitle when a neutral title demotes stale "working" (#9914).
               ...(normalizedTabAgentStatus.lastAssistantMessage
                 ? { lastAssistantMessage: normalizedTabAgentStatus.lastAssistantMessage }
                 : {}),

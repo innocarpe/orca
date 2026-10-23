@@ -60,11 +60,7 @@ export function renewRuntimeMobileAgentStatusFromPtyTitle(
     ...(status.tabId ? { tabId: status.tabId } : {}),
     ...(status.terminalTitle ? { terminalTitle: status.terminalTitle } : {}),
     ...(status.providerSession ? { providerSession: status.providerSession } : {}),
-    // Why: a title-only rebuild is what paired clients mirror. Dropping the
-    // completion subtitle here blanks remote workspace cards (#9914).
-    ...(status.lastAssistantMessage
-      ? { lastAssistantMessage: status.lastAssistantMessage }
-      : {}),
+    ...(status.lastAssistantMessage ? { lastAssistantMessage: status.lastAssistantMessage } : {}),
     ...(status.interrupted != null ? { interrupted: status.interrupted } : {})
   })
   const titleConfirmsState =
