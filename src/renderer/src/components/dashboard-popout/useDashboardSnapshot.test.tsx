@@ -57,6 +57,7 @@ const startViewTransition = vi.fn((cb: () => void) => {
   }
 })
 
+const originalVisibilityState = Object.getOwnPropertyDescriptor(document, 'visibilityState')
 const UNHANDLED_REJECTION_SETTLE_MS = 20
 
 async function collectUnhandledRejections(run: () => void): Promise<unknown[]> {
@@ -120,7 +121,11 @@ describe('useDashboardSnapshot', () => {
     document.body.innerHTML = ''
     readyRejection = null
     hideDocumentAfterTransitionStart = false
-    delete (document as { visibilityState?: string }).visibilityState
+    if (originalVisibilityState) {
+      Object.defineProperty(document, 'visibilityState', originalVisibilityState)
+    } else {
+      Reflect.deleteProperty(document, 'visibilityState')
+    }
     vi.clearAllMocks()
   })
 
@@ -173,6 +178,22 @@ describe('useDashboardSnapshot', () => {
 
     expect(startViewTransition).toHaveBeenCalled()
     expect(reasons).toEqual([])
+    expect(result.current.cards[0].bucket).toBe('working')
+  })
+
+  it('reports an unrelated ready error when the window becomes hidden', async () => {
+    const { result } = renderHook(() => useDashboardSnapshot())
+    act(() => apply(snapshot([card({ bucket: 'idle' })])))
+    const readyError = new TypeError('Transition callback failed')
+    readyRejection = readyError
+    hideDocumentAfterTransitionStart = true
+
+    const reasons = await collectUnhandledRejections(() => {
+      act(() => apply(snapshot([card({ bucket: 'working' })])))
+    })
+
+    expect(startViewTransition).toHaveBeenCalled()
+    expect(reasons).toEqual([readyError])
     expect(result.current.cards[0].bucket).toBe('working')
   })
 
