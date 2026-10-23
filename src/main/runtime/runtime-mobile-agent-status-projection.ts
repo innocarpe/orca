@@ -60,7 +60,7 @@ export function renewRuntimeMobileAgentStatusFromPtyTitle(
     ...(status.tabId ? { tabId: status.tabId } : {}),
     ...(status.terminalTitle ? { terminalTitle: status.terminalTitle } : {}),
     ...(status.providerSession ? { providerSession: status.providerSession } : {}),
-    ...(status.lastAssistantMessage && (state === 'done' || status.state !== 'done')
+    ...(state === 'done' && status.lastAssistantMessage
       ? {
           lastAssistantMessage: status.lastAssistantMessage,
           ...(status.lastAssistantMessageIsToolOutput != null

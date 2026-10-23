@@ -82,9 +82,13 @@ describe('mobile completion status projection', () => {
     }
   )
 
-  it.each(['working', 'idle'] as const)(
-    'keeps tool-output classification through a %s title rebuild',
-    (titleState) => {
+  it.each([
+    { titleState: 'working', toolOutput: false },
+    { titleState: 'working', toolOutput: true },
+    { titleState: 'idle', toolOutput: true }
+  ] as const)(
+    'keeps tool-output classification only for completed title projection $titleState/$toolOutput',
+    ({ titleState, toolOutput }) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: renewal reads only the title clock and status fields provided here.
       const pty = {
         lastOscTitle: 'Claude Code',
@@ -94,16 +98,20 @@ describe('mobile completion status projection', () => {
         lastAgentStatusRichInvalidatedAtEpochMs: 1_700_000_000_400
       } as RuntimePtyWorktreeRecord
 
-      expect(
-        renewRuntimeMobileAgentStatusFromPtyTitle(
-          workingStatus({ lastAssistantMessageIsToolOutput: true }),
-          pty
-        )
-      ).toMatchObject({
-        state: titleState === 'working' ? 'working' : 'done',
-        lastAssistantMessage: MESSAGE,
-        lastAssistantMessageIsToolOutput: true
-      })
+      const renewed = renewRuntimeMobileAgentStatusFromPtyTitle(
+        workingStatus({ lastAssistantMessageIsToolOutput: toolOutput }),
+        pty
+      )
+      expect(renewed?.state).toBe(titleState === 'working' ? 'working' : 'done')
+      if (titleState === 'working') {
+        expect(renewed?.lastAssistantMessage).toBeUndefined()
+        expect(renewed?.lastAssistantMessageIsToolOutput).toBeUndefined()
+      } else {
+        expect(renewed).toMatchObject({
+          lastAssistantMessage: MESSAGE,
+          lastAssistantMessageIsToolOutput: toolOutput
+        })
+      }
     }
   )
 
