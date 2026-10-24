@@ -39,10 +39,7 @@ describe('mobile completion status projection', () => {
 
       expect(
         renewRuntimeMobileAgentStatusFromPtyTitle(
-          workingStatus({
-            ...(interrupted ? { state: 'done' as const } : {}),
-            interrupted
-          }),
+          workingStatus({ state: 'done', interrupted }),
           pty
         )
       ).toMatchObject({
@@ -83,12 +80,13 @@ describe('mobile completion status projection', () => {
   )
 
   it.each([
-    { titleState: 'working', toolOutput: false },
-    { titleState: 'working', toolOutput: true },
-    { titleState: 'idle', toolOutput: true }
+    { titleState: 'working', sourceState: 'done', toolOutput: false },
+    { titleState: 'working', sourceState: 'done', toolOutput: true },
+    { titleState: 'idle', sourceState: 'done', toolOutput: true },
+    { titleState: 'idle', sourceState: 'working', toolOutput: false }
   ] as const)(
-    'keeps tool-output classification only for completed title projection $titleState/$toolOutput',
-    ({ titleState, toolOutput }) => {
+    'keeps the reply only for a completed turn under a completed title $titleState/$sourceState/$toolOutput',
+    ({ titleState, sourceState, toolOutput }) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: renewal reads only the title clock and status fields provided here.
       const pty = {
         lastOscTitle: 'Claude Code',
@@ -99,11 +97,11 @@ describe('mobile completion status projection', () => {
       } as RuntimePtyWorktreeRecord
 
       const renewed = renewRuntimeMobileAgentStatusFromPtyTitle(
-        workingStatus({ lastAssistantMessageIsToolOutput: toolOutput }),
+        workingStatus({ state: sourceState, lastAssistantMessageIsToolOutput: toolOutput }),
         pty
       )
       expect(renewed?.state).toBe(titleState === 'working' ? 'working' : 'done')
-      if (titleState === 'working') {
+      if (titleState === 'working' || sourceState === 'working') {
         expect(renewed?.lastAssistantMessage).toBeUndefined()
         expect(renewed?.lastAssistantMessageIsToolOutput).toBeUndefined()
       } else {
@@ -115,9 +113,13 @@ describe('mobile completion status projection', () => {
     }
   )
 
-  it.each([false, true])(
-    'keeps the completion subtitle and tool-output classification %s when a neutral leaf title demotes the mobile projection',
-    (toolOutput) => {
+  it.each([
+    { sourceState: 'done', toolOutput: false },
+    { sourceState: 'done', toolOutput: true },
+    { sourceState: 'working', toolOutput: false }
+  ] as const)(
+    'keeps only a completed reply when a shell leaf title demotes the mobile projection $sourceState/$toolOutput',
+    ({ sourceState, toolOutput }) => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub sets the pty fields the title clock and handle publication read.
       const pty = {
         ptyId: 'live-pty',
@@ -170,7 +172,7 @@ describe('mobile completion status projection', () => {
             leafId: 'leaf',
             title: 'bash',
             agentStatus: workingStatus({
-              state: 'done',
+              state: sourceState,
               interrupted: true,
               lastAssistantMessageIsToolOutput: toolOutput
             }),
@@ -180,18 +182,20 @@ describe('mobile completion status projection', () => {
       } as RuntimeMobileSessionTabsSnapshot
 
       const tab = projectRuntimeMobileSessionTabs(snapshot, host).tabs[0]
-      expect(tab).toMatchObject({
-        type: 'terminal',
-        agentStatus: {
-          state: 'done',
-          agentType: 'claude',
+      const agentStatus = tab?.type === 'terminal' ? tab.agentStatus : undefined
+      expect(agentStatus).toMatchObject({ state: 'done', agentType: 'claude', prompt: '' })
+      expect(agentStatus?.terminalTitle).toBeUndefined()
+      if (sourceState === 'done') {
+        expect(agentStatus).toMatchObject({
           lastAssistantMessage: MESSAGE,
           lastAssistantMessageIsToolOutput: toolOutput,
-          interrupted: true,
-          prompt: ''
-        }
-      })
-      expect(tab?.type === 'terminal' ? tab.agentStatus?.terminalTitle : undefined).toBeUndefined()
+          interrupted: true
+        })
+      } else {
+        expect(agentStatus?.lastAssistantMessage).toBeUndefined()
+        expect(agentStatus?.lastAssistantMessageIsToolOutput).toBeUndefined()
+        expect(agentStatus?.interrupted).toBeUndefined()
+      }
     }
   )
 })
