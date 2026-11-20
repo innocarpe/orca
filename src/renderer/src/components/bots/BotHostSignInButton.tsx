@@ -2,7 +2,8 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { useTranslate } from '@/i18n/use-translate'
 import { useAppStore } from '@/store'
-import { useBotHostLabel } from './use-bot-host-label'
+import { pairedWebServerSignInLine } from '../../../../shared/bots/paired-web-sign-in-copy'
+import { useBotHostLabel, usePairedWebServerLabel } from './use-bot-host-label'
 import { startBotHostSignIn } from '@/lib/bot-host-orca-account'
 import { showSignInBesidePage } from './BotConnectorsHostNotice'
 import type { Bot } from '../../../../shared/bot-types'
@@ -20,8 +21,16 @@ export function BotHostSignInButton({
 }): React.JSX.Element | null {
   const t = useTranslate()
   const host = useBotHostLabel(bot.hostId)
+  const server = usePairedWebServerLabel()
   const openSettingsTarget = useAppStore((state) => state.openSettingsTarget)
   const openSettingsPage = useAppStore((state) => state.openSettingsPage)
+  if (!host && server) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t('bots.host.signIn.pairedWeb', pairedWebServerSignInLine('{{host}}'), { host: server })}
+      </p>
+    )
+  }
   if (host) {
     return (
       <Button
