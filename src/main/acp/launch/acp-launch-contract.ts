@@ -110,7 +110,9 @@ export type AcpLaunchSpec = {
   managedCopyAllowed?(settings: ManagedCopySettings): boolean
 }
 
-export type ManagedCopySettings = Partial<Pick<GlobalSettings, 'antigravityManagedAgyEnabled'>>
+export type ManagedCopySettings = Partial<
+  Pick<GlobalSettings, 'antigravityManagedAgyEnabled' | 'disabledTuiAgents'>
+>
 
 /** What the host backend weighs: the host program a launch would run, and this host's facts. */
 export type AcpHostBackendInput = {

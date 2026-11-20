@@ -40,6 +40,8 @@ import { provideInstalledManagedAgents } from '../../../../preflight/managed-age
 import type { ManagedCopySettings } from '../../../../acp/launch/acp-launch-contract'
 import { runtimeReleaseMayBePublished } from '../../../../node-runtime/managed-runtime-release'
 import { hasExplicitTuiLaunchCommand } from '../../../../../shared/agent-launch/startup/tui-agent-launch-command-override'
+import { isTuiAgent } from '../../../../../shared/agent-launch/catalog/tui-agent-config'
+import { isTuiAgentEnabled } from '../../../../../shared/agent-launch/catalog/tui-agent-selection'
 
 const installations = new Map<string, ManagedRuntimeInstallation>()
 const revisionClocks = new Map<string, RevisionClock>()
@@ -170,7 +172,12 @@ function standInSpec(agent: ManagedAgentCliId) {
 type ManagedCopySettingsSource = { requireStore(): { getSettings(): ManagedCopySettings } }
 
 function managedCopyMayRun(agent: ManagedAgentCliId, runtime: ManagedCopySettingsSource): boolean {
-  return standInSpec(agent)?.managedCopyAllowed?.(runtime.requireStore().getSettings()) !== false
+  const settings = runtime.requireStore().getSettings()
+  // Turning the agent off in Settings also stops Orca keeping its own copy current.
+  if (isTuiAgent(agent) && !isTuiAgentEnabled(agent, settings.disabledTuiAgents)) {
+    return false
+  }
+  return standInSpec(agent)?.managedCopyAllowed?.(settings) !== false
 }
 
 /** These chats run the user's own install when the host has one, so Orca's copy is the fallback. */

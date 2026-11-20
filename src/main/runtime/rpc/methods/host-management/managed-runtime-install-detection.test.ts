@@ -23,3 +23,16 @@ it("counts Orca's installed copies before launch has read its releases, without 
 
   expect(await readInstalledManagedAgents()).toEqual(['grok'])
 })
+
+it('does not keep a disabled Kimi copy current', async () => {
+  host.dataDirectory = await mkdtemp(join(tmpdir(), 'orca-detect-disabled-kimi-'))
+  const release = join(host.dataDirectory, 'agent-runtimes', 'kimi', '1.0')
+  await mkdir(release, { recursive: true })
+  await writeFile(join(release, '.install-complete.json'), '{}')
+  const runtime = {
+    requireStore: () => ({ getSettings: () => ({ disabledTuiAgents: ['kimi'] }) })
+  }
+  provideManagedAgentDetection(runtime)
+
+  expect(await readInstalledManagedAgents()).not.toContain('kimi')
+})
