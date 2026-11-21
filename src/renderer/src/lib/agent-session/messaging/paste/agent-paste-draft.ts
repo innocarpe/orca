@@ -15,6 +15,7 @@ import { sendAgentDraftPasteContentNow } from './agent-draft-paste-content'
 import { agentDeliversDraftViaNativePrefill } from './agent-native-draft-prefill'
 import { waitForAgentDraftInputReady } from './agent-draft-readiness'
 import { isAgentForegroundProcess } from '../../../../../../shared/agent-status/process/agent-process-recognition'
+import { launchSubmitTargetStillHoldsPty } from './launch-submit-pty-hold'
 
 // Bracketed paste keeps prompt insertion atomic; callers separately choose whether to submit with Enter.
 
@@ -77,6 +78,11 @@ export async function pasteDraftWhenAgentReady(args: {
     }
     // Process existence does not prove composer readiness; report blind writes separately (#22479).
     onUnconfirmedDelivery?.()
+  }
+
+  // Composer bytes can outlive the CLI. Enter must not land in the shell that replaced it.
+  if (submit === true && agent && !(await launchSubmitTargetStillHoldsPty(ptyId, agent))) {
+    return false
   }
 
   return await sendBracketedPasteToAgent({

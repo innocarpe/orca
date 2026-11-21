@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as RemoteRuntimePtyIdModule from '../../../../../../shared/remote-runtime/remote-runtime-pty-id'
 import type * as LaunchAgentKindModule from '../../../../../../shared/agent-status/identity/agent-kind'
+import { inspectRuntimeTerminalProcess } from '@/runtime/hosted-terminals/inspection/runtime-terminal-process-inspection'
 
 const TAB = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
 
@@ -113,6 +114,11 @@ describe('an AI button whose agent is ready before the host answers', () => {
       tabId: TAB,
       started: new Promise<string | null>((done) => (answer = done))
     })
+    vi.mocked(inspectRuntimeTerminalProcess).mockImplementation(async (ptyId) =>
+      ptyId === 'launch-agent'
+        ? { foregroundProcess: 'claude', hasChildProcesses: false }
+        : { foregroundProcess: 'bash', hasChildProcesses: false }
+    )
     const { promptDeliveryResult } = launchNewTabPromptThroughHost({
       agent: 'claude',
       worktreeId: 'wt-1',
@@ -143,6 +149,10 @@ describe('an AI button whose agent is ready before the host answers', () => {
   it('does not paste into a cancelled hosted launch after its composer becomes ready', async () => {
     const { pasteDraftWhenAgentReady } =
       await import('@/lib/agent-session/messaging/paste/agent-paste-draft')
+    vi.mocked(inspectRuntimeTerminalProcess).mockResolvedValue({
+      foregroundProcess: 'codex',
+      hasChildProcesses: false
+    })
     let cancelled = false
     const delivery = pasteDraftWhenAgentReady({
       tabId: TAB,

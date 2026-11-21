@@ -94,6 +94,10 @@ describe('post-paste submit retry Enter', () => {
     testState.sendRuntimePtyInputVerified.mockReset()
     testState.sendRuntimePtyInputVerified.mockResolvedValue(true)
     testState.inspectRuntimeTerminalProcess.mockReset()
+    testState.inspectRuntimeTerminalProcess.mockResolvedValue({
+      foregroundProcess: 'codex',
+      hasChildProcesses: false
+    })
     testState.subscribeToRuntimeTerminalData.mockReset()
   })
 
@@ -144,7 +148,7 @@ function startCodexSubmit(): Promise<boolean> {
 async function signalCodexComposerReady(): Promise<void> {
   await flushMicrotasks()
   testState.ptyObserver?.(`${DECSET_BRACKETED_PASTE}${CODEX_COMPOSER_PROMPT_RENDER}`)
-  await flushMicrotasks()
+  await flushMicrotasks(12)
 }
 
 async function flushMicrotasks(iterations = 2): Promise<void> {

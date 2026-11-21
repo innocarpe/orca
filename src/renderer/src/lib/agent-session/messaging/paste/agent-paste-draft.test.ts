@@ -116,6 +116,37 @@ describe('pasteDraftWhenAgentReady', () => {
 
   it('replays buffered Codex output during PTY binding before the primary drain', async () => {
     testState.appState.ptyIdsByTabId = {}
+    testState.inspectRuntimeTerminalProcess.mockResolvedValue({
+      foregroundProcess: 'codex',
+      hasChildProcesses: false
+    })
+    testState.replayPreHandlerPtyData.mockImplementation(
+      (_ptyId: string, observer: (data: string) => void) => {
+        observer(CODEX_DYNAMIC_COMPOSER_PROMPT_RENDER)
+        observer(DECSET_BRACKETED_PASTE)
+      }
+    )
+    const promise = pasteDraftWhenAgentReady({
+      tabId: 'tab-1',
+      content: ISSUE_URL,
+      agent: 'codex',
+      submit: true
+    })
+
+    testState.appState.ptyIdsByTabId = { 'tab-1': ['pty-1'] }
+    for (const subscriber of testState.storeSubscribers) {
+      subscriber(testState.appState)
+    }
+    await flushMicrotasks(12)
+
+    expect(testState.sendRuntimePtyInputVerified).toHaveBeenCalledWith('pty-1', PASTED_ISSUE_URL)
+    await vi.advanceTimersByTimeAsync(POST_PASTE_SUBMIT_DELAY_MS + CODEX_SUBMIT_RETRY_DELAY_MS)
+    await expect(promise).resolves.toBe(true)
+    expect(testState.sendRuntimePtyInputVerified).toHaveBeenNthCalledWith(2, 'pty-1', '\r')
+  })
+
+  it('does not submit a launch prompt into the shell after the agent CLI has exited', async () => {
+    testState.appState.ptyIdsByTabId = {}
     testState.replayPreHandlerPtyData.mockImplementation(
       (_ptyId: string, observer: (data: string) => void) => {
         observer(CODEX_DYNAMIC_COMPOSER_PROMPT_RENDER)
@@ -134,11 +165,68 @@ describe('pasteDraftWhenAgentReady', () => {
       subscriber(testState.appState)
     }
     await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(POST_PASTE_SUBMIT_DELAY_MS + CODEX_SUBMIT_RETRY_DELAY_MS)
+
+    await expect(promise).resolves.toBe(false)
+    expect(testState.sendRuntimePtyInputVerified).not.toHaveBeenCalled()
+  })
+
+  it('still submits a launch prompt when a wrapper and a live child hold the terminal', async () => {
+    testState.appState.ptyIdsByTabId = {}
+    testState.inspectRuntimeTerminalProcess.mockResolvedValue({
+      foregroundProcess: 'python3',
+      hasChildProcesses: true
+    })
+    testState.replayPreHandlerPtyData.mockImplementation(
+      (_ptyId: string, observer: (data: string) => void) => {
+        observer(CODEX_DYNAMIC_COMPOSER_PROMPT_RENDER)
+        observer(DECSET_BRACKETED_PASTE)
+      }
+    )
+    const promise = pasteDraftWhenAgentReady({
+      tabId: 'tab-1',
+      content: ISSUE_URL,
+      agent: 'codex',
+      submit: true
+    })
+
+    testState.appState.ptyIdsByTabId = { 'tab-1': ['pty-1'] }
+    for (const subscriber of testState.storeSubscribers) {
+      subscriber(testState.appState)
+    }
+    await flushMicrotasks(12)
 
     expect(testState.sendRuntimePtyInputVerified).toHaveBeenCalledWith('pty-1', PASTED_ISSUE_URL)
     await vi.advanceTimersByTimeAsync(POST_PASTE_SUBMIT_DELAY_MS + CODEX_SUBMIT_RETRY_DELAY_MS)
     await expect(promise).resolves.toBe(true)
     expect(testState.sendRuntimePtyInputVerified).toHaveBeenNthCalledWith(2, 'pty-1', '\r')
+  })
+
+  it('does not submit a launch prompt when process inspection fails', async () => {
+    testState.appState.ptyIdsByTabId = {}
+    testState.inspectRuntimeTerminalProcess.mockRejectedValue(new Error('inspect failed'))
+    testState.replayPreHandlerPtyData.mockImplementation(
+      (_ptyId: string, observer: (data: string) => void) => {
+        observer(CODEX_DYNAMIC_COMPOSER_PROMPT_RENDER)
+        observer(DECSET_BRACKETED_PASTE)
+      }
+    )
+    const promise = pasteDraftWhenAgentReady({
+      tabId: 'tab-1',
+      content: ISSUE_URL,
+      agent: 'codex',
+      submit: true
+    })
+
+    testState.appState.ptyIdsByTabId = { 'tab-1': ['pty-1'] }
+    for (const subscriber of testState.storeSubscribers) {
+      subscriber(testState.appState)
+    }
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(POST_PASTE_SUBMIT_DELAY_MS + CODEX_SUBMIT_RETRY_DELAY_MS)
+
+    await expect(promise).resolves.toBe(false)
+    expect(testState.sendRuntimePtyInputVerified).not.toHaveBeenCalled()
   })
 
   it('starts the composer budget once the PTY exists, so a slow spawn does not shorten it', async () => {
